@@ -67,11 +67,12 @@ class InterfaceTest {
         ui.waitUntil(10_000) { model.ready.value }
         ui.waitUntil(10_000) { ui.onAllNodesWithText("Подключить ВКонтакте").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Подключить ВКонтакте").assertIsDisplayed()
-        capture("01-collection")
         ui.onNodeWithText("Экспорт").performClick()
         ui.onNodeWithText("Забрать с собой").assertIsDisplayed()
         capture("02-export")
         ui.onNodeWithText("Коллекция").performClick()
+        ui.onNodeWithText("Подключить ВКонтакте").assertIsDisplayed()
+        capture("01-collection")
         ui.onNodeWithText("Подключить ВКонтакте").performClick()
         lateinit var original: WebView
         ui.runOnUiThread {
