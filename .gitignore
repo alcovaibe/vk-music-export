@@ -1,0 +1,26 @@
+*.iml
+.gradle
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Secrets and Keys
+*.jks
+*.keystore
+*.p12
+google-services.json
+secrets.xml
+.env
+
+# Local exports and credentials
+/exports/
+/diagnostics/
+*.log
+cookies*
+*session*.json
+/keystore.properties
