@@ -372,7 +372,7 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (connected && popup == null) TextButton(onClick = onDone, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Подключено · К коллекции")
-                    } else Text(if (code in setOf("USER_ID_NOT_FOUND", "MUSIC_LAYOUT_NOT_FOUND", "SESSION_CHECK_FAILED")) message else "Войди на сайте ВК, затем открой музыку", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else Text("Войди на сайте ВК, затем открой музыку", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Box {
                         IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, "Действия со страницей") }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
@@ -389,6 +389,7 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
                         Button(enabled = ready && !loading, onClick = { model.scan(true) }, modifier = Modifier.weight(1f)) { Text("Собрать всё") }
                     } else Button(enabled = !loading, onClick = model::openMusic, modifier = Modifier.fillMaxWidth()) { Text("Открыть мою музыку") }
                 }
+                if (popup == null && code !in setOf("NOT_STARTED", "BROWSING", "MUSIC_PAGE_READY", "SCANNING")) InfoNote(message)
                 if (connected && popup == null) InfoNote("Повторный сбор заменит сохранённую коллекцию.")
             }
         }
