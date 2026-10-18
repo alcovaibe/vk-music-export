@@ -122,11 +122,16 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Reserve space for the Android userdata partition
+        # The hosted runner's preinstalled .NET SDK is unused by this Android project.
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          df -h /home/runner
       - name: Verify release upgrade and data on Android 16
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_6
           disable-animations: true
