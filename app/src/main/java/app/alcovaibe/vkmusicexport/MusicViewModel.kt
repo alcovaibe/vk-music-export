@@ -16,6 +16,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.alcovaibe.vkmusicexport.data.*
 import app.alcovaibe.vkmusicexport.vk.PagePolicy
+import app.alcovaibe.vkmusicexport.vk.BrowserProfile
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,6 +77,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             builtInZoomControls = true
             displayZoomControls = false
         }
+        BrowserProfile.apply(view)
         CookieManager.getInstance().setAcceptCookie(true)
         // VK ID and VK are different sites. Both windows need the same cookie policy.
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
@@ -407,6 +409,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         appendLine("VK Music Export ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         appendLine("Android API: ${android.os.Build.VERSION.SDK_INT}")
         appendLine("WebView: ${WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"}")
+        appendLine("Browser profile: Chrome mobile compatibility")
+        appendLine("UA: ${web?.settings?.userAgentString ?: "not initialized"}")
+        appendLine("Page host: ${runCatching { java.net.URI(currentPage.value).host }.getOrNull() ?: "none"}")
         appendLine("Result: ${lastCode.value}")
         appendLine("Sources: ${_snapshot.value.sources.size}; entries: ${_snapshot.value.entriesCount}")
         _snapshot.value.sources.groupingBy { it.reason }.eachCount().forEach { (reason, count) -> appendLine("$reason: $count") }

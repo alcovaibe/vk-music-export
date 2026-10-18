@@ -101,6 +101,14 @@ class InterfaceTest {
             ui.waitUntil(5_000) { result.get() != null }
             return result.get()!!
         }
+        ui.runOnUiThread {
+            assertFalse(original.settings.userAgentString.contains("; wv"))
+            assertFalse(original.settings.userAgentString.contains("Version/4.0"))
+        }
+        assertEquals("true", evaluate("/Chrome\\/[0-9.]+/.test(navigator.userAgent) && navigator.userAgent.indexOf('; wv') < 0"))
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
+            assertEquals("true", evaluate("navigator.userAgentData.brands.some(function(b){return b.brand === 'Google Chrome'}) && !navigator.userAgentData.brands.some(function(b){return b.brand === 'Android WebView'})"))
+        }
         ui.onNodeWithText("Войди на сайте ВК, затем открой музыку").assertDoesNotExist()
         assertEquals("Desktop caption: ${evaluate("document.getElementById('desktop').textContent")}", "true", evaluate("getComputedStyle(document.getElementById('desktop')).display === 'none'"))
         assertEquals("true", evaluate("document.querySelectorAll('input').length === 1 && getComputedStyle(document.getElementById('phone')).display !== 'none'"))
@@ -167,6 +175,7 @@ class InterfaceTest {
         ui.runOnUiThread {
             child = model.popup.value!!
             assertNotSame(original, child)
+            assertEquals(original.settings.userAgentString, child.settings.userAgentString)
             assertTrue(child.settings.javaScriptEnabled)
             assertTrue(child.settings.domStorageEnabled)
             assertTrue(android.webkit.CookieManager.getInstance().acceptThirdPartyCookies(child))
