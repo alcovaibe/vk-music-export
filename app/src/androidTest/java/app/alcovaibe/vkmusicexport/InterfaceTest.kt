@@ -22,7 +22,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import android.os.ParcelFileDescriptor
 
-@androidx.test.filters.SdkSuppress(minSdkVersion = 31)
+@androidx.test.filters.SdkSuppress(minSdkVersion = 36)
 @RunWith(AndroidJUnit4::class)
 class InterfaceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
@@ -161,7 +161,7 @@ class InterfaceTest {
             (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
         }
         ui.waitUntil(10_000) { ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES &&
-            !androidx.core.view.WindowCompat.getInsetsController(ui.activity.window, ui.activity.window.decorView).isAppearanceLightStatusBars }
+            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS) == 0 }
         ui.onNodeWithText("Для дороги").performScrollTo().assertIsDisplayed()
         capture("05-dark-library-fixture")
         ui.runOnUiThread {

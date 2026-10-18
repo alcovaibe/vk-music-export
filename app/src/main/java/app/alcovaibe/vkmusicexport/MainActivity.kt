@@ -15,7 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.core.view.WindowCompat
+import android.view.WindowInsetsController
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,10 +78,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val dark = isSystemInDarkTheme()
             SideEffect {
-                WindowCompat.getInsetsController(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = !dark
-                    isAppearanceLightNavigationBars = !dark
-                }
+                val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                    WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                window.insetsController?.setSystemBarsAppearance(if (dark) 0 else lightBars, lightBars)
             }
             MusicTheme { MusicApp(model) }
         }

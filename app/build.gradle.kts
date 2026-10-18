@@ -8,7 +8,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "app.alcovaibe.vkmusicexport"
-        minSdk = 26
+        minSdk = 36
         targetSdk = 36
         versionCode = 2
         versionName = "0.2.0"
@@ -33,7 +33,6 @@ dependencies {
     implementation(libs.androidx.compose.material.icons)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.serialization.json)
