@@ -206,7 +206,7 @@ private fun MusicApp(model: MusicViewModel) {
     if (confirm == "clear" || confirm == "logout") AlertDialog(onDismissRequest = { confirm = null },
         title = { Text(if (confirm == "clear") "Очистить коллекцию?" else "Выйти из ВК?") },
         text = { Text(if (confirm == "clear") "Списки будут удалены из приложения. Экспортированные файлы останутся." else "Потребуется повторный вход. Собранные списки останутся на телефоне.") },
-        dismissButton = { TextButton(onClick = { confirm = null }) { Text("Отмена") } },
+        dismissButton = { TextButton(onClick = { Diagnostics.button("cancel_confirmation"); confirm = null }) { Text("Отмена") } },
         confirmButton = { TextButton(onClick = { Diagnostics.button(if(confirm == "clear") "confirm_clear" else "confirm_logout"); if (confirm == "clear") model.clearCollection() else model.logout(); confirm = null }) { Text("Подтвердить") } })
 }
 
@@ -217,7 +217,7 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (selected != null) item {
-            TextButton(onClick = { onSelect(null) }, contentPadding = PaddingValues(0.dp)) {
+            TextButton(onClick = { Diagnostics.button("collection_back"); onSelect(null) }, contentPadding = PaddingValues(0.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Коллекция")
             }
         }
@@ -336,7 +336,7 @@ private fun InfoNote(text: String) { Text(text, style = MaterialTheme.typography
 @Composable
 private fun SourceRow(title: String, subtitle: String, index: Int, onClick: () -> Unit) {
     val colors = listOf(Color(0xFFEAE5FF), Color(0xFFDDF1EB), Color(0xFFFFE9DE), Color(0xFFE0EAFF))
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(18.dp)) {
+    Surface(onClick = { Diagnostics.button("select_source"); onClick() }, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(18.dp)) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(if (index < 0) Ink else colors[index % colors.size]), contentAlignment = Alignment.Center) {
                 Icon(if (index < 0) musicIcon() else if (index == 0) Icons.Default.Favorite else Icons.AutoMirrored.Filled.List,

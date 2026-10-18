@@ -21,7 +21,8 @@ object Diagnostics {
     private var journal: RunJournal? = null
     private lateinit var app: Context
     @Volatile private var enabled = false
-    @Volatile private var ack = SystemClock.elapsedRealtime()
+    private val pingPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var pingSent = SystemClock.elapsedRealtime()
     @Volatile private var foreground = false
     @Volatile private var writerAlive = false
     private var lastStall = false
@@ -60,17 +61,20 @@ object Diagnostics {
         var healthTick = 0
         monitor.scheduleAtFixedRate({
             if (++healthTick % 10 == 0 || lost.get() > 0) event("journal_health", mapOf("dropped_total" to totalLost.get(),"io_failures" to ioFailures.get()))
-            val lag = SystemClock.elapsedRealtime() - ack
+            val lag = if(pingPending.get()) SystemClock.elapsedRealtime() - pingSent else 0L
             val stalled = foreground && lag > 5000
             if (stalled && !lastStall) event("main_thread_stall", mapOf("lag_ms" to lag,
                 "detector" to "background_elapsedRealtime_vs_main_handler_ack", "not_platform_anr" to true))
             if (!stalled && lastStall) event("main_thread_recovered", mapOf("lag_ms" to lag))
             lastStall = stalled
             // One outstanding ping; a blocked main thread cannot accumulate runnable objects.
-            if (lag < 2500) main.post { ack = SystemClock.elapsedRealtime() }
+            if (pingPending.compareAndSet(false,true)) {
+                pingSent=SystemClock.elapsedRealtime()
+                main.post { pingPending.set(false) }
+            }
         }, 1, 1, TimeUnit.SECONDS)
     }
-    fun foreground(value: Boolean) { foreground = value; ack = SystemClock.elapsedRealtime(); main.post { ack = SystemClock.elapsedRealtime() } }
+    fun foreground(value: Boolean) { foreground = value }
     @Synchronized fun event(type: String, fields: Map<String, Any?> = emptyMap()) {
         if (!enabled) return
         fun record(name: String, data: Map<String, Any?>): Item {

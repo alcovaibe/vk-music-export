@@ -55,6 +55,11 @@ class RunJournal(private val root: File, runId: String? = null,
         }
         val record=stamped(json)
         stream!!.write(record); bytes += record.size
+        val type=Json.parseToJsonElement(json).jsonObject["type"]?.jsonPrimitive?.content
+        if(type in setOf("process_attach","application_create","webview_created","configured_hint_brand","hint_metadata_unsupported","js_error_hook")) {
+            val metadata=File(directory,"startup.meta")
+            if(metadata.length()+record.size<=32_000) FileOutputStream(metadata,true).use{it.write(record);it.fd.sync()}
+        }
     }
     private fun open() { stream = FileOutputStream(File(directory, "$part.ndjson"), true); bytes = File(directory, "$part.ndjson").length() }
     fun sync() { stream?.fd?.sync() }
@@ -72,7 +77,12 @@ class RunJournal(private val root: File, runId: String? = null,
             } }
         }
         return buildJsonObject {
-            put("schema", 1); put("run_id", id); put("exported_at", Instant.now().toString())
+            val startup=mutableListOf<JsonElement>()
+            File(root,"$id/startup.meta").takeIf{it.exists()}?.forEachLine { line ->
+                val parsed=runCatching{Json.parseToJsonElement(line)}.getOrNull()
+                if(parsed is JsonObject) startup.add(parsed) else damaged++
+            }
+            put("schema", 1); put("startup_snapshot",JsonArray(startup)); put("run_id", id); put("exported_at", Instant.now().toString())
             put("recovery_invalid_records", damaged)
             put("history_truncated", parts.firstOrNull()?.nameWithoutExtension?.toIntOrNull()?.let { it > 0 } ?: false)
             put("observability", "WebView callbacks are partial metadata, not a network trace. POST navigation, later redirect hops, service workers, blob/javascript requests and successful responses may be absent. Absence of an event does not prove absence of a request. Free-form page messages/stacks are omitted; JavaScript errors are categories only. Process kill can lose queued or unsynced events; no shutdown event is not proof of a crash.")

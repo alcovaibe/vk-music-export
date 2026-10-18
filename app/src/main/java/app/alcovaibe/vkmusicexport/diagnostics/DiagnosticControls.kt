@@ -55,7 +55,7 @@ fun DiagnosticControls(compact: Boolean = false) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
         TextButton(enabled=!busy,onClick={action(false,false)}) { Text(if(busy) "Готовим лог…" else "Копировать лог") }
         Box {
-            TextButton(enabled=!busy,onClick={menu=true}) { Text(if(compact) "Ещё логи" else "Другие логи") }
+            TextButton(enabled=!busy,onClick={Diagnostics.button("diagnostic_menu");menu=true}) { Text(if(compact) "Ещё логи" else "Другие логи") }
             DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                 DropdownMenuItem(text={Text("Копировать предыдущий запуск")},onClick={menu=false;action(true,false)})
                 DropdownMenuItem(text={Text("Поделиться JSON-файлом")},onClick={menu=false;action(false,true)})
@@ -67,7 +67,7 @@ fun DiagnosticControls(compact: Boolean = false) {
         AlertDialog(onDismissRequest={offerFile=null},title={Text("Лог слишком большой для буфера обмена")},
             text={Text("JSON не обрезан. Передайте полный лог файлом.")},
             confirmButton={TextButton(onClick={offerFile=null;action(previous,true)}) {Text("Поделиться JSON-файлом")}},
-            dismissButton={TextButton(onClick={offerFile=null}) {Text("Отмена")}})
+            dismissButton={TextButton(onClick={Diagnostics.button("cancel_log_share");offerFile=null}) {Text("Отмена")}})
     }
 }
 

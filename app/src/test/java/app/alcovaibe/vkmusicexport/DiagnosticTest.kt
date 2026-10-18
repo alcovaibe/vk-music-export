@@ -42,6 +42,18 @@ class DiagnosticTest {
             second.close()
         } finally { root.deleteRecursively() }
     }
+    @Test fun startupVersionMetadataSurvivesEventRotation() {
+        val root=Files.createTempDirectory("journal-meta").toFile()
+        try {
+            val journal=RunJournal(root,"001",segmentLimit=12_000)
+            journal.append("{\"type\":\"application_create\",\"data\":{\"version\":\"0.3.3\"}}")
+            repeat(70) {journal.append(buildJsonObject{put("type","test");put("padding","x".repeat(1500))}.toString())}
+            val data=Json.parseToJsonElement(journal.export()).jsonObject
+            assertTrue(data["history_truncated"]!!.jsonPrimitive.boolean)
+            assertTrue(data["startup_snapshot"]!!.jsonArray.any{it.jsonObject["data"]?.jsonObject?.get("version")?.jsonPrimitive?.content=="0.3.3"})
+            journal.close()
+        } finally {root.deleteRecursively()}
+    }
     @Test fun capsFiveRunsAndSegmentsWithExplicitRotationAndSequence() {
         val root=Files.createTempDirectory("journal").toFile()
         try {
