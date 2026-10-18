@@ -9,11 +9,14 @@ info = json.loads(Path('release-output/build-info.json').read_text())
 tag = info['tag']
 source_sha = os.environ.get('RELEASE_SOURCE_SHA', os.environ['GITHUB_SHA'])
 assert re.fullmatch(r'[0-9a-f]{40}', source_sha) and info['commit'] == source_sha
+release_commit = os.environ.get('RELEASE_TARGET_SHA', source_sha)
+assert re.fullmatch(r'[0-9a-f]{40}', release_commit)
+assert info.get('releaseCommit', source_sha) == release_commit
 assert Path('release-output/upgrade-check.txt').read_text().startswith('PASS:')
 existing = subprocess.run(['gh', 'release', 'view', tag, '--json', 'targetCommitish,assets'], capture_output=True, text=True)
 if existing.returncode == 0:
     release = json.loads(existing.stdout)
-    assert release['targetCommitish'] == source_sha, 'Tag points to another source revision'
+    assert release['targetCommitish'] == release_commit, 'Tag points to another source revision'
     assert info['apk'] in [a['name'] for a in release['assets']], 'Existing release is incomplete; inspect it manually'
     print(f'Release {tag} already exists; assets were not replaced.')
 else:
@@ -29,7 +32,8 @@ Android 16+ (API 36). Постоянная release-подпись, устано�
 Проверено автоматически: unit-тесты, парсер, lint, интерфейс Android 16, установка release APK поверх release APK с меньшим versionCode и сохранение тестовой коллекции.
 Реальный вход в ВК и Android 17 ещё требуют проверки на телефоне владельца.
 
-Исходный коммит: `{source_sha}`.
+Исходный коммит APK: `{source_sha}`.
+Коммит релиза и проверки: `{release_commit}` (исходники приложения и Gradle совпадают).
 Файлы: APK, SHA-256, публичный сертификат подписи, сведения о сборке и результат проверки обновления.
 ''')
     # An older recovery/rerun must never move the Latest link backwards.
@@ -41,7 +45,7 @@ Android 16+ (API 36). Постоянная release-подпись, устано�
         assert match, 'Latest release has an unknown version code; inspect it before publishing'
         make_latest = info['versionCode'] > int(match[1])
     assets = [str(p) for p in sorted(Path('release-output').iterdir()) if p.is_file()]
-    subprocess.run(['gh', 'release', 'create', tag, *assets, '--target', source_sha,
+    subprocess.run(['gh', 'release', 'create', tag, *assets, '--target', release_commit,
                     '--title', f"VK Music Export {info['versionName']} · {info['versionCode']}",
                     '--notes-file', str(notes), '--latest=' + str(make_latest).lower()], check=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:

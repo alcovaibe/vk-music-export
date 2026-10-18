@@ -32,7 +32,12 @@ class PublisherTest(unittest.TestCase):
                 (out / 'upgrade-check.txt').write_text('PASS: data retained\n')
                 env = {'GITHUB_SHA': ('b' if recovered else 'a') * 40, 'RUNNER_TEMP':td,
                        'GITHUB_STEP_SUMMARY':str(Path(td)/'summary'), 'GITHUB_REPOSITORY':'alcovaibe/vk-music-export'}
-                if recovered: env['RELEASE_SOURCE_SHA'] = 'a'*40
+                if recovered:
+                    env['RELEASE_SOURCE_SHA'] = 'a'*40
+                    env['RELEASE_TARGET_SHA'] = 'b'*40
+                    info = json.loads((out/'build-info.json').read_text())
+                    info['releaseCommit'] = 'b'*40
+                    (out/'build-info.json').write_text(json.dumps(info))
                 with patch.dict(os.environ, env, clear=True), patch('subprocess.run', side_effect=gh):
                     runpy.run_path(str(TOOLS / 'publish-release.py'))
             finally:
@@ -50,9 +55,9 @@ class PublisherTest(unittest.TestCase):
     def test_existing_release_is_not_replaced(self):
         self.assertEqual(len(self.publish(existing=True)), 1)
 
-    def test_recovery_tags_original_apk_source(self):
+    def test_recovery_tags_verified_identical_app_sources(self):
         call = self.publish(recovered=True)[-1]
-        self.assertEqual(call[call.index('--target')+1], 'a'*40)
+        self.assertEqual(call[call.index('--target')+1], 'b'*40)
 
 class EmulatorDialogTest(unittest.TestCase):
     def dialog(self, title, button):

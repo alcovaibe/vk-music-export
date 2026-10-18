@@ -68,7 +68,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: bash tools/upgrade-check.sh
-      - name: Publish tested binaries with their ORIGINAL source commit
+      - name: Publish tested APK with original build and verified release commits
         run: python3 tools/publish-release.py
       - name: Save release and upgrade evidence
         if: always()
