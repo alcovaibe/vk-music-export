@@ -32,7 +32,7 @@ Android-утилита для сохранения названий треков
 ## Сборка
 
 - Android Studio с поддержкой AGP 9.2.1; JDK 21 из конфигурации импортированного проекта.
-- Android SDK Platform 37 и Build Tools 36.0.0.
+- Android SDK Platform 36 и Build Tools 36.0.0.
 - Android 8.0+ (API 26); namespace/applicationId: `app.alcovaibe.vkmusicexport`.
 
 ```sh
