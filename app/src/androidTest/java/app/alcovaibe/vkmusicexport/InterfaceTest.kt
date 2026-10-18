@@ -20,6 +20,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import android.os.ParcelFileDescriptor
 
 @androidx.test.filters.SdkSuppress(minSdkVersion = 31)
 @RunWith(AndroidJUnit4::class)
@@ -31,8 +32,13 @@ class InterfaceTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val bitmap = instrumentation.uiAutomation.takeScreenshot()
         val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val file = File(dir, "$name.png")
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
+        // AGP uninstalls the app after instrumentation; keep test images outside app data.
+        listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots", "cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png").forEach { command ->
+            ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() }
+        }
     }
 
     @Test fun navigationPreservesBrowserAndPopupRunsJavascript() {
@@ -110,6 +116,7 @@ class InterfaceTest {
         ui.runOnUiThread { assertSame(original, model.activeWeb()) }
         capture("03-connected-fixture")
 
+        ui.onNodeWithContentDescription("К коллекции").performClick()
         // Seed a synthetic collection through the real persistence layer and relaunch.
         val context = instrumentation.targetContext
         val track = Track("123_1", "Демо-трек", "Демо-исполнитель")
@@ -121,13 +128,13 @@ class InterfaceTest {
         ui.runOnUiThread { ui.activity.viewModelStore.clear() }
         ui.activityRule.scenario.recreate()
         ui.waitUntil(10_000) { ViewModelProvider(ui.activity)[MusicViewModel::class.java].ready.value }
-        ui.onNodeWithText("Для дороги").assertIsDisplayed()
+        ui.onNodeWithText("Для дороги").performScrollTo().assertIsDisplayed()
         capture("04-library-fixture")
         ui.runOnUiThread {
             (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
         }
         ui.waitUntil(10_000) { ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES }
-        ui.onNodeWithText("Для дороги").assertIsDisplayed()
+        ui.onNodeWithText("Для дороги").performScrollTo().assertIsDisplayed()
         capture("05-dark-library-fixture")
         ui.runOnUiThread {
             (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
