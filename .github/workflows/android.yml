@@ -74,11 +74,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            adb shell wm size 1080x2400
-            adb shell wm density 440
-            ./gradlew connectedDebugAndroidTest --stacktrace
-            adb pull /sdcard/Android/data/app.alcovaibe.vkmusicexport/files/screenshots/ interface-screenshots/
+          script: bash tools/interface-check.sh
       - name: Upload interface screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4

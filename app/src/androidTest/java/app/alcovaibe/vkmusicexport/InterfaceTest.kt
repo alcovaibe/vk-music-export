@@ -1,6 +1,10 @@
 package app.alcovaibe.vkmusicexport
 
 import android.graphics.Bitmap
+import android.app.UiModeManager
+import android.content.Context
+import app.alcovaibe.vkmusicexport.data.*
+import kotlinx.coroutines.runBlocking
 import android.webkit.WebView
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -17,6 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
+@androidx.test.filters.SdkSuppress(minSdkVersion = 31)
 @RunWith(AndroidJUnit4::class)
 class InterfaceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
@@ -51,11 +56,19 @@ class InterfaceTest {
                 <div id="audio_list"><div class="audio_row" data-full-id="123_1" data-index="0">
                 <b class="audio_row__title">Test track</b><span class="audio_row__performer">Test artist</span></div></div>
                 <a id="auth" target="_blank" href="https://id.vk.com/">Test authorization</a>
-            """.trimIndent(), "text/html", "UTF-8", null)
+            """.trimIndent(), "text/html", "UTF-8", "https://vk.ru/audio")
         }
-        ui.waitUntil(15_000) { model.connected.value }
+        try { ui.waitUntil(15_000) { model.connected.value } }
+        catch (error: Throwable) {
+            capture("connection-failure")
+            throw AssertionError("Fixture connection failed: ${model.lastCode.value}; ${model.message.value}; ${model.currentPage.value}", error)
+        }
         ui.onNodeWithContentDescription("К коллекции").performClick()
         ui.onNodeWithText("Экспорт").performClick()
+        ui.runOnUiThread {
+            assertTrue("Hidden browser must keep a usable viewport", original.width > 100)
+            assertEquals(android.view.View.INVISIBLE, original.visibility)
+        }
         ui.onNodeWithText("Коллекция").performClick()
         ui.onNodeWithText("Открыть музыку и собрать").performClick()
         ui.runOnUiThread { assertSame(original, model.activeWeb()) }
@@ -84,7 +97,7 @@ class InterfaceTest {
             assertTrue(child.settings.domStorageEnabled)
             assertTrue(android.webkit.CookieManager.getInstance().acceptThirdPartyCookies(child))
             child.stopLoading()
-            child.loadDataWithBaseURL("https://id.vk.com/", "<h1>Authorization test fixture</h1>", "text/html", "UTF-8", null)
+            child.loadDataWithBaseURL("https://id.vk.com/", "<h1>Authorization test fixture</h1>", "text/html", "UTF-8", "https://id.vk.com/")
         }
         ui.onNodeWithContentDescription("Закрыть окно входа").assertIsDisplayed()
         val javascript = AtomicReference<String?>(null)
@@ -92,9 +105,33 @@ class InterfaceTest {
         ui.runOnUiThread { child.evaluateJavascript("1 + 1") { javascript.set(it) } }
         ui.waitUntil(5_000) { javascript.get() != null }
         assertEquals("2", javascript.get())
-        ui.onNodeWithContentDescription("Закрыть окно входа").performClick()
+        ui.runOnUiThread { child.evaluateJavascript("window.close()", null) }
         ui.waitUntil(5_000) { model.popup.value == null }
         ui.runOnUiThread { assertSame(original, model.activeWeb()) }
         capture("03-connected-fixture")
+
+        // Seed a synthetic collection through the real persistence layer and relaunch.
+        val context = instrumentation.targetContext
+        val track = Track("123_1", "Демо-трек", "Демо-исполнитель")
+        val demo = CollectionSnapshot(sources = listOf(
+            MusicSource("my-music", "Моя музыка", "https://vk.ru/audio", listOf(Entry("0", track, 1))),
+            MusicSource("playlist:123:1", "Для дороги", "https://vk.ru/audio", listOf(Entry("0", track, 1)), status = ScanStatus.PARTIAL)
+        ))
+        runBlocking { CollectionStore(context).save(demo) }
+        ui.runOnUiThread { ui.activity.viewModelStore.clear() }
+        ui.activityRule.scenario.recreate()
+        ui.waitUntil(10_000) { ViewModelProvider(ui.activity)[MusicViewModel::class.java].ready.value }
+        ui.onNodeWithText("Для дороги").assertIsDisplayed()
+        capture("04-library-fixture")
+        ui.runOnUiThread {
+            (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+        }
+        ui.waitUntil(10_000) { ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES }
+        ui.onNodeWithText("Для дороги").assertIsDisplayed()
+        capture("05-dark-library-fixture")
+        ui.runOnUiThread {
+            (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
+        }
+        runBlocking { CollectionStore(context).save(CollectionSnapshot()) }
     }
 }

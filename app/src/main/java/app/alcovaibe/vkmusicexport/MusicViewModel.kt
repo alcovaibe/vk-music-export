@@ -93,7 +93,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     browserError.value = null
                     currentPage.value = PagePolicy.publicUrl(url.orEmpty())
                 }
-                if (view === web && !running.value) sessionCheck?.cancel()
+                if (view === web && !running.value) {
+                    sessionCheck?.cancel()
+                    connected.value = false
+                    lastCode.value = "BROWSING"
+                }
             }
             override fun onPageFinished(view: WebView, url: String?) {
                 if (view === activeWeb()) {
@@ -157,7 +161,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         stop()
         sessionCheck?.cancel()
         closePopup()
-        if (web === view) web = null
+        sessionCheck?.cancel()
+        if (web === view) {
+            web = null
+            connected.value = false
+            currentPage.value = ""
+            pageLoading.value = false
+        }
         loadWaiter?.cancel()
         loadWaiter = null
         view.stopLoading()
@@ -191,12 +201,20 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val page = sample(false)
                     connected.value = page.userId != null && (page.scoped || page.playlistsScoped)
+                    lastCode.value = when {
+                        connected.value -> "MUSIC_PAGE_READY"
+                        page.userId == null -> "USER_ID_NOT_FOUND"
+                        else -> "MUSIC_LAYOUT_NOT_FOUND"
+                    }
                     if (connected.value) {
                         message.value = "ВК подключён. Можно собрать коллекцию."
                         return@launch
                     }
                 } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { connected.value = false }
+                catch (error: Exception) {
+                    connected.value = false
+                    lastCode.value = (error as? ScanFailure)?.code ?: "SESSION_CHECK_FAILED"
+                }
             }
             message.value = "Откройте «Мою музыку» после входа. Если список не распознан, включите версию для ПК."
         }

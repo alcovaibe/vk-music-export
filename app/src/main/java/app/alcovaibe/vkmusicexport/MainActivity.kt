@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.webkit.WebView
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -114,13 +115,15 @@ private fun MusicApp(model: MusicViewModel) {
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Keep the same browser attached while the collection or export screen is visible.
-        Column(if (browser) Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
-            else Modifier.size(1.dp)) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
             if (browser) BrowserHeader(model, onClose = closeVk)
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                AndroidView(factory = { web }, modifier = Modifier.fillMaxSize())
+                AndroidView(factory = { web }, modifier = Modifier.fillMaxSize(), update = {
+                    it.visibility = if (browser && popup == null) View.VISIBLE else View.INVISIBLE
+                })
                 popup?.let { child ->
-                    AndroidView(factory = { child }, onRelease = { it.destroy() }, modifier = Modifier.fillMaxSize())
+                    AndroidView(factory = { child }, onRelease = { it.destroy() }, modifier = Modifier.fillMaxSize(),
+                        update = { it.visibility = if (browser) View.VISIBLE else View.INVISIBLE })
                 }
             }
             if (browser) BrowserActions(model, onDone = closeVk)
@@ -331,6 +334,7 @@ private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit) {
     val loading by model.pageLoading.collectAsState()
     val error by model.browserError.collectAsState()
     val popup by model.popup.collectAsState()
+    val running by model.running.collectAsState()
     Column {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (popup != null) model.closePopup() else onClose() }) { Icon(Icons.Default.Close, if (popup != null) "Закрыть окно входа" else "К коллекции") }
@@ -339,7 +343,7 @@ private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit) {
                 Text(runCatching { URI(page).host }.getOrNull() ?: "Открываем сайт ВК…", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
-            IconButton(onClick = model::reload) { Icon(Icons.Default.Refresh, "Обновить страницу") }
+            IconButton(enabled = !running, onClick = model::reload) { Icon(Icons.Default.Refresh, "Обновить страницу") }
         }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) else HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         error?.let { Text(it, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(14.dp),
@@ -354,6 +358,7 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
     val loading by model.pageLoading.collectAsState()
     val ready by model.ready.collectAsState()
     val message by model.message.collectAsState()
+    val code by model.lastCode.collectAsState()
     val popup by model.popup.collectAsState()
     var more by remember { mutableStateOf(false) }
     var desktop by rememberSaveable { mutableStateOf(false) }
@@ -367,14 +372,14 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (connected && popup == null) TextButton(onClick = onDone, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Подключено · К коллекции")
-                    } else Text("Войди на сайте ВК, затем открой музыку", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else Text(if (code in setOf("USER_ID_NOT_FOUND", "MUSIC_LAYOUT_NOT_FOUND", "SESSION_CHECK_FAILED")) message else "Войди на сайте ВК, затем открой музыку", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Box {
                         IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, "Действия со страницей") }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                             DropdownMenuItem(text = { Text("Моя музыка") }, onClick = { more = false; model.openMusic() })
                             DropdownMenuItem(text = { Text("Мои плейлисты") }, onClick = { more = false; model.openPlaylists() })
-                            DropdownMenuItem(text = { Text(if (desktop) "Мобильная версия" else "Версия для ПК") }, onClick = { more = false; desktop = !desktop; model.desktop(desktop) })
-                            DropdownMenuItem(text = { Text("Проверить подключение") }, onClick = { more = false; model.verifySession() })
+                            DropdownMenuItem(enabled = popup == null, text = { Text(if (desktop) "Мобильная версия" else "Версия для ПК") }, onClick = { more = false; desktop = !desktop; model.desktop(desktop) })
+                            DropdownMenuItem(enabled = popup == null, text = { Text("Проверить подключение") }, onClick = { more = false; model.verifySession() })
                         }
                     }
                 }
