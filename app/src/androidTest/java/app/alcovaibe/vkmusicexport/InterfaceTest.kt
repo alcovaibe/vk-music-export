@@ -84,19 +84,23 @@ class InterfaceTest {
         // Inject an actual touch: window creation must require a user gesture.
         val position = AtomicReference<Pair<Float, Float>?>(null)
         ui.runOnUiThread {
-            original.evaluateJavascript("JSON.stringify((function(){var r=document.getElementById('auth').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})())") { raw ->
+            original.evaluateJavascript("JSON.stringify((function(){var r=document.getElementById('auth').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,viewport:window.innerWidth}})())") { raw ->
                 val point = JSONObject(org.json.JSONTokener(raw).nextValue() as String)
-                val offset = IntArray(2); original.getLocationOnScreen(offset)
-                @Suppress("DEPRECATION") val scale = original.scale
-                position.set(Pair(offset[0] + point.getDouble("x").toFloat() * scale, offset[1] + point.getDouble("y").toFloat() * scale))
+                val ratio = original.width.toFloat() / point.getDouble("viewport").toFloat()
+                position.set(Pair(point.getDouble("x").toFloat() * ratio, point.getDouble("y").toFloat() * ratio))
             }
         }
         ui.waitUntil(5_000) { position.get() != null }
         val (x, y) = position.get()!!
         val now = SystemClock.uptimeMillis()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0).also { instrumentation.sendPointerSync(it); it.recycle() }
-        MotionEvent.obtain(now, now + 80, MotionEvent.ACTION_UP, x, y, 0).also { instrumentation.sendPointerSync(it); it.recycle() }
+        ui.runOnUiThread {
+            assertTrue("Fixture link must be within the WebView", x in 0f..original.width.toFloat() && y in 0f..original.height.toFloat())
+            original.requestFocus()
+            // Deliver native touch events to this view, independent of system overlays.
+            MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0).also { original.dispatchTouchEvent(it); it.recycle() }
+            MotionEvent.obtain(now, now + 80, MotionEvent.ACTION_UP, x, y, 0).also { original.dispatchTouchEvent(it); it.recycle() }
+        }
         ui.waitUntil(10_000) { model.popup.value != null }
         lateinit var child: WebView
         ui.runOnUiThread {
