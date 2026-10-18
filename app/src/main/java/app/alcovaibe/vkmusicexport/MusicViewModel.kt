@@ -398,7 +398,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             catch (_: Exception) { message.value = "Не удалось очистить коллекцию" } }
     }
     fun diagnosticText(): String = buildString {
-        appendLine("VK Music Export 0.2.0")
+        appendLine("VK Music Export ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         appendLine("Android API: ${android.os.Build.VERSION.SDK_INT}")
         appendLine("WebView: ${WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"}")
         appendLine("Result: ${lastCode.value}")

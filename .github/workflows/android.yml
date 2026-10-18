@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -87,3 +87,66 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           retention-days: 7
+
+  release:
+    # Signing secrets are never exposed to PR code or non-main branches.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [build, interface]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Allocate increasing Android versionCode
+        # Keep this workflow path and offset stable. Runs may have gaps; never reuse lower codes.
+        run: echo "APP_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - name: Restore permanent signing key
+        env:
+          ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
+        run: python3 tools/prepare-signing.py
+      - name: Build and verify two signed release APKs
+        run: bash tools/build-release.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify release upgrade and data on Android 16
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash tools/upgrade-check.sh
+      - name: Publish tested APK to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 tools/publish-release.py
+      - name: Upload release and upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VK-Music-Export-release
+          path: |
+            release-output/
+            upgrade-results/
+            app/build/reports/lint-results-release.html
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vk-music-export-release.p12"

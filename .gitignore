@@ -24,3 +24,6 @@ secrets.xml
 cookies*
 *session*.json
 /keystore.properties
+
+# Local Python checks
+__pycache__/
