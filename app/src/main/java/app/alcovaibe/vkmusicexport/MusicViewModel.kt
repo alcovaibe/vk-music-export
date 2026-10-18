@@ -71,6 +71,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false)
         view.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (!request.isForMainFrame) return false
                 val allowed = PagePolicy.allowed(request.url.toString())
                 if (!allowed && request.isForMainFrame) message.value = "Внешний переход заблокирован. Используйте вход на странице ВК."
                 return !allowed
@@ -187,7 +188,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _snapshot.value = next
     }
 
-    private suspend fun scanSource(id: String, title: String, url: String, links: LinkedHashMap<String, PlaylistLink>) {
+    private suspend fun scanSource(id: String, title: String, url: String) {
         val entries = linkedMapOf<String, Entry>()
         var source = MusicSource(id, title, PagePolicy.publicUrl(url), status = ScanStatus.SCANNING, reason = "SCANNING")
         var idle = 0
@@ -258,7 +259,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val id = initial.sourceId ?: "my-music"
                     val url = if (initial.sourceId == null) "https://vk.ru/audios${initial.userId ?: throw ScanFailure("USER_ID_NOT_FOUND")}" else web?.url.orEmpty()
                     load(url)
-                    scanSource(id, initial.sourceTitle?.takeIf { it.isNotBlank() } ?: if (initial.sourceId != null) "Плейлист" else "Моя музыка", url, links)
+                    scanSource(id, initial.sourceTitle?.takeIf { it.isNotBlank() } ?: if (initial.sourceId != null) "Плейлист" else "Моя музыка", url)
                 } else {
                     val userId = initial.userId ?: throw ScanFailure("USER_ID_NOT_FOUND")
                     val own = "https://vk.ru/audios$userId"
@@ -267,7 +268,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     // A new full pass replaces the previous run, including stale/removed playlists.
                     store.save(CollectionSnapshot())
                     _snapshot.value = CollectionSnapshot()
-                    scanSource("my-music", "Моя музыка", own, links)
+                    scanSource("my-music", "Моя музыка", own)
                     load("https://vk.ru/audio?section=playlists")
                     if (!sample(false).playlistsScoped) throw ScanFailure("PLAYLIST_LIST_UNSUPPORTED")
                     var idle = 0
@@ -287,9 +288,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         message.value = "Плейлист ${index + 1} из ${queue.size}: ${playlist.title}"
                         try {
                             load(playlist.url)
-                            scanSource(playlist.id, playlist.title.take(300), playlist.url, links)
+                            scanSource(playlist.id, playlist.title.take(300), playlist.url)
                         } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (_: Exception) {
+                        catch (error: Exception) {
+                            if (error is ScanFailure && error.code in setOf("NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA", "BROWSER_CLOSED", "TLS_FAILED")) throw error
                             if (_snapshot.value.sources.none { it.id == playlist.id }) update(MusicSource(playlist.id, playlist.title.take(300), PagePolicy.publicUrl(playlist.url), status = ScanStatus.ERROR, reason = "PLAYLIST_LOAD_FAILED"))
                         }
                     }

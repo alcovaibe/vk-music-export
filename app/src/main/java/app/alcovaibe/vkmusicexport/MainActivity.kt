@@ -84,7 +84,7 @@ private fun MusicApp(model: MusicViewModel) {
             NavigationBar {
                 listOf("Коллекция", "ВКонтакте", "Экспорт").forEachIndexed { index, label ->
                     NavigationBarItem(selected = tab == index, onClick = { if (tab != index) { model.stop(); selected = null; tab = index } },
-                        icon = { Icon(when (index) { 0 -> Icons.Default.LibraryMusic; 1 -> Icons.Default.Language; else -> Icons.Default.FileDownload }, label) },
+                        icon = { Icon(when (index) { 0 -> Icons.Default.Home; 1 -> Icons.Default.AccountCircle; else -> Icons.Default.Share }, label) },
                         label = { Text(label) })
                 }
             }
@@ -140,7 +140,7 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
             item {
                 ElevatedCard {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Icon(Icons.Default.LibraryMusic, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Home, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
                         Text("Сохраните названия любимых треков", style = MaterialTheme.typography.titleLarge)
                         Text("Войдите в ВК, откройте «Мою музыку» и запустите сбор. Приложение сохранит исполнителей, названия и состав плейлистов.")
                         Button(onClick = onOpen) { Text("Открыть ВКонтакте") }
@@ -176,7 +176,7 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
 private fun SourceCard(source: MusicSource, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick) {
         Row(Modifier.fillMaxWidth().padding(18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Icon(if (source.id == "my-music") Icons.Default.Favorite else Icons.Default.PlaylistPlay, null, tint = MaterialTheme.colorScheme.primary)
+            Icon(if (source.id == "my-music") Icons.Default.Favorite else Icons.Default.List, null, tint = MaterialTheme.colorScheme.primary)
             Column {
                 Text(source.title, style = MaterialTheme.typography.titleMedium)
                 Text("${source.entries.size} треков${source.expectedCount?.let { " из $it" }.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
@@ -213,6 +213,7 @@ private fun BrowserScreen(model: MusicViewModel) {
                 OutlinedButton(enabled = ready && !loading, onClick = { model.scan(false) }, modifier = Modifier.weight(1f)) { Text("Текущий список") }
                 Button(enabled = ready && !loading, onClick = { model.scan(true) }, modifier = Modifier.weight(1f)) { Text("Вся коллекция") }
             }
+            Text("Новый сбор всей коллекции заменит предыдущий.", style = MaterialTheme.typography.labelSmall)
             Text(page.ifBlank { "Страница ВКонтакте" }, style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -230,11 +231,13 @@ private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { activityResult ->
         val uri = activityResult.data?.data
         if (activityResult.resultCode == Activity.RESULT_OK && uri != null) {
+            val chosenFormat = ExportFormat.valueOf(formatName)
+            val frozenSnapshot = snapshot
             scope.launch {
                 exporting = true
                 try {
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri, "wt")?.use { Exporter.write(snapshot, ExportFormat.valueOf(formatName), it) }
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { Exporter.write(frozenSnapshot, chosenFormat, it) }
                             ?: error("Cannot open output")
                     }
                     result = "Файл сохранён"
