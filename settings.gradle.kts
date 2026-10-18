@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PulseAI"
+rootProject.name = "VKMusicExport"
 include(":app")

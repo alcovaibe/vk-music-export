@@ -16,3 +16,11 @@ local.properties
 google-services.json
 secrets.xml
 .env
+
+# Local exports and credentials
+/exports/
+/diagnostics/
+*.log
+cookies*
+*session*.json
+/keystore.properties

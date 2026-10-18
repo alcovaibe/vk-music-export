@@ -2,7 +2,7 @@
 
 Дата: 18 октября 2026 года.
 Репозиторий: alcovaibe/vk-music-export (private).
-Статус: планирование; Android-код и APK пока не созданы, доступ к аккаунту ВК не проверен.
+Статус: начата реализация 0.1.0 на основе полного импорта PulseAI. Написаны WebView-вход, DOM-сбор, обход плейлистов, локальное сохранение, интерфейс и экспорт. Сборка проверяется в CI. Вход и полнота на реальном аккаунте ещё не проверены. Room и продолжение с точной последней позиции остаются в плане.
 
 ## 1. Цель и согласованный объём
 
@@ -202,3 +202,4 @@ Android-утилита получает доступную владельцу к
 - https://developer.android.com/reference/android/webkit/WebView — evaluateJavascript.
 - https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs — разделение состояния браузера и WebView.
 - https://developer.android.com/training/data-storage/shared/documents-files — системное сохранение документов.
+
