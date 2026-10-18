@@ -110,7 +110,7 @@ class InterfaceTest {
         ui.onNodeWithContentDescription("Действия со страницей").performClick()
         ui.onNodeWithText("Мои плейлисты").assertIsDisplayed()
         ui.onNodeWithText("Версия для ПК").assertDoesNotExist()
-        androidx.test.espresso.Espresso.pressBack()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
         capture("06-mobile-login-fixture")
         // A rejected external transition must leave the browser usable, without a stuck spinner.
         evaluate("location.href='https://example.org/unsupported-auth'")
