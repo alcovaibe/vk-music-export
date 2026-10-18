@@ -125,7 +125,7 @@ private fun MusicApp(model: MusicViewModel) {
     DisposableEffect(web) { onDispose { model.detach(web) } }
     val keyboard = LocalSoftwareKeyboardController.current
     val closeVk = { Diagnostics.button("close_browser"); model.stop(); model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
-    val openVk = { browser = true; model.openLogin() }
+    val openVk = { Diagnostics.button("open_vk"); browser = true; model.openLogin() }
     BackHandler(browser || selected != null || tab != 0) {
         when {
             browser -> if (!model.back()) closeVk()
@@ -191,7 +191,7 @@ private fun MusicApp(model: MusicViewModel) {
             TextButton(onClick = { confirm = null; openVk() }) { Text(if (connected) "Открыть ВКонтакте" else "Подключить ВКонтакте") }
             DiagnosticControls()
             TextButton(onClick = {
-                val updates = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest"))
+                Diagnostics.button("updates"); val updates = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest"))
                 try {
                     context.startActivity(updates)
                     confirm = null
@@ -199,15 +199,15 @@ private fun MusicApp(model: MusicViewModel) {
                     android.widget.Toast.makeText(context, "Откройте GitHub Releases в браузере", android.widget.Toast.LENGTH_LONG).show()
                 }
             }) { Text("Обновления на GitHub") }
-            TextButton(enabled = !running, onClick = { confirm = "logout" }) { Text("Выйти из ВК") }
-            TextButton(enabled = !running, onClick = { confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
+            TextButton(enabled = !running, onClick = { Diagnostics.button("request_logout"); confirm = "logout" }) { Text("Выйти из ВК") }
+            TextButton(enabled = !running, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
         }
-    }, confirmButton = { TextButton(onClick = { confirm = null }) { Text("Готово") } })
+    }, confirmButton = { TextButton(onClick = { Diagnostics.button("settings_done"); confirm = null }) { Text("Готово") } })
     if (confirm == "clear" || confirm == "logout") AlertDialog(onDismissRequest = { confirm = null },
         title = { Text(if (confirm == "clear") "Очистить коллекцию?" else "Выйти из ВК?") },
         text = { Text(if (confirm == "clear") "Списки будут удалены из приложения. Экспортированные файлы останутся." else "Потребуется повторный вход. Собранные списки останутся на телефоне.") },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text("Отмена") } },
-        confirmButton = { TextButton(onClick = { if (confirm == "clear") model.clearCollection() else model.logout(); confirm = null }) { Text("Подтвердить") } })
+        confirmButton = { TextButton(onClick = { Diagnostics.button(if(confirm == "clear") "confirm_clear" else "confirm_logout"); if (confirm == "clear") model.clearCollection() else model.logout(); confirm = null }) { Text("Подтвердить") } })
 }
 
 @Composable
@@ -361,13 +361,13 @@ private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit) {
     val running by model.running.collectAsState()
     Column {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (popup != null) model.closePopup() else onClose() }) { Icon(Icons.Default.Close, if (popup != null) "Закрыть окно входа" else "К коллекции") }
+            IconButton(onClick = { Diagnostics.button("close_window"); if (popup != null) model.closePopup() else onClose() }) { Icon(Icons.Default.Close, if (popup != null) "Закрыть окно входа" else "К коллекции") }
             Column(Modifier.weight(1f)) {
                 Text(if (popup != null) "Вход в ВКонтакте" else "ВКонтакте", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(runCatching { URI(page).host }.getOrNull() ?: "Открываем сайт ВК…", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
-            IconButton(enabled = !running, onClick = model::reload) { Icon(Icons.Default.Refresh, "Обновить страницу") }
+            IconButton(enabled = !running, onClick = { Diagnostics.button("reload"); model.reload() }) { Icon(Icons.Default.Refresh, "Обновить страницу") }
         }
         DiagnosticControls(compact = true)
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) else HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -392,24 +392,24 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
             if (running) {
                 Text(message, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                OutlinedButton(onClick = model::stop, modifier = Modifier.fillMaxWidth()) { Text("Остановить и сохранить") }
+                OutlinedButton(onClick = { Diagnostics.button("stop"); model.stop() }, modifier = Modifier.fillMaxWidth()) { Text("Остановить и сохранить") }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (connected && popup == null) TextButton(onClick = onDone, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Подключено · К коллекции")
-                    } else Button(onClick = model::openMusic, modifier = Modifier.weight(1f)) { Text("Открыть мою музыку") }
+                    } else Button(onClick = { Diagnostics.button("openMusic"); model.openMusic() }, modifier = Modifier.weight(1f)) { Text("Открыть мою музыку") }
                     Box {
-                        IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, "Действия со страницей") }
+                        IconButton(onClick = { Diagnostics.button("page_menu"); more = true }) { Icon(Icons.Default.MoreVert, "Действия со страницей") }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                            DropdownMenuItem(text = { Text("Моя музыка") }, onClick = { more = false; model.openMusic() })
-                            DropdownMenuItem(text = { Text("Мои плейлисты") }, onClick = { more = false; model.openPlaylists() })
-                            DropdownMenuItem(enabled = popup == null, text = { Text("Проверить подключение") }, onClick = { more = false; model.verifySession() })
+                            DropdownMenuItem(text = { Text("Моя музыка") }, onClick = { more = false; Diagnostics.button("openMusic"); model.openMusic() })
+                            DropdownMenuItem(text = { Text("Мои плейлисты") }, onClick = { more = false; Diagnostics.button("openPlaylists"); model.openPlaylists() })
+                            DropdownMenuItem(enabled = popup == null, text = { Text("Проверить подключение") }, onClick = { more = false; Diagnostics.button("verifySession"); model.verifySession() })
                         }
                     }
                 }
                 if (connected) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(enabled = ready && !loading, onClick = { model.scan(false) }, modifier = Modifier.weight(1f)) { Text("Этот список") }
-                        Button(enabled = ready && !loading, onClick = { model.scan(true) }, modifier = Modifier.weight(1f)) { Text("Собрать всё") }
+                        OutlinedButton(enabled = ready && !loading, onClick = { Diagnostics.button("scan_current"); model.scan(false) }, modifier = Modifier.weight(1f)) { Text("Этот список") }
+                        Button(enabled = ready && !loading, onClick = { Diagnostics.button("scan_all"); model.scan(true) }, modifier = Modifier.weight(1f)) { Text("Собрать всё") }
                 }
                 if (popup == null && code !in setOf("NOT_STARTED", "BROWSING", "MUSIC_PAGE_READY", "SCANNING", "NAVIGATION_BLOCKED", "PAGE_LOAD_FAILED", "TLS_FAILED")) InfoNote(message)
                 if (connected && popup == null) InfoNote("Повторный сбор заменит сохранённую коллекцию.")
@@ -452,7 +452,7 @@ private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
         item { SectionLabel("ФОРМАТ ФАЙЛА") }
         items(ExportFormat.entries.sortedBy { if (it == ExportFormat.ZIP) 0 else it.ordinal + 1 }) { format ->
             val checked = formatName == format.name
-            Surface(onClick = { if (!exporting) formatName = format.name }, shape = RoundedCornerShape(18.dp),
+            Surface(onClick = { if (!exporting) { Diagnostics.button("choose_export_format"); formatName = format.name } }, shape = RoundedCornerShape(18.dp),
                 color = if (checked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
                 border = if (checked) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .45f)) else null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {

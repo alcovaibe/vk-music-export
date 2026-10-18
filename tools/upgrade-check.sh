@@ -67,6 +67,27 @@ PY
 adb shell am start -W -n "$package/.MainActivity"
 assert_visible after
 assert_collection
+# A real process restart must retain the previous process journal. No account/network needed.
+adb shell am force-stop "$package"
+adb shell am start -W -n "$package/.MainActivity"
+assert_visible restarted
+adb pull "$appdata/no_backup/diagnostics" upgrade-results/diagnostics >/dev/null
+python3 - <<'PYDIAG'
+import json
+from pathlib import Path
+runs=sorted(Path('upgrade-results/diagnostics').glob('*'))
+assert len(runs)>=2, 'Previous process diagnostic journal missing'
+for run in runs[-2:]:
+    events=[]
+    for part in run.glob('*.ndjson'):
+        for line in part.read_text().splitlines():
+            try: events.append(json.loads(line))
+            except json.JSONDecodeError: pass # Interrupted tail is explicitly recoverable.
+    assert any(e.get('type')=='application_create' for e in events), 'Startup event missing'
+    assert all(e['run_id']==run.name and isinstance(e['seq'],int) for e in events)
+assert sum(p.stat().st_size for p in Path('upgrade-results/diagnostics').rglob('*') if p.is_file())<=20_000_000
+Path('upgrade-results/diagnostic-restart.txt').write_text('PASS: journal retained across actual force-stop/restart.\n')
+PYDIAG
 adb exec-out screencap -p > upgrade-results/updated-release.png
 printf 'PASS: signed release -> higher-version signed release; collection intact and displayed.\n' | tee upgrade-results/result.txt
 cp upgrade-results/result.txt release-output/upgrade-check.txt

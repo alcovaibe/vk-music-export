@@ -7,10 +7,14 @@ import java.time.Instant
 import java.util.UUID
 
 /** Single writer only. Two bounded NDJSON segments per run; exports recover complete records. */
-class RunJournal(private val root: File, val runId: String = "${System.currentTimeMillis()}-${UUID.randomUUID()}",
+class RunJournal(private val root: File, runId: String? = null,
                  private val segmentLimit: Long = 1_500_000, private val maxRuns: Int = 5,
                  private val monotonicNanos: () -> Long = System::nanoTime) {
-    private val directory = File(root, runId)
+    val runId: String = runId ?: run {
+        val ordinal=(root.listFiles()?.filter{it.isDirectory}?.mapNotNull{it.name.substringBefore('-').toLongOrNull()}?.maxOrNull() ?: 0L)+1
+        "${ordinal.toString().padStart(20,'0')}-${UUID.randomUUID()}"
+    }
+    private val directory = File(root, this.runId)
     private var part = 0
     private var stream: FileOutputStream? = null
     private var bytes = 0L
@@ -26,10 +30,11 @@ class RunJournal(private val root: File, val runId: String = "${System.currentTi
     }
     init {
         root.mkdirs(); directory.mkdirs()
-        root.listFiles()?.filter { it.isDirectory && it.name != runId }?.sortedByDescending { it.name }
+        root.listFiles()?.filter { it.isDirectory && it.name != this.runId }?.sortedByDescending { it.name }
             ?.drop(maxRuns - 1)?.forEach { old ->
                 val oldBytes = old.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-                if (old.deleteRecursively()) append(buildJsonObject {
+                check(old.deleteRecursively()) { "Run rotation failed" }
+                append(buildJsonObject {
                     put("type", "run_rotation"); put("removed_bytes", oldBytes); put("time", Instant.now().toString())
                 }.toString())
             }
@@ -53,7 +58,7 @@ class RunJournal(private val root: File, val runId: String = "${System.currentTi
     }
     private fun open() { stream = FileOutputStream(File(directory, "$part.ndjson"), true); bytes = File(directory, "$part.ndjson").length() }
     fun sync() { stream?.fd?.sync() }
-    fun previous(): String? = root.listFiles()?.filter { it.isDirectory && it.name != runId }?.maxByOrNull { it.name }?.name
+    fun previous(): String? = root.listFiles()?.filter { it.isDirectory && it.name != this.runId }?.maxByOrNull { it.name }?.name
     fun export(id: String = runId): String {
         require(id == runId || id == previous())
         val records = mutableListOf<JsonElement>()

@@ -245,14 +245,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         view.destroy()
     }
 
-    fun openLogin() { Diagnostics.button("openLogin");
+    fun openLogin() { Diagnostics.action("openLogin");
         if (running.value) return
         if (web?.url == null) web?.loadUrl("https://vk.ru/")
     }
-    fun openMusic() { Diagnostics.button("openMusic"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio") } }
-    fun openPlaylists() { Diagnostics.button("openPlaylists"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio?section=playlists") } }
-    fun reload() { Diagnostics.button("reload"); if (!running.value) activeWeb()?.reload() }
-    fun back(): Boolean { Diagnostics.button("back");
+    fun openMusic() { Diagnostics.action("openMusic"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio") } }
+    fun openPlaylists() { Diagnostics.action("openPlaylists"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio?section=playlists") } }
+    fun reload() { Diagnostics.action("reload"); if (!running.value) activeWeb()?.reload() }
+    fun back(): Boolean { Diagnostics.action("back");
         val view = activeWeb() ?: return false
         if (running.value) return false
         if (view.canGoBack()) { view.goBack(); return true }
@@ -261,7 +261,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Only reads the music-page identity and DOM scope, never credentials or cookies. */
-    fun verifySession() { Diagnostics.button("verifySession");
+    fun verifySession() { Diagnostics.action("verifySession");
         if (running.value || popup.value != null) return
         sessionCheck?.cancel()
         sessionCheck = viewModelScope.launch {
@@ -288,7 +288,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             message.value = "Список музыки не распознан. Откройте «Мою музыку» и повторите проверку."
         }
     }
-    fun stop() { Diagnostics.button("stop"); scanJob?.cancel() }
+    fun stop() { Diagnostics.action("stop"); scanJob?.cancel() }
 
     private suspend fun sample(advance: Boolean = true): PageSample {
         val view = web ?: throw ScanFailure("BROWSER_CLOSED")
@@ -391,7 +391,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun scan(all: Boolean) {
-        Diagnostics.button(if (all) "scan_all" else "scan_current")
+        Diagnostics.action(if (all) "scan_all" else "scan_current")
         if (running.value || !ready.value || web == null) return
         running.value = true
         lastCode.value = "SCANNING"
@@ -460,12 +460,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun clearCollection() { Diagnostics.button("clearCollection");
+    fun clearCollection() { Diagnostics.action("clearCollection");
         if (running.value) return
         viewModelScope.launch { try { val empty = CollectionSnapshot(); store.save(empty); _snapshot.value = empty; message.value = "Коллекция очищена" }
             catch (_: Exception) { message.value = "Не удалось очистить коллекцию" } }
     }
-    fun logout() { Diagnostics.button("logout");
+    fun logout() { Diagnostics.action("logout");
         if (running.value) return
         sessionCheck?.cancel()
         connected.value = false

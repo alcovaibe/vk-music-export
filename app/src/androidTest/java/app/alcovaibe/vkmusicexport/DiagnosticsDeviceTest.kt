@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+@org.junit.FixMethodOrder(org.junit.runners.MethodSorters.NAME_ASCENDING)
 @RunWith(AndroidJUnit4::class)
 class DiagnosticsDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()

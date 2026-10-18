@@ -88,6 +88,7 @@ object Diagnostics {
         if (dropped > 0 && !queue.offer(record("queue_loss", mapOf("count" to dropped)))) lost.addAndGet(dropped)
         if (!queue.offer(record(type, fields))) { lost.incrementAndGet(); totalLost.incrementAndGet() }
     }
+    fun action(name: String) = event("app_action", mapOf("action" to name))
     fun button(name: String) = event("native_button", mapOf("action" to name))
     fun export(previous: Boolean = false): String {
         check(Looper.myLooper() != Looper.getMainLooper())
