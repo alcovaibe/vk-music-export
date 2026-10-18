@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,12 +62,29 @@ private val Accent = Color(0xFF5B4DE8)
 @Composable
 private fun musicIcon() = ImageVector.vectorResource(R.drawable.ic_music_note)
 
+private fun counted(n: Int, one: String, few: String, many: String): String = "$n " + when {
+    n % 100 in 11..14 -> many
+    n % 10 == 1 -> one
+    n % 10 in 2..4 -> few
+    else -> many
+}
+private fun tracks(n: Int) = counted(n, "трек", "трека", "треков")
+
 class MainActivity : ComponentActivity() {
     private val model: MusicViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MusicTheme { MusicApp(model) } }
+        setContent {
+            val dark = isSystemInDarkTheme()
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+            MusicTheme { MusicApp(model) }
+        }
     }
     override fun onStop() { model.stop(); super.onStop() }
 }
@@ -224,8 +242,8 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
         } else if (selected == null) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatTile(snapshot.uniqueTracks().size, "треков в списке", Modifier.weight(1f))
-                    StatTile(snapshot.playlistCount, "плейлистов", Modifier.weight(1f))
+                    StatTile(snapshot.uniqueTracks().size, tracks(snapshot.uniqueTracks().size).substringAfter(" ") + " в списке", Modifier.weight(1f))
+                    StatTile(snapshot.playlistCount, counted(snapshot.playlistCount, "плейлист", "плейлиста", "плейлистов").substringAfter(" "), Modifier.weight(1f))
                 }
             }
             item {
@@ -237,7 +255,7 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
             item { SourceRow("Все треки", "${snapshot.uniqueTracks().size} · общий список", -1, onClick = { onSelect("all") }) }
             item { SectionLabel("МОЯ МУЗЫКА И ПЛЕЙЛИСТЫ") }
             items(snapshot.sources, key = { it.id }) { sourceItem ->
-                SourceRow(sourceItem.title, "${sourceItem.entries.size} треков · ${sourceItem.status.label}", snapshot.sources.indexOf(sourceItem),
+                SourceRow(sourceItem.title, "${tracks(sourceItem.entries.size)} · ${sourceItem.status.label}", snapshot.sources.indexOf(sourceItem),
                     onClick = { onSelect(sourceItem.id) })
             }
             item { InfoNote("Сверь найденные плейлисты с ВК: полнота коллекции пока не подтверждена.") }
@@ -425,7 +443,7 @@ private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
             Text("Забрать с собой", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
             Spacer(Modifier.height(8.dp))
             Text(if (snapshot.sources.isEmpty()) "Сначала собери музыку во вкладке «Коллекция», затем выбери формат файла."
-                else "${snapshot.uniqueTracks().size} треков · ${snapshot.sources.size} списков. Выбери удобный формат.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else "${tracks(snapshot.uniqueTracks().size)} · ${counted(snapshot.sources.size, "список", "списка", "списков")}. Выбери удобный формат.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { SectionLabel("ФОРМАТ ФАЙЛА") }
         items(ExportFormat.entries.sortedBy { if (it == ExportFormat.ZIP) 0 else it.ordinal + 1 }) { format ->

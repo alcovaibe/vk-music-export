@@ -30,6 +30,8 @@ class InterfaceTest {
     private fun capture(name: String) {
         ui.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.waitForIdleSync()
+        instrumentation.uiAutomation.waitForIdle(200, 5_000)
         val bitmap = instrumentation.uiAutomation.takeScreenshot()
         val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
         val file = File(dir, "$name.png")
@@ -44,7 +46,8 @@ class InterfaceTest {
     @Test fun navigationPreservesBrowserAndPopupRunsJavascript() {
         val model = ViewModelProvider(ui.activity)[MusicViewModel::class.java]
         ui.waitUntil(10_000) { model.ready.value }
-        ui.onNodeWithText("Моя коллекция").assertIsDisplayed()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText("Подключить ВКонтакте").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithText("Подключить ВКонтакте").assertIsDisplayed()
         capture("01-collection")
         ui.onNodeWithText("Экспорт").performClick()
         ui.onNodeWithText("Забрать с собой").assertIsDisplayed()
@@ -133,7 +136,8 @@ class InterfaceTest {
         ui.runOnUiThread {
             (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
         }
-        ui.waitUntil(10_000) { ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES }
+        ui.waitUntil(10_000) { ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES &&
+            !androidx.core.view.WindowCompat.getInsetsController(ui.activity.window, ui.activity.window.decorView).isAppearanceLightStatusBars }
         ui.onNodeWithText("Для дороги").performScrollTo().assertIsDisplayed()
         capture("05-dark-library-fixture")
         ui.runOnUiThread {
