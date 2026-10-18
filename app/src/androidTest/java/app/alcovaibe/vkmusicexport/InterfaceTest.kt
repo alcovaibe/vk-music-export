@@ -82,7 +82,7 @@ class InterfaceTest {
             original = model.activeWeb()!!
             original.stopLoading()
             original.loadDataWithBaseURL("https://m.vk.ru/", """
-                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
                 <h1>Вход ВКонтакте · тест</h1>
                 <form onsubmit="event.preventDefault();document.getElementById('step').textContent='Next step'">
                   <input id="phone" type="tel" placeholder="Телефон"><button type="submit">Войти</button>
@@ -102,7 +102,7 @@ class InterfaceTest {
             return result.get()!!
         }
         ui.onNodeWithText("Войди на сайте ВК, затем открой музыку").assertDoesNotExist()
-        assertEquals("true", evaluate("getComputedStyle(document.getElementById('desktop')).display === 'none'"))
+        assertEquals("Desktop caption: ${evaluate("document.getElementById('desktop').textContent")}", "true", evaluate("getComputedStyle(document.getElementById('desktop')).display === 'none'"))
         assertEquals("true", evaluate("document.querySelectorAll('input').length === 1 && getComputedStyle(document.getElementById('phone')).display !== 'none'"))
         assertEquals("true", evaluate("document.getElementById('phone').value='0000000000';document.querySelector('form').requestSubmit();document.getElementById('step').textContent === 'Next step'"))
         evaluate("var late=document.createElement('a');late.id='late-desktop';late.textContent='Версия для компьютера';document.body.appendChild(late)")
@@ -121,7 +121,7 @@ class InterfaceTest {
             // Synthetic VK-origin page; no real account or network response is used.
             original.stopLoading()
             original.loadDataWithBaseURL("https://vk.ru/audio", """
-                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
                 <script>window.vk={id:123};</script>
                 <div id="audio_list"><div class="audio_row" data-full-id="123_1" data-index="0">
                 <b class="audio_row__title">Test track</b><span class="audio_row__performer">Test artist</span></div></div>
