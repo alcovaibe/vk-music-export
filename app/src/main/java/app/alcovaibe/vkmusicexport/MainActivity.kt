@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport
 
 import app.alcovaibe.vkmusicexport.diagnostics.*
+import app.alcovaibe.vkmusicexport.vk.BrowserProfile
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -120,8 +121,9 @@ private fun MusicApp(model: MusicViewModel) {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var confirm by remember { mutableStateOf<String?>(null) }
+    var profileDialog by remember { mutableStateOf(false) }
     val generation by model.browserGeneration.collectAsState()
-    val web = remember(generation) { WebView(context).also(model::attach) }
+    val web = remember(generation) { DiagnosticWebView(context).also(model::attach) }
     DisposableEffect(web) { onDispose { model.detach(web) } }
     val keyboard = LocalSoftwareKeyboardController.current
     val closeVk = { Diagnostics.button("close_browser"); model.stop(); model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
@@ -136,14 +138,18 @@ private fun MusicApp(model: MusicViewModel) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Keep the same browser attached while the collection or export screen is visible.
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
-            if (browser) BrowserHeader(model, onClose = closeVk)
+            if (browser) BrowserHeader(model, onClose = closeVk, onProfile = { profileDialog=true })
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                AndroidView(factory = { web }, modifier = Modifier.fillMaxSize(), update = {
-                    it.visibility = if (browser && popup == null) View.VISIBLE else View.INVISIBLE
-                })
+                key(web) {
+                    AndroidView(factory = { web }, modifier = Modifier.fillMaxSize(), update = {
+                        it.visibility = if (browser && popup == null) View.VISIBLE else View.INVISIBLE
+                    })
+                }
                 popup?.let { child ->
-                    AndroidView(factory = { child }, onRelease = { if(WebDiagnostics.alive(it)) { WebDiagnostics.destroyed(it); it.destroy() } }, modifier = Modifier.fillMaxSize(),
-                        update = { it.visibility = if (browser) View.VISIBLE else View.INVISIBLE })
+                    key(child) {
+                        AndroidView(factory = { child }, onRelease = { if(WebDiagnostics.alive(it)) { WebDiagnostics.destroyed(it); it.destroy() } }, modifier = Modifier.fillMaxSize(),
+                            update = { it.visibility = if (browser) View.VISIBLE else View.INVISIBLE })
+                    }
                 }
             }
             if (browser) BrowserActions(model, onDone = closeVk)
@@ -184,12 +190,27 @@ private fun MusicApp(model: MusicViewModel) {
             }
         }
     }
+    if(profileDialog) {
+        val profile by model.browserProfile.collectAsState()
+        AlertDialog(onDismissRequest={profileDialog=false},title={Text("Профиль входа")},text={
+            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text("Сейчас: ${profile.label}")
+                Text("Выбор заново откроет вход в ВК. Коллекция и данные сессии сохраняются.")
+                BrowserProfile.Mode.entries.forEach { mode ->
+                    OutlinedButton(enabled=!running,onClick={
+                        keyboard?.hide()
+                        if(model.retryWithProfile(mode)) { profileDialog=false;confirm=null;browser=true }
+                    },modifier=Modifier.fillMaxWidth()) {Text("Открыть: ${mode.label}")}
+                }
+            }
+        },confirmButton={TextButton(onClick={profileDialog=false}){Text("Закрыть")}})
+    }
     if (confirm == "settings") AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Настройки") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", fontWeight = FontWeight.SemiBold)
             Text("Названия, исполнители и плейлисты сохраняются на телефоне. Для сбора оставьте приложение открытым.", style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { confirm = null; openVk() }) { Text(if (connected) "Открыть ВКонтакте" else "Подключить ВКонтакте") }
-            DiagnosticControls()
+            DiagnosticControls(onMarkWhite=model::markWhiteScreen,onProfile={profileDialog=true})
             TextButton(onClick = {
                 Diagnostics.button("updates"); val updates = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest"))
                 try {
@@ -353,7 +374,7 @@ private fun SourceRow(title: String, subtitle: String, index: Int, onClick: () -
 }
 
 @Composable
-private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit) {
+private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit, onProfile: () -> Unit) {
     val page by model.currentPage.collectAsState()
     val loading by model.pageLoading.collectAsState()
     val error by model.browserError.collectAsState()
@@ -369,7 +390,7 @@ private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit) {
             }
             IconButton(enabled = !running, onClick = { Diagnostics.button("reload"); model.reload() }) { Icon(Icons.Default.Refresh, "Обновить страницу") }
         }
-        DiagnosticControls(compact = true)
+        DiagnosticControls(compact = true,onMarkWhite=model::markWhiteScreen,onProfile=onProfile)
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) else HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         error?.let { Text(it, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(14.dp),
             color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall) }

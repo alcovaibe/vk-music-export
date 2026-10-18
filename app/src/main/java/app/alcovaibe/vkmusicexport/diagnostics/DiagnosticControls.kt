@@ -11,7 +11,7 @@ import androidx.core.content.FileProvider
 import kotlinx.coroutines.*
 
 @Composable
-fun DiagnosticControls(compact: Boolean = false) {
+fun DiagnosticControls(compact: Boolean = false, onMarkWhite: (() -> Unit)? = null, onProfile: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -57,6 +57,10 @@ fun DiagnosticControls(compact: Boolean = false) {
         Box {
             TextButton(enabled=!busy,onClick={Diagnostics.button("diagnostic_menu");menu=true}) { Text(if(compact) "Ещё логи" else "Другие логи") }
             DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                if(onMarkWhite != null) DropdownMenuItem(text={Text("Отметить белый экран")},onClick={
+                    menu=false;onMarkWhite();Toast.makeText(context,"Белый экран отмечен. Теперь скопируйте лог или отправьте JSON.",Toast.LENGTH_LONG).show()
+                })
+                if(onProfile != null) DropdownMenuItem(text={Text("Профиль входа")},onClick={menu=false;Diagnostics.button("browser_profile_dialog");onProfile()})
                 DropdownMenuItem(text={Text("Копировать предыдущий запуск")},onClick={menu=false;action(true,false)})
                 DropdownMenuItem(text={Text("Поделиться JSON-файлом")},onClick={menu=false;action(false,true)})
                 DropdownMenuItem(text={Text("Поделиться предыдущим JSON")},onClick={menu=false;action(true,true)})

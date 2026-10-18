@@ -42,6 +42,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val mobileUi by lazy { application.assets.open("vk-mobile-ui.js").bufferedReader().use { it.readText() } }
     val popup = MutableStateFlow<WebView?>(null)
     val browserGeneration = MutableStateFlow(0)
+    private val browserPreferences=application.getSharedPreferences("browser-profile",android.content.Context.MODE_PRIVATE)
+    val browserProfile=MutableStateFlow(runCatching { BrowserProfile.Mode.valueOf(browserPreferences.getString("mode",null).orEmpty()) }.getOrDefault(BrowserProfile.Mode.CHROME_COMPAT))
+    private var openAfterAttach=false
     val connected = MutableStateFlow(false)
     val browserError = MutableStateFlow<String?>(null)
     private var sessionCheck: Job? = null
@@ -66,6 +69,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun attach(view: WebView) {
         web = view
         configure(view)
+        if(openAfterAttach) {
+            openAfterAttach=false
+            view.post { if(web===view) {
+                WebDiagnostics.event(view,"app_load_url",Privacy.resource("https://vk.ru/")+mapOf("reason" to "profile_retry"))
+                view.loadUrl("https://vk.ru/")
+            } }
+        }
     }
 
     private fun configure(view: WebView) {
@@ -82,22 +92,23 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             builtInZoomControls = true
             displayZoomControls = false
         }
-        BrowserProfile.apply(view)
+        BrowserProfile.apply(view,browserProfile.value)
         CookieManager.getInstance().setAcceptCookie(true)
         // VK ID and VK are different sites. Both windows need the same cookie policy.
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
-        WebDiagnostics.configure(view)
+        WebDiagnostics.configure(view,browserProfile.value.name,if(view===web) "main" else "additional")
         val windowId = WebDiagnostics.windowId(view)
+        val configuredAgent=view.settings.userAgentString
         view.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest): WebResourceResponse? {
-                WebDiagnostics.request(windowId, request)
+                WebDiagnostics.request(windowId, request, configuredAgent)
                 return null
             }
             override fun onReceivedHttpError(v: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-                WebDiagnostics.event(v, "http_error", mapOf("url" to Privacy.url(request.url.toString()), "status" to response.statusCode, "main_frame" to request.isForMainFrame))
+                WebDiagnostics.event(v, "http_error", Privacy.resource(request.url.toString())+mapOf("status" to response.statusCode, "main_frame" to request.isForMainFrame))
             }
             override fun doUpdateVisitedHistory(v: WebView, url: String?, isReload: Boolean) {
-                WebDiagnostics.event(v,"history_updated",mapOf("url" to Privacy.url(url),"reload" to isReload))
+                WebDiagnostics.event(v,"history_updated",Privacy.resource(url)+mapOf("reload" to isReload))
             }
             override fun onFormResubmission(v: WebView, dontResend: Message, resend: Message) {
                 WebDiagnostics.event(v,"form_resubmission",mapOf("decision" to "platform_default_do_not_resend"))
@@ -118,8 +129,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 return true
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                WebDiagnostics.event(view,"navigation_decision",mapOf("url" to Privacy.url(request.url.toString()),
-                    "main_frame" to request.isForMainFrame,"gesture" to request.hasGesture(),"redirect" to request.isRedirect,
+                WebDiagnostics.event(view,"navigation_decision",Privacy.resource(request.url.toString())+mapOf("main_frame" to request.isForMainFrame,"gesture" to request.hasGesture(),"redirect" to request.isRedirect,
                     "method" to request.method.takeIf { it in setOf("GET","POST","HEAD") },
                     "allowed" to (!request.isForMainFrame || PagePolicy.allowed(request.url.toString()))))
                 if (!request.isForMainFrame) return false
@@ -166,7 +176,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                WebDiagnostics.event(view,"network_error",mapOf("url" to Privacy.url(request.url.toString()),"code" to error.errorCode,"main_frame" to request.isForMainFrame))
+                WebDiagnostics.event(view,"network_error",Privacy.resource(request.url.toString())+mapOf("code" to error.errorCode,"main_frame" to request.isForMainFrame))
                 if (request.isForMainFrame) {
                     pageLoading.value = false
                     lastCode.value = "PAGE_LOAD_FAILED"
@@ -175,7 +185,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
-                WebDiagnostics.event(view,"tls_error",mapOf("url" to Privacy.url(error.url),"primary_error" to error.primaryError,"decision" to "cancel"))
+                WebDiagnostics.event(view,"tls_error",Privacy.resource(error.url)+mapOf("primary_error" to error.primaryError,"decision" to "cancel"))
                 handler.cancel()
                 pageLoading.value = false
                 lastCode.value = "TLS_FAILED"
@@ -191,7 +201,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     "existing_popup" to (popup.value != null),"parser_running" to running.value,
                     "accepted" to (isUserGesture && popup.value == null && !running.value)))
                 if (!isUserGesture || popup.value != null || running.value) return false
-                val child = WebView(view.context)
+                val child = DiagnosticWebView(view.context)
                 configure(child)
                 popup.value = child
                 currentPage.value = ""
@@ -245,13 +255,34 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         view.destroy()
     }
 
+    fun markWhiteScreen() {
+        Diagnostics.button("mark_white_screen")
+        activeWeb()?.let(WebDiagnostics::markWhiteScreen)
+    }
+    fun retryWithProfile(mode: BrowserProfile.Mode): Boolean {
+        if(running.value) return false
+        Diagnostics.button("retry_browser_profile")
+        Diagnostics.event("browser_profile_change",mapOf("previous" to browserProfile.value.name,"next" to mode.name,
+            "cookies_cleared" to false,"restart_at" to "vk_home"))
+        sessionCheck?.cancel()
+        popup.value?.let { child -> popup.value=null; child.stopLoading() }
+        web?.stopLoading()
+        browserProfile.value=mode
+        browserPreferences.edit().putString("mode",mode.name).apply()
+        connected.value=false;pageLoading.value=false;currentPage.value="";browserError.value=null
+        openAfterAttach=true
+        browserGeneration.value++
+        return true
+    }
     fun openLogin() { Diagnostics.action("openLogin");
         if (running.value) return
         if (web?.url == null) web?.loadUrl("https://vk.ru/")
     }
     fun openMusic() { Diagnostics.action("openMusic"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio") } }
     fun openPlaylists() { Diagnostics.action("openPlaylists"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio?section=playlists") } }
-    fun reload() { Diagnostics.action("reload"); if (!running.value) activeWeb()?.reload() }
+    fun reload() { Diagnostics.action("reload"); if (!running.value) activeWeb()?.let {
+        if(it.url==null || it.url=="about:blank") it.loadUrl("https://vk.ru/") else it.reload()
+    } }
     fun back(): Boolean { Diagnostics.action("back");
         val view = activeWeb() ?: return false
         if (running.value) return false
@@ -316,7 +347,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val waiter = CompletableDeferred<Unit>()
         loadWaiter = waiter
         try {
-            WebDiagnostics.event(view,"app_load_url",mapOf("url" to Privacy.url(url)))
+            WebDiagnostics.event(view,"app_load_url",Privacy.resource(url))
             view.loadUrl(url)
             withTimeout(40_000) { waiter.await() }
             delay(1200)

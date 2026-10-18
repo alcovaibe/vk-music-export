@@ -5,8 +5,8 @@ set -euo pipefail
 build_tools="$ANDROID_HOME/build-tools/36.0.0"
 mkdir -p release-output upgrade-input
 # Verify the actual owner-installed release, not a newly rebuilt surrogate.
-gh release download v0.3.2-build.1029 --pattern 'VK-Music-Export-0.3.2-1029.apk' --dir upgrade-input --clobber
-mv upgrade-input/VK-Music-Export-0.3.2-1029.apk upgrade-input/previous.apk
+gh release download v0.3.3-build.1034 --pattern 'VK-Music-Export-0.3.3-1034.apk' --dir upgrade-input --clobber
+mv upgrade-input/VK-Music-Export-0.3.3-1034.apk upgrade-input/previous.apk
 ./gradlew lintRelease assembleRelease --stacktrace
 cp app/build/outputs/apk/release/app-release.apk upgrade-input/current.apk
 expected=$(openssl x509 -in config/release-certificate.pem -outform DER | sha256sum | cut -d' ' -f1)

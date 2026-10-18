@@ -1,6 +1,9 @@
 package app.alcovaibe.vkmusicexport.diagnostics
 
 import java.net.URI
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.SecureRandom
 
 /** Deny by default: untrusted page text never crosses the journal boundary. */
 object Privacy {
@@ -24,12 +27,43 @@ object Privacy {
         }
     } catch (_: Exception) { "[invalid-url]" }
 
+    // Process-only key: stable correlation within a run, no raw host/path or reusable digest on disk.
+    private val aliasKey = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    fun alias(kind: String, value: String): String {
+        val mac=Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(aliasKey,"HmacSHA256"))
+        return kind+"_"+mac.doFinal(value.toByteArray(Charsets.UTF_8)).take(8).joinToString(""){"%02x".format(it.toInt() and 255)}
+    }
+    fun resource(raw: String?, field: String = "url"): Map<String, Any?> {
+        val safe = url(raw)
+        val uri=runCatching { URI(raw.orEmpty()) }.getOrNull()
+        if(uri?.scheme?.lowercase() !in setOf("https","http") || uri?.host==null) return mapOf(field to safe)
+        val origin="${uri.scheme.lowercase()}://${uri.host.lowercase()}:${uri.port}"
+        val prefix=if(field=="url") "" else "${field}_"
+        return mapOf(field to safe, "${prefix}origin_id" to alias("host",origin),
+            "${prefix}resource_id" to alias("res",origin+uri.rawPath.orEmpty()))
+    }
+    private val networkErrors=setOf("ERR_BLOCKED_BY_CLIENT","ERR_NAME_NOT_RESOLVED","ERR_CONNECTION_RESET",
+        "ERR_CONNECTION_REFUSED","ERR_CONNECTION_CLOSED","ERR_TIMED_OUT","ERR_CONNECTION_TIMED_OUT",
+        "ERR_INTERNET_DISCONNECTED","ERR_FAILED","ERR_ABORTED","ERR_CERT_AUTHORITY_INVALID",
+        "ERR_CERT_DATE_INVALID","ERR_SSL_PROTOCOL_ERROR","ERR_NETWORK_CHANGED","ERR_HTTP_RESPONSE_CODE_FAILURE")
+    fun networkError(raw: String?): String? = Regex("net::(ERR_[A-Z_]+)").find(raw.orEmpty())?.groupValues?.get(1)?.takeIf{it in networkErrors}
     // Never preserve arbitrary strings, even a short password that resembles a normal word.
     fun messageKind(raw: String?): String {
         val s = raw.orEmpty()
         return when {
             s.contains("Content Security Policy", true) || s.contains("Content-Security-Policy", true) -> "csp"
             s.contains("net::ERR_") -> "network"
+            s.contains("CORS",true) || s.contains("cross-origin request",true) -> "cors"
+            s.contains("Permissions-Policy",true) || s.contains("Unrecognized feature",true) -> "permissions_policy"
+            s.contains("Cross-Origin-Opener-Policy",true) -> "cross_origin_opener_policy"
+            s.contains("SameSite",true) || s.contains("third-party cookie",true) -> "cookie_policy"
+            s.contains("WebAuthn",true) || s.contains("PublicKeyCredential",true) -> "webauthn"
+            s.contains("FedCM",true) || s.contains("IdentityCredential",true) -> "fedcm"
+            s.contains("Failed to load module",true) || s.contains("MIME type",true) -> "script_module_load"
+            s.contains("Failed to load resource",true) -> "resource_load"
+            s.contains("passive event listener",true) -> "passive_listener"
+            s.contains("preload",true) -> "preload"
             s.contains("TypeError") -> "TypeError"
             s.contains("SyntaxError") -> "SyntaxError"
             s.contains("ReferenceError") -> "ReferenceError"

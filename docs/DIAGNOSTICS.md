@@ -1,4 +1,23 @@
-# VK Music Export 0.3.3: diagnostic stage
+# VK Music Export: login diagnostic stage
+
+## 0.3.4 update after the owner's log and screen recording
+
+The 0.3.3 (1034) real log contained 283 contiguous events, no journal loss, Android 17/API 37 and WebView 155.0.8059.43. Following an observed POST to login.vk.ru, the main page navigated to id.vk.ru/auth; navigation was allowed and the page reported finish/commit. Subsequent JS probes responded in 3–13 ms with readyState complete. No main-thread/renderer stall, renderer death, rejected navigation or parser start was recorded. Two HTTP 403s and one ERROR_CONNECT on subresources preceded the auth transition; their causal relevance is unknown. The recording independently shows the empty auth content area while native controls remain visible. The phone number visible in that recording is not copied into the repository.
+
+These observations do not establish the root cause of the empty VK ID UI. In particular, readyState/pageFinished are not proof of a drawn login form. The changes below address demonstrated diagnostic gaps and browser recreation, plus a controlled compatibility test; successful real authorization is still unverified.
+
+* Resource origin/path correlation now uses process-only random-key HMAC aliases (host_/res_), with query, fragment and credentials excluded from the alias input. Known URL labels remain sanitized; unknown raw hosts/paths are never written. Aliases cannot be compared across launches. Console source aliases use the same resource identity as request/error callbacks. Aliases identify resources, not individual concurrent requests or response bodies.
+* Request UA/CH records are emitted once per distinct safe identity (at most 128; overflow is marked), and request events reference identity_id. This reduces duplicate JSON. Exposed request headers remain metadata, not guaranteed wire-level headers.
+* Console categories now distinguish CORS, Permissions Policy, CSP, cookie policy, WebAuthn, FedCM, module/resource loading and a fixed network error-code allowlist. Free text is still omitted. A capture-phase document error listener reports resource-load failure metadata only; it neither intercepts nor replays network operations.
+* The probe adds body/root display, visibility and opacity, bounded element counts, visible input/button counts and dimensions, document hidden state and a boolean FCP presence. It never reads field values, text, HTML, storage or response/request bodies. Visible element sampling is capped at 300 per selector.
+* DiagnosticWebView counts native onDraw callbacks without reading pixels. Snapshots include attachment, visibility, bounds, alpha, focus, hardware acceleration and draw age/count. postVisualStateCallback readiness and its 10-second timeout are separate events. A visible attached view is invalidated after readiness to schedule its next draw; this is not proof that the website produced its intended UI.
+* “Ещё логи → Отметить белый экран” supplies an explicit owner-reported event plus immediate probes. A manual marker may be later than the actual first white frame.
+* “Ещё логи → Профиль входа” restarts at the VK homepage with a newly created view, either SYSTEM_WEBVIEW (unaltered UA/metadata) or CHROME_COMPAT. Compatibility remains the default; the selection is retained. Cookies and collection are not cleared, POST data is not replayed, and the parser continues to use that same WebView/session. Mid-load UA mutation is avoided. This tests a hypothesis rather than promising Chrome indistinguishability.
+* Compose AndroidView is keyed by its owned WebView instance. A new model generation now replaces the attached native view when switching profiles or recovering from renderer death. Previously a recomposed factory alone could keep the old native view. This is a concrete recreation defect, not proven to have caused the original first-login blank page.
+
+Validation adds secret-free resource correlation and error-classification unit tests; an emulator test switches the native profile menu, checks the replacement view is actually attached, confirms the default UA and a synthetic cookie survive, and checks DOM/visual/white-screen markers and a subsequent draw. Release upgrade now uses the actual published 0.3.3 (1034), which is installed on the owner's device. The earlier 0.3.2→0.3.3 upgrade evidence remains in that release.
+
+Owner test: install the signed update in place; keep the prior VPN for the first comparison; choose SYSTEM_WEBVIEW in the native profile dialog and retry login. If blank, mark it, wait 10–15 seconds and export JSON. A second attempt with CHROME_COMPAT compares identity while keeping the engine and parser. Network changes should be a separate subsequent test. Success requires the next auth screen, completed login, recognized music page and a real parser sample; synthetic tests do not meet that criterion.
 
 ## Confirmed versus unknown
 

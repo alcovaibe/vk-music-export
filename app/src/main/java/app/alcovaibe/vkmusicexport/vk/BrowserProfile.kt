@@ -8,6 +8,10 @@ import androidx.webkit.WebViewFeature
 
 /** Mobile Chrome compatibility, using the installed Chromium engine's version. */
 object BrowserProfile {
+    enum class Mode(val label: String) {
+        CHROME_COMPAT("Chrome-совместимый"), SYSTEM_WEBVIEW("Штатный WebView")
+    }
+
     private val chromiumVersion = Regex("Chrome/([0-9]+(?:\\.[0-9]+){3})")
 
     fun mobileUserAgent(defaultAgent: String): String {
@@ -16,7 +20,9 @@ object BrowserProfile {
             .replace(Regex("\\s+Version/[0-9.]+"), "")
     }
 
-    fun apply(view: WebView) {
+    fun apply(view: WebView, mode: Mode = Mode.CHROME_COMPAT) {
+        // A system-mode view is newly constructed: retain both its UA and original metadata.
+        if (mode == Mode.SYSTEM_WEBVIEW) return
         val defaultAgent = WebSettings.getDefaultUserAgent(view.context)
         val uaVersion = chromiumVersion.find(defaultAgent)?.groupValues?.get(1) ?: return
         val supportsMetadata = WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)

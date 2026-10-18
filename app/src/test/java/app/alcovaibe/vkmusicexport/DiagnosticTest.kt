@@ -28,6 +28,26 @@ class DiagnosticTest {
         assertEquals("TypeError",Privacy.messageKind("TypeError: code 123456"))
         assertEquals("[unexpected-agent-omitted]",Privacy.agent("password=short"))
     }
+    @Test fun aliasesCorrelateResourcesWithoutQueriesOrRawSecrets() {
+        val a=Privacy.resource("https://private-host.test/path/private-secret?phone=79991234567#token")
+        val b=Privacy.resource("https://private-host.test/path/private-secret?password=different")
+        val c=Privacy.resource("https://another-host.test/path/private-secret")
+        val d=Privacy.resource("https://private-host.test/another-path")
+        assertEquals(a["resource_id"],b["resource_id"])
+        assertEquals(a["origin_id"],d["origin_id"])
+        assertNotEquals(a["origin_id"],c["origin_id"])
+        assertNotEquals(a["resource_id"],d["resource_id"])
+        for(secret in listOf("private-host","private-secret","79991234567","different")) assertFalse(a.toString().contains(secret))
+        assertEquals(a["resource_id"],Privacy.resource("https://private-host.test/path/private-secret","source")["source_resource_id"])
+    }
+    @Test fun errorCategoriesKeepNoPageText() {
+        val examples=mapOf("CORS password=secret" to "cors","Error with Permissions-Policy header secret" to "permissions_policy",
+            "Third-party cookie code=123456" to "cookie_policy","WebAuthn token=secret" to "webauthn",
+            "Failed to load module secret" to "script_module_load","Content Security Policy secret" to "csp")
+        examples.forEach{(message,kind)->assertEquals(kind,Privacy.messageKind(message))}
+        assertEquals("ERR_BLOCKED_BY_CLIENT",Privacy.networkError("token=secret net::ERR_BLOCKED_BY_CLIENT"))
+        assertNull(Privacy.networkError("net::ERR_PRIVATE_SECRET"))
+    }
     @Test fun interruptedTailExportsValidJsonAndPreviousSurvivesRestart() {
         val root=Files.createTempDirectory("journal").toFile()
         try {
