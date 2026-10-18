@@ -27,6 +27,15 @@ assert_visible() {
   for attempt in $(seq 1 10); do
     adb shell uiautomator dump /sdcard/upgrade-window.xml >/dev/null
     adb pull /sdcard/upgrade-window.xml "upgrade-results/$1.xml" >/dev/null
+    # Emulator framework ANRs can cover the app after resizing the fresh AVD.
+    # Only System UI / Quickstep dialogs are handled. App ANRs remain test failures.
+    tap=$(python3 tools/emulator-dialog.py "upgrade-results/$1.xml")
+    if [[ -n "$tap" ]]; then
+      echo "Dismissing an emulator framework dialog; app ANRs are never dismissed."
+      read -r x y <<< "$tap"
+      adb shell input tap "$x" "$y"
+      continue
+    fi
     if grep -q 'UpgradeCheckFixture' "upgrade-results/$1.xml"; then return; fi
     sleep 2
   done

@@ -26,6 +26,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Release automation regression tests
+        run: python3 -m unittest discover -s tools -p 'test_release_tools.py'
       - name: Extractor regression tests
         run: node --test tools/extractor.test.cjs
       - name: Test, lint and assemble
