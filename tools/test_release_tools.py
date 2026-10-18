@@ -76,4 +76,18 @@ class EmulatorDialogTest(unittest.TestCase):
     def test_quickstep_close_button(self):
         self.assertEqual(self.dialog("Quickstep isn't responding", 'Close app'), '20 30')
 
+class UpgradeDeviceGuardTest(unittest.TestCase):
+    def test_physical_device_is_rejected_before_root_or_install(self):
+        with tempfile.TemporaryDirectory() as td:
+            directory = Path(td)
+            adb = directory / 'adb'
+            adb.write_text('#!/bin/bash\nif [[ "$1" == get-serialno ]]; then echo personal-phone; else touch "$UNSAFE_COMMAND"; exit 1; fi\n')
+            adb.chmod(0o755)
+            marker = directory / 'unsafe-command'
+            env = dict(os.environ, PATH=td + os.pathsep + os.environ['PATH'], UNSAFE_COMMAND=str(marker))
+            result = subprocess.run(['bash', str(TOOLS/'upgrade-check.sh')], cwd=td, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('physical device', result.stderr)
+            self.assertFalse(marker.exists())
+
 if __name__ == '__main__': unittest.main()

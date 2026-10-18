@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Disposable rooted AVD only. No device, account or network access is needed.
 set -euo pipefail
+serial=$(adb get-serialno | tr -d '\r')
+if [[ "$serial" != emulator-* ]]; then
+  echo 'Refusing to overwrite a collection on a physical device. Use a disposable Android emulator.' >&2
+  exit 2
+fi
 package=app.alcovaibe.vkmusicexport
 appdata=/data/user/0/$package
 mkdir -p upgrade-results
