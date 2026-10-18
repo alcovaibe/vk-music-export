@@ -104,7 +104,7 @@ private fun MusicApp(model: MusicViewModel) {
     val web = remember { WebView(context).also(model::attach) }
     DisposableEffect(web) { onDispose { model.detach(web) } }
     val keyboard = LocalSoftwareKeyboardController.current
-    val closeVk = { model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
+    val closeVk = { model.stop(); model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
     val openVk = { browser = true; model.openLogin() }
     BackHandler(browser || selected != null || tab != 0) {
         when {
