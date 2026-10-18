@@ -37,6 +37,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var scanJob: Job? = null
     private var loadWaiter: CompletableDeferred<Unit>? = null
     private val extractor by lazy { application.assets.open("vk-extractor.js").bufferedReader().use { it.readText() } }
+    private val mobileUi by lazy { application.assets.open("vk-mobile-ui.js").bufferedReader().use { it.readText() } }
     val popup = MutableStateFlow<WebView?>(null)
     val connected = MutableStateFlow(false)
     val browserError = MutableStateFlow<String?>(null)
@@ -82,7 +83,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val allowed = PagePolicy.allowed(request.url.toString())
-                if (!allowed && request.isForMainFrame) {
+                if (!allowed && view === activeWeb()) {
+                    pageLoading.value = false
+                    lastCode.value = "NAVIGATION_BLOCKED"
                     browserError.value = "Этот переход не поддерживается. Выберите вход по номеру телефона на сайте ВК."
                 }
                 return !allowed
@@ -99,7 +102,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     lastCode.value = "BROWSING"
                 }
             }
+            override fun onPageCommitVisible(view: WebView, url: String?) {
+                applyMobileUi(view, url)
+            }
             override fun onPageFinished(view: WebView, url: String?) {
+                applyMobileUi(view, url)
                 if (view === activeWeb()) {
                     pageLoading.value = false
                     currentPage.value = PagePolicy.publicUrl(url.orEmpty())
@@ -117,12 +124,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) {
                     pageLoading.value = false
+                    lastCode.value = "PAGE_LOAD_FAILED"
                     browserError.value = "Страница не загрузилась. Проверьте подключение и нажмите «Обновить»."
                     if (view === web) loadWaiter?.completeExceptionally(ScanFailure("PAGE_LOAD_FAILED"))
                 }
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 handler.cancel()
+                pageLoading.value = false
+                lastCode.value = "TLS_FAILED"
                 browserError.value = "Не удалось проверить защищённое соединение ВК."
                 if (view === web) loadWaiter?.completeExceptionally(ScanFailure("TLS_FAILED"))
             }
@@ -143,6 +153,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 if (window === popup.value) closePopup()
             }
         }
+    }
+
+    private fun applyMobileUi(view: WebView, url: String?) {
+        if (PagePolicy.vkWebsite(url.orEmpty())) view.evaluateJavascript(mobileUi, null)
     }
 
     fun activeWeb(): WebView? = popup.value ?: web
@@ -216,15 +230,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     lastCode.value = (error as? ScanFailure)?.code ?: "SESSION_CHECK_FAILED"
                 }
             }
-            message.value = "Откройте «Мою музыку» после входа. Если список не распознан, включите версию для ПК."
-        }
-    }
-    fun desktop(enabled: Boolean) {
-        if (running.value) return
-        web?.apply {
-            val defaultAgent = WebSettings.getDefaultUserAgent(context)
-            settings.userAgentString = if (enabled) defaultAgent.replace(Regex("\\(Linux; Android[^)]*\\)"), "(X11; Linux x86_64)").replace(" Mobile", "") else defaultAgent
-            reload()
+            message.value = "Список музыки не распознан. Откройте «Мою музыку» и повторите проверку."
         }
     }
     fun stop() { scanJob?.cancel() }
@@ -383,9 +389,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 if (lastCode.value in setOf("NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA")) connected.value = false
                 message.value = when ((error as? ScanFailure)?.code) {
                     "NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA" -> "Войдите в ВК и откройте свою музыку. При необходимости пройдите проверку на странице."
-                    "USER_ID_NOT_FOUND" -> "Не удалось определить владельца. Откройте «Мою музыку» или попробуйте версию для ПК; можно собрать текущий список отдельно."
+                    "USER_ID_NOT_FOUND" -> "Не удалось определить владельца. Откройте «Мою музыку»; можно собрать текущий список отдельно."
                     "WAIT_FOR_PAGE" -> "Дождитесь загрузки страницы и повторите сбор."
-                    "PLAYLIST_LIST_UNSUPPORTED" -> "Музыка сохранена, но список плейлистов не распознан. Откройте нужный плейлист вручную и выберите «Текущий список»; попробуйте также версию для ПК."
+                    "PLAYLIST_LIST_UNSUPPORTED" -> "Музыка сохранена, но список плейлистов не распознан. Откройте нужный плейлист вручную и выберите «Текущий список»."
                     else -> "Сбор прерван: ${(error as? ScanFailure)?.code ?: "SCAN_FAILED"}. Сохранённые результаты доступны."
                 }
             } finally { running.value = false; scanJob = null }

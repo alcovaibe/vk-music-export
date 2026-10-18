@@ -13,6 +13,10 @@ object PagePolicy {
             uri.host?.lowercase(Locale.ROOT) in musicHosts + authHosts
     }.getOrDefault(false)
 
+    fun vkWebsite(url: String): Boolean = runCatching {
+        allowed(url) && URI(url).host.lowercase(Locale.ROOT) in musicHosts
+    }.getOrDefault(false)
+
     fun musicPage(url: String): Boolean = runCatching {
         val uri = URI(url)
         allowed(url) && uri.host.lowercase(Locale.ROOT) in musicHosts &&

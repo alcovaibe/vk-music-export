@@ -46,6 +46,9 @@ class ExportTest {
         assertFalse(PagePolicy.allowed("http://vk.ru/audio"))
         assertFalse(PagePolicy.allowed("https://vk.ru:8443/audio"))
         assertFalse(PagePolicy.musicPage("https://id.vk.com/authorize"))
+        assertFalse(PagePolicy.vkWebsite("https://id.vk.com/authorize"))
+        assertFalse(PagePolicy.vkWebsite("https://m.vk.ru.evil.example/"))
+        assertTrue(PagePolicy.vkWebsite("https://m.vk.ru/"))
         assertTrue(PagePolicy.musicPage("https://vk.ru/audios123"))
         assertEquals("https://vk.ru/music/playlist/12_34", PagePolicy.publicUrl("https://vk.ru/music/playlist/12_34_secret?access_token=secret#token"))
     }

@@ -388,7 +388,7 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
     val code by model.lastCode.collectAsState()
     val popup by model.popup.collectAsState()
     var more by remember { mutableStateOf(false) }
-    var desktop by rememberSaveable { mutableStateOf(false) }
+    if (popup != null && !running) return
     Surface(shadowElevation = 8.dp) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (running) {
@@ -399,24 +399,21 @@ private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (connected && popup == null) TextButton(onClick = onDone, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Подключено · К коллекции")
-                    } else Text("Войди на сайте ВК, затем открой музыку", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else Button(onClick = model::openMusic, modifier = Modifier.weight(1f)) { Text("Открыть мою музыку") }
                     Box {
                         IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, "Действия со страницей") }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                             DropdownMenuItem(text = { Text("Моя музыка") }, onClick = { more = false; model.openMusic() })
                             DropdownMenuItem(text = { Text("Мои плейлисты") }, onClick = { more = false; model.openPlaylists() })
-                            DropdownMenuItem(enabled = popup == null, text = { Text(if (desktop) "Мобильная версия" else "Версия для ПК") }, onClick = { more = false; desktop = !desktop; model.desktop(desktop) })
                             DropdownMenuItem(enabled = popup == null, text = { Text("Проверить подключение") }, onClick = { more = false; model.verifySession() })
                         }
                     }
                 }
-                if (popup == null) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (connected) {
+                if (connected) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(enabled = ready && !loading, onClick = { model.scan(false) }, modifier = Modifier.weight(1f)) { Text("Этот список") }
                         Button(enabled = ready && !loading, onClick = { model.scan(true) }, modifier = Modifier.weight(1f)) { Text("Собрать всё") }
-                    } else Button(enabled = !loading, onClick = model::openMusic, modifier = Modifier.fillMaxWidth()) { Text("Открыть мою музыку") }
                 }
-                if (popup == null && code !in setOf("NOT_STARTED", "BROWSING", "MUSIC_PAGE_READY", "SCANNING")) InfoNote(message)
+                if (popup == null && code !in setOf("NOT_STARTED", "BROWSING", "MUSIC_PAGE_READY", "SCANNING", "NAVIGATION_BLOCKED", "PAGE_LOAD_FAILED", "TLS_FAILED")) InfoNote(message)
                 if (connected && popup == null) InfoNote("Повторный сбор заменит сохранённую коллекцию.")
             }
         }

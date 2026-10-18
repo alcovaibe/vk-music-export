@@ -80,6 +80,44 @@ class InterfaceTest {
         lateinit var original: WebView
         ui.runOnUiThread {
             original = model.activeWeb()!!
+            original.stopLoading()
+            original.loadDataWithBaseURL("https://m.vk.ru/", """
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <h1>Вход ВКонтакте · тест</h1>
+                <form onsubmit="event.preventDefault();document.getElementById('step').textContent='Next step'">
+                  <input id="phone" type="tel" placeholder="Телефон"><button type="submit">Войти</button>
+                </form><p id="step"></p>
+                <a id="desktop" href="/?fv=1">Версия для компьютера</a>
+            """.trimIndent(), "text/html", "UTF-8", "https://m.vk.ru/")
+        }
+        val mobileApplied = AtomicReference(false)
+        ui.waitUntil(10_000) {
+            ui.runOnUiThread { original.evaluateJavascript("Boolean(window.__vkMusicMobileUi)") { mobileApplied.set(it == "true") } }
+            mobileApplied.get()
+        }
+        fun evaluate(script: String): String {
+            val result = AtomicReference<String?>(null)
+            ui.runOnUiThread { original.evaluateJavascript(script) { result.set(it) } }
+            ui.waitUntil(5_000) { result.get() != null }
+            return result.get()!!
+        }
+        ui.onNodeWithText("Войди на сайте ВК, затем открой музыку").assertDoesNotExist()
+        assertEquals("true", evaluate("getComputedStyle(document.getElementById('desktop')).display === 'none'"))
+        assertEquals("true", evaluate("document.querySelectorAll('input').length === 1 && getComputedStyle(document.getElementById('phone')).display !== 'none'"))
+        assertEquals("true", evaluate("document.getElementById('phone').value='0000000000';document.querySelector('form').requestSubmit();document.getElementById('step').textContent === 'Next step'"))
+        evaluate("var late=document.createElement('a');late.id='late-desktop';late.textContent='Версия для компьютера';document.body.appendChild(late)")
+        assertEquals("true", evaluate("getComputedStyle(document.getElementById('late-desktop')).display === 'none'"))
+        ui.onNodeWithContentDescription("Действия со страницей").performClick()
+        ui.onNodeWithText("Мои плейлисты").assertIsDisplayed()
+        ui.onNodeWithText("Версия для ПК").assertDoesNotExist()
+        androidx.test.espresso.Espresso.pressBack()
+        capture("06-mobile-login-fixture")
+        // A rejected external transition must leave the browser usable, without a stuck spinner.
+        evaluate("location.href='https://example.org/unsupported-auth'")
+        ui.waitUntil(5_000) { model.lastCode.value == "NAVIGATION_BLOCKED" }
+        assertFalse(model.pageLoading.value)
+        ui.onNodeWithText("Открыть мою музыку").assertIsEnabled()
+        ui.runOnUiThread {
             // Synthetic VK-origin page; no real account or network response is used.
             original.stopLoading()
             original.loadDataWithBaseURL("https://vk.ru/audio", """
