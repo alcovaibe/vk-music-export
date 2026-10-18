@@ -35,6 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +56,9 @@ import java.time.LocalDate
 
 private val Ink = Color(0xFF202337)
 private val Accent = Color(0xFF5B4DE8)
+
+@Composable
+private fun musicIcon() = ImageVector.vectorResource(R.drawable.ic_music_note)
 
 class MainActivity : ComponentActivity() {
     private val model: MusicViewModel by viewModels()
@@ -96,10 +102,12 @@ private fun MusicApp(model: MusicViewModel) {
     var confirm by remember { mutableStateOf<String?>(null) }
     val web = remember { WebView(context).also(model::attach) }
     DisposableEffect(web) { onDispose { model.detach(web) } }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val closeVk = { model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
     val openVk = { browser = true; model.openLogin() }
     BackHandler(browser || selected != null || tab != 0) {
         when {
-            browser -> if (!model.back()) browser = false
+            browser -> if (!model.back()) closeVk()
             selected != null -> selected = null
             else -> tab = 0
         }
@@ -108,14 +116,14 @@ private fun MusicApp(model: MusicViewModel) {
         // Keep the same browser attached while the collection or export screen is visible.
         Column(if (browser) Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
             else Modifier.size(1.dp)) {
-            if (browser) BrowserHeader(model, onClose = { browser = false })
+            if (browser) BrowserHeader(model, onClose = closeVk)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 AndroidView(factory = { web }, modifier = Modifier.fillMaxSize())
                 popup?.let { child ->
                     AndroidView(factory = { child }, onRelease = { it.destroy() }, modifier = Modifier.fillMaxSize())
                 }
             }
-            if (browser) BrowserActions(model, onDone = { browser = false })
+            if (browser) BrowserActions(model, onDone = closeVk)
         }
         if (!browser) Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -123,7 +131,7 @@ private fun MusicApp(model: MusicViewModel) {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = RoundedCornerShape(12.dp), color = Accent, modifier = Modifier.size(38.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MusicNote, null, tint = Color.White, modifier = Modifier.size(23.dp)) }
+                        Box(contentAlignment = Alignment.Center) { Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(23.dp)) }
                     }
                     Spacer(Modifier.width(10.dp))
                     Text("VK Music Export", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -267,7 +275,7 @@ private fun WelcomeArtwork() {
             Column(Modifier.padding(24.dp)) {
                 Text("ТВОЯ МУЗЫКА ИЗ ВК", color = Color(0xFFC7C3DE), style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp)
                 Spacer(Modifier.height(20.dp))
-                Icon(Icons.Default.MusicNote, null, tint = Color.White, modifier = Modifier.size(38.dp))
+                Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(38.dp))
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("TXT", "CSV", "JSON").forEach { label ->
@@ -304,7 +312,7 @@ private fun SourceRow(title: String, subtitle: String, index: Int, onClick: () -
     Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(18.dp)) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(if (index < 0) Ink else colors[index % colors.size]), contentAlignment = Alignment.Center) {
-                Icon(if (index < 0) Icons.Default.MusicNote else if (index == 0) Icons.Default.Favorite else Icons.AutoMirrored.Filled.List,
+                Icon(if (index < 0) musicIcon() else if (index == 0) Icons.Default.Favorite else Icons.AutoMirrored.Filled.List,
                     null, tint = if (index < 0) Color.White else Ink, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(14.dp))

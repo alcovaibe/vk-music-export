@@ -101,6 +101,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     currentPage.value = PagePolicy.publicUrl(url.orEmpty())
                 }
                 CookieManager.getInstance().flush()
+                if (view === popup.value && PagePolicy.musicPage(url.orEmpty())) {
+                    closePopup()
+                    web?.loadUrl("https://vk.ru/audio")
+                }
                 if (view === web) {
                     loadWaiter?.complete(Unit)
                     if (!running.value && PagePolicy.musicPage(url.orEmpty())) verifySession()
@@ -358,6 +362,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 lastCode.value = "STOPPED"
             } catch (error: Exception) {
                 lastCode.value = (error as? ScanFailure)?.code ?: "SCAN_FAILED"
+                if (lastCode.value in setOf("NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA")) connected.value = false
                 message.value = when ((error as? ScanFailure)?.code) {
                     "NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA" -> "Войдите в ВК и откройте свою музыку. При необходимости пройдите проверку на странице."
                     "USER_ID_NOT_FOUND" -> "Не удалось определить владельца. Откройте «Мою музыку» или попробуйте версию для ПК; можно собрать текущий список отдельно."
