@@ -50,7 +50,7 @@ object WebDiagnostics {
             runCatching {
                 val m = WebSettingsCompat.getUserAgentMetadata(view.settings)
                 m.brandVersionList.forEach { b -> event(view,"configured_hint_brand",mapOf(
-                    "brand" to b.brand.takeIf { it in setOf("Chromium","Google Chrome","Android WebView") } ?: "other_brand",
+                    "brand" to (b.brand.takeIf { it in setOf("Chromium","Google Chrome","Android WebView") } ?: "other_brand"),
                     "major" to b.majorVersion.filter { it.isDigit() || it == '.' },
                     "full" to b.fullVersion.filter { it.isDigit() || it == '.' })) }
             }.onFailure { event(view,"hint_metadata_read_failed") }
