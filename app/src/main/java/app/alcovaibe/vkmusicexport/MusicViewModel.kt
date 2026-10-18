@@ -37,7 +37,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var scanJob: Job? = null
     private var loadWaiter: CompletableDeferred<Unit>? = null
     private val extractor by lazy { application.assets.open("vk-extractor.js").bufferedReader().use { it.readText() } }
-    private val popups = mutableSetOf<WebView>()
+    val popup = MutableStateFlow<WebView?>(null)
+    val connected = MutableStateFlow(false)
+    val browserError = MutableStateFlow<String?>(null)
+    private var sessionCheck: Job? = null
 
     init {
         viewModelScope.launch {
@@ -52,8 +55,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // The Activity owns the WebView. Navigation between app screens never destroys it.
     fun attach(view: WebView) {
         web = view
+        configure(view)
+    }
+
+    private fun configure(view: WebView) {
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -68,79 +76,148 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             displayZoomControls = false
         }
         CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(view, false)
+        // VK ID and VK are different sites. Both windows need the same cookie policy.
+        CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
         view.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val allowed = PagePolicy.allowed(request.url.toString())
-                if (!allowed && request.isForMainFrame) message.value = "Внешний переход заблокирован. Используйте вход на странице ВК."
+                if (!allowed && request.isForMainFrame) {
+                    browserError.value = "Этот переход не поддерживается. Выберите вход по номеру телефона на сайте ВК."
+                }
                 return !allowed
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                pageLoading.value = true
-                currentPage.value = PagePolicy.publicUrl(url.orEmpty())
+                if (view === activeWeb()) {
+                    pageLoading.value = true
+                    browserError.value = null
+                    currentPage.value = PagePolicy.publicUrl(url.orEmpty())
+                }
+                if (view === web && !running.value) {
+                    sessionCheck?.cancel()
+                    connected.value = false
+                    lastCode.value = "BROWSING"
+                }
             }
             override fun onPageFinished(view: WebView, url: String?) {
-                pageLoading.value = false
-                currentPage.value = PagePolicy.publicUrl(url.orEmpty())
+                if (view === activeWeb()) {
+                    pageLoading.value = false
+                    currentPage.value = PagePolicy.publicUrl(url.orEmpty())
+                }
                 CookieManager.getInstance().flush()
-                loadWaiter?.complete(Unit)
+                if (view === popup.value && PagePolicy.musicPage(url.orEmpty())) {
+                    closePopup()
+                    web?.loadUrl("https://vk.ru/audio")
+                }
+                if (view === web) {
+                    loadWaiter?.complete(Unit)
+                    if (!running.value && PagePolicy.musicPage(url.orEmpty())) verifySession()
+                }
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) {
                     pageLoading.value = false
-                    message.value = "Ошибка загрузки страницы (${error.errorCode})"
-                    loadWaiter?.completeExceptionally(ScanFailure("PAGE_LOAD_FAILED"))
+                    browserError.value = "Страница не загрузилась. Проверьте подключение и нажмите «Обновить»."
+                    if (view === web) loadWaiter?.completeExceptionally(ScanFailure("PAGE_LOAD_FAILED"))
                 }
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 handler.cancel()
-                message.value = "Не удалось проверить защищённое соединение ВК"
-                loadWaiter?.completeExceptionally(ScanFailure("TLS_FAILED"))
+                browserError.value = "Не удалось проверить защищённое соединение ВК."
+                if (view === web) loadWaiter?.completeExceptionally(ScanFailure("TLS_FAILED"))
             }
         }
         view.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
-                if (!isUserGesture) return false
+                if (!isUserGesture || popup.value != null || running.value) return false
                 val child = WebView(view.context)
-                popups.add(child)
-                child.webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(popup: WebView, request: WebResourceRequest): Boolean {
-                        if (PagePolicy.allowed(request.url.toString())) view.loadUrl(request.url.toString())
-                        else message.value = "Внешнее окно входа заблокировано"
-                        popups.remove(popup)
-                        popup.destroy()
-                        return true
-                    }
-                }
+                configure(child)
+                popup.value = child
+                currentPage.value = ""
+                pageLoading.value = true
                 (resultMsg.obj as WebView.WebViewTransport).webView = child
                 resultMsg.sendToTarget()
                 return true
             }
+            override fun onCloseWindow(window: WebView) {
+                if (window === popup.value) closePopup()
+            }
         }
-        view.loadUrl("https://vk.ru/audio")
+    }
+
+    fun activeWeb(): WebView? = popup.value ?: web
+
+    fun closePopup() {
+        val child = popup.value ?: return
+        popup.value = null
+        child.stopLoading()
+        // AndroidView.onRelease destroys the child after it leaves the view hierarchy.
+        currentPage.value = PagePolicy.publicUrl(web?.url.orEmpty())
+        pageLoading.value = web?.progress?.let { it < 100 } ?: false
+        verifySession()
     }
 
     fun detach(view: WebView) {
         stop()
-        if (web === view) web = null
+        sessionCheck?.cancel()
+        closePopup()
+        sessionCheck?.cancel()
+        if (web === view) {
+            web = null
+            connected.value = false
+            currentPage.value = ""
+            pageLoading.value = false
+        }
         loadWaiter?.cancel()
         loadWaiter = null
-        popups.forEach { it.destroy() }
-        popups.clear()
         view.stopLoading()
         view.webChromeClient = null
         view.webViewClient = WebViewClient()
         view.destroy()
     }
 
-    fun openMusic() { if (!running.value) web?.loadUrl("https://vk.ru/audio") }
-    fun openPlaylists() { if (!running.value) web?.loadUrl("https://vk.ru/audio?section=playlists") }
-    fun reload() { if (!running.value) web?.reload() }
+    fun openLogin() {
+        if (running.value) return
+        if (web?.url == null) web?.loadUrl("https://vk.ru/")
+    }
+    fun openMusic() { if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio") } }
+    fun openPlaylists() { if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio?section=playlists") } }
+    fun reload() { if (!running.value) activeWeb()?.reload() }
     fun back(): Boolean {
-        val view = web ?: return false
-        if (running.value || !view.canGoBack()) return false
-        view.goBack(); return true
+        val view = activeWeb() ?: return false
+        if (running.value) return false
+        if (view.canGoBack()) { view.goBack(); return true }
+        if (popup.value != null) { closePopup(); return true }
+        return false
+    }
+
+    /** Only reads the music-page identity and DOM scope, never credentials or cookies. */
+    fun verifySession() {
+        if (running.value || popup.value != null) return
+        sessionCheck?.cancel()
+        sessionCheck = viewModelScope.launch {
+            repeat(4) { attempt ->
+                delay(if (attempt == 0) 400 else 900)
+                try {
+                    val page = sample(false)
+                    connected.value = page.userId != null && (page.scoped || page.playlistsScoped)
+                    lastCode.value = when {
+                        connected.value -> "MUSIC_PAGE_READY"
+                        page.userId == null -> "USER_ID_NOT_FOUND"
+                        else -> "MUSIC_LAYOUT_NOT_FOUND"
+                    }
+                    if (connected.value) {
+                        message.value = "ВК подключён. Можно собрать коллекцию."
+                        return@launch
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    connected.value = false
+                    lastCode.value = (error as? ScanFailure)?.code ?: "SESSION_CHECK_FAILED"
+                }
+            }
+            message.value = "Откройте «Мою музыку» после входа. Если список не распознан, включите версию для ПК."
+        }
     }
     fun desktop(enabled: Boolean) {
         if (running.value) return
@@ -303,6 +380,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 lastCode.value = "STOPPED"
             } catch (error: Exception) {
                 lastCode.value = (error as? ScanFailure)?.code ?: "SCAN_FAILED"
+                if (lastCode.value in setOf("NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA")) connected.value = false
                 message.value = when ((error as? ScanFailure)?.code) {
                     "NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA" -> "Войдите в ВК и откройте свою музыку. При необходимости пройдите проверку на странице."
                     "USER_ID_NOT_FOUND" -> "Не удалось определить владельца. Откройте «Мою музыку» или попробуйте версию для ПК; можно собрать текущий список отдельно."
@@ -320,7 +398,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             catch (_: Exception) { message.value = "Не удалось очистить коллекцию" } }
     }
     fun diagnosticText(): String = buildString {
-        appendLine("VK Music Export 0.1.0")
+        appendLine("VK Music Export 0.2.0")
         appendLine("Android API: ${android.os.Build.VERSION.SDK_INT}")
         appendLine("WebView: ${WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"}")
         appendLine("Result: ${lastCode.value}")
@@ -329,7 +407,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun logout() {
         if (running.value) return
-        CookieManager.getInstance().removeAllCookies { CookieManager.getInstance().flush(); web?.loadUrl("https://vk.ru/audio") }
+        sessionCheck?.cancel()
+        connected.value = false
+        closePopup()
+        CookieManager.getInstance().removeAllCookies { CookieManager.getInstance().flush(); web?.loadUrl("https://vk.ru/") }
+        sessionCheck?.cancel()
         android.webkit.WebStorage.getInstance().deleteAllData()
         web?.clearCache(true)
         web?.clearHistory()

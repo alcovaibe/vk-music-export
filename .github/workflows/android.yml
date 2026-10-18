@@ -46,3 +46,42 @@ jobs:
             app/build/reports/
             app/build/test-results/
           retention-days: 7
+
+  interface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify interface on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash tools/interface-check.sh
+      - name: Upload interface screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-interface
+          path: |
+            interface-screenshots/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          retention-days: 7
