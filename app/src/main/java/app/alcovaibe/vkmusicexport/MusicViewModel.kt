@@ -32,6 +32,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val ready = MutableStateFlow(false)
     val currentPage = MutableStateFlow("")
     val pageLoading = MutableStateFlow(false)
+    val lastCode = MutableStateFlow("NOT_STARTED")
     private var web: WebView? = null
     private var scanJob: Job? = null
     private var loadWaiter: CompletableDeferred<Unit>? = null
@@ -228,7 +229,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         countMatched -> "COUNT_MATCHED_CONTENT_NOT_VERIFIED"
                         else -> "END_NOT_VERIFIED"
                     }
-                    update(source.copy(status = if (countMatched) ScanStatus.COUNT_MATCHED else ScanStatus.UNCONFIRMED, reason = reason))
+                    val partial = unparsed || (source.expectedCount != null && source.expectedCount != entries.size) || !lastBottom
+                    update(source.copy(status = if (countMatched) ScanStatus.COUNT_MATCHED else if (partial) ScanStatus.PARTIAL else ScanStatus.UNCONFIRMED, reason = reason))
                     return
                 }
                 delay(700)
@@ -246,6 +248,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun scan(all: Boolean) {
         if (running.value || !ready.value || web == null) return
         running.value = true
+        lastCode.value = "SCANNING"
         scanJob = viewModelScope.launch {
             val links = linkedMapOf<String, PlaylistLink>()
             try {
@@ -292,9 +295,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 message.value = "Сбор завершён. Проверьте статусы полноты в коллекции."
+                lastCode.value = "FINISHED_WITH_UNCONFIRMED_COMPLETENESS"
             } catch (cancelled: CancellationException) {
                 message.value = "Сбор остановлен. Полученные результаты сохранены."
+                lastCode.value = "STOPPED"
             } catch (error: Exception) {
+                lastCode.value = (error as? ScanFailure)?.code ?: "SCAN_FAILED"
                 message.value = when ((error as? ScanFailure)?.code) {
                     "NOT_MUSIC_PAGE", "LOGIN_OR_CAPTCHA" -> "Войдите в ВК и откройте свою музыку. При необходимости пройдите проверку на странице."
                     "USER_ID_NOT_FOUND" -> "Не удалось определить владельца. Откройте «Мою музыку» или попробуйте версию для ПК; можно собрать текущий список отдельно."
@@ -310,6 +316,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         if (running.value) return
         viewModelScope.launch { try { val empty = CollectionSnapshot(); store.save(empty); _snapshot.value = empty; message.value = "Коллекция очищена" }
             catch (_: Exception) { message.value = "Не удалось очистить коллекцию" } }
+    }
+    fun diagnosticText(): String = buildString {
+        appendLine("VK Music Export 0.1.0")
+        appendLine("Android API: ${android.os.Build.VERSION.SDK_INT}")
+        appendLine("WebView: ${WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"}")
+        appendLine("Result: ${lastCode.value}")
+        appendLine("Sources: ${_snapshot.value.sources.size}; entries: ${_snapshot.value.entriesCount}")
+        _snapshot.value.sources.groupingBy { it.reason }.eachCount().forEach { (reason, count) -> appendLine("$reason: $count") }
     }
     fun logout() {
         if (running.value) return

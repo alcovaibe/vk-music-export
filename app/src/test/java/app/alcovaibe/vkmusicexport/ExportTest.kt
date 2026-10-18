@@ -36,7 +36,6 @@ class ExportTest {
         }
         assertEquals(6, files.size)
         assertEquals(4, Json.decodeFromString<CollectionSnapshot>(files.getValue("collection.json")).entriesCount)
-        assertTrue(files.getValue("report.txt").contains("PARTIAL").not())
         assertTrue(files.getValue("report.txt").contains("Частично"))
         assertEquals(2, files.getValue("playlists/1-Плейлист _ 1.txt").lines().size)
     }

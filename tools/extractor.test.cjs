@@ -36,7 +36,7 @@ function fixture({host = 'vk.ru', path = '/audios123', rows = [], playlistLinks 
   const href = 'https://' + host + path;
   const env = {document: doc, window: {vk: {id: 123}}, location: {protocol: 'https:', hostname: host, pathname: path, href},
     URL, getComputedStyle: () => ({overflowY: 'visible'})};
-  return {run: () => JSON.parse(runInNewContext(script, env)), scroll};
+  return {run: (advance = true) => JSON.parse(runInNewContext(advance ? script : script.replace('})(true);', '})(false);'), env)), scroll};
 }
 
 test('extracts Unicode metadata and preserves repeated playlist entries', () => {
@@ -84,5 +84,7 @@ test('metadata never includes cookies or audio stream fields', () => {
 test('scrolls after capturing current rows; passive sample does not advance', () => {
   const f = fixture();
   f.run();
+  assert.equal(f.scroll.scrollTop, 420);
+  f.run(false);
   assert.equal(f.scroll.scrollTop, 420);
 });

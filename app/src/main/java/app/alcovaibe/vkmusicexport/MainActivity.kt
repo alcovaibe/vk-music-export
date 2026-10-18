@@ -2,6 +2,9 @@ package app.alcovaibe.vkmusicexport
 
 import android.app.Activity
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -57,6 +60,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MusicApp(model: MusicViewModel) {
+    val context = LocalContext.current
     val snapshot by model.snapshot.collectAsState()
     val running by model.running.collectAsState()
     val ready by model.ready.collectAsState()
@@ -104,6 +108,11 @@ private fun MusicApp(model: MusicViewModel) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Версия 0.1.0 • Android 8+\nПервый запуск проверяет работу входа и сбора на вашем устройстве.")
                 Text("Коллекция обрабатывается локально. Сбор выполняется при открытом приложении. После остановки результаты можно экспортировать.")
+                TextButton(onClick = {
+                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("VK Music Export diagnostics", model.diagnosticText()))
+                    model.message.value = "Диагностика скопирована: версии и счётчики, без названий треков и данных входа"
+                    confirm = null
+                }) { Text("Скопировать диагностику") }
                 TextButton(enabled = !running, onClick = { confirm = "logout" }) { Text("Выйти из ВК") }
                 TextButton(enabled = !running, onClick = { confirm = "clear" }) { Text("Очистить сохранённую коллекцию") }
             }
@@ -186,6 +195,7 @@ private fun BrowserScreen(model: MusicViewModel) {
     val page by model.currentPage.collectAsState()
     var desktop by rememberSaveable { mutableStateOf(false) }
     val web = remember { WebView(context).also { model.attach(it) } }
+    LaunchedEffect(web) { if (desktop) model.desktop(true) }
     DisposableEffect(web) { onDispose { model.detach(web) } }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
