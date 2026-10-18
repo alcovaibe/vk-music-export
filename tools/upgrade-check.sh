@@ -4,6 +4,7 @@ set -euo pipefail
 package=app.alcovaibe.vkmusicexport
 appdata=/data/user/0/$package
 mkdir -p upgrade-results
+trap 'result=$?; echo "Upgrade check failed at line $LINENO (exit $result)"; adb logcat -d -b crash > upgrade-results/crash.txt || true; exit "$result"' ERR
 adb root
 adb wait-for-device
 adb shell wm size 720x1600
@@ -12,7 +13,7 @@ adb shell am force-stop com.android.launcher3
 adb install upgrade-input/previous.apk
 adb shell am start -W -n "$package/.MainActivity"
 adb shell am force-stop "$package"
-uid=$(adb shell dumpsys package "$package" | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')
+uid=$(adb shell stat -c %u "$appdata" | tr -d '\r')
 [[ "$uid" =~ ^[0-9]+$ ]]
 adb push tools/fixtures/upgrade-collection.json /data/local/tmp/upgrade-collection.json
 adb shell "mkdir -p $appdata/files; cp /data/local/tmp/upgrade-collection.json $appdata/files/collection.json; chown $uid:$uid $appdata/files/collection.json; chmod 600 $appdata/files/collection.json; restorecon -RF $appdata"
