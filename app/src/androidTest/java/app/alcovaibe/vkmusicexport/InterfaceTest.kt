@@ -27,7 +27,7 @@ import android.os.ParcelFileDescriptor
 class InterfaceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
 
-    private fun dismissLauncherDialog() {
+    private fun dismissEmulatorDialog() {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val root = automation.rootInActiveWindow ?: return
         val queue = java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
@@ -37,16 +37,19 @@ class InterfaceTest {
             val node = queue.removeFirst(); nodes.add(node)
             repeat(node.childCount) { node.getChild(it)?.let(queue::add) }
         }
-        if (nodes.none { it.text?.toString()?.let { text -> text.contains("Quickstep") && text.contains("responding") } == true }) return
-        nodes.firstOrNull { it.text?.toString() == "Close app" }?.let { label ->
+        val caption = nodes.mapNotNull { it.text?.toString() }.firstOrNull {
+            it.contains("responding") && (it.contains("Quickstep") || it.contains("System UI"))
+        } ?: return
+        val action = if (caption.contains("System UI")) "Wait" else "Close app"
+        nodes.firstOrNull { it.text?.toString() == action }?.let { label ->
             val target = if (label.isClickable) label else label.parent
             check(target?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK) == true)
-            android.util.Log.i("VKMusicTest", "Closed emulator Quickstep ANR. App-under-test ANRs are never dismissed.")
+            android.util.Log.i("VKMusicTest", "Dismissed known emulator system dialog. App-under-test ANRs are never dismissed.")
         }
     }
 
     private fun capture(name: String) {
-        dismissLauncherDialog()
+        dismissEmulatorDialog()
         ui.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()
