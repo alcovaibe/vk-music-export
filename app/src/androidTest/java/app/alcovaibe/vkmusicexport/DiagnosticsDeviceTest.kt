@@ -23,14 +23,26 @@ class DiagnosticsDeviceTest {
         val worker=Executors.newSingleThreadExecutor()
         return try { worker.submit<String>{Diagnostics.export(previous)}.get(15,TimeUnit.SECONDS) } finally {worker.shutdown()}
     }
+    private fun dismissFrameworkDialog() {
+        val root=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow ?: return
+        val nodes=mutableListOf<android.view.accessibility.AccessibilityNodeInfo>()
+        val queue=java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>();queue.add(root)
+        while(queue.isNotEmpty()) {val node=queue.removeFirst();nodes.add(node);repeat(node.childCount){node.getChild(it)?.let(queue::add)}}
+        val allowed=listOf("System UI isn't responding","Process system isn't responding","Quickstep isn't responding")
+        if(nodes.none{it.text?.toString() in allowed}) return // App ANRs always fail, never dismiss them.
+        var button=nodes.firstOrNull{it.text?.toString()=="Wait"} ?: return
+        while(!button.isClickable) button=button.parent ?: return
+        button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+    }
     @Test fun nativeCopyAndPrivateFileProviderExport() {
         ui.onNodeWithContentDescription("Настройки").performClick()
         ui.onNodeWithText("Копировать лог").performClick()
-        ui.waitUntil(15_000) {
+        ui.waitUntil(25_000) {
+            dismissFrameworkDialog()
             var available=false
             ui.runOnUiThread {
                 val clipboard=ui.activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                available=clipboard.primaryClip?.getItemAt(0)?.text?.toString()?.startsWith("{\"schema\"")==true
+                available=runCatching { Json.parseToJsonElement(clipboard.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()).jsonObject["schema"]?.jsonPrimitive?.int==1 }.getOrDefault(false)
             }
             available
         }
