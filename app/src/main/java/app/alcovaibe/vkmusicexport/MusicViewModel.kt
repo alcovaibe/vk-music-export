@@ -11,7 +11,8 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.webkit.*
+import app.alcovaibe.vkmusicexport.diagnostics.*
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.alcovaibe.vkmusicexport.data.*
@@ -40,11 +41,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val extractor by lazy { application.assets.open("vk-extractor.js").bufferedReader().use { it.readText() } }
     private val mobileUi by lazy { application.assets.open("vk-mobile-ui.js").bufferedReader().use { it.readText() } }
     val popup = MutableStateFlow<WebView?>(null)
+    val browserGeneration = MutableStateFlow(0)
     val connected = MutableStateFlow(false)
     val browserError = MutableStateFlow<String?>(null)
     private var sessionCheck: Job? = null
 
     init {
+        listOf("loading" to pageLoading, "connected" to connected, "running" to running, "ready" to ready, "parser_code" to lastCode).forEach { (name, flow) ->
+            viewModelScope.launch { flow.collect { value -> Diagnostics.event("state_changed", mapOf("state" to name, "value" to (if (value is String) Privacy.code(value) else value))) } }
+        }
         viewModelScope.launch {
             try {
                 val loaded = store.read()
@@ -81,8 +86,42 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         CookieManager.getInstance().setAcceptCookie(true)
         // VK ID and VK are different sites. Both windows need the same cookie policy.
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
+        WebDiagnostics.configure(view)
+        val windowId = WebDiagnostics.windowId(view)
         view.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest): WebResourceResponse? {
+                WebDiagnostics.request(windowId, request)
+                return null
+            }
+            override fun onReceivedHttpError(v: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                WebDiagnostics.event(v, "http_error", mapOf("url" to Privacy.url(request.url.toString()), "status" to response.statusCode, "main_frame" to request.isForMainFrame))
+            }
+            override fun doUpdateVisitedHistory(v: WebView, url: String?, isReload: Boolean) {
+                WebDiagnostics.event(v,"history_updated",mapOf("url" to Privacy.url(url),"reload" to isReload))
+            }
+            override fun onFormResubmission(v: WebView, dontResend: Message, resend: Message) {
+                WebDiagnostics.event(v,"form_resubmission",mapOf("decision" to "platform_default_do_not_resend"))
+                super.onFormResubmission(v,dontResend,resend)
+            }
+            override fun onRenderProcessGone(v: WebView, detail: RenderProcessGoneDetail): Boolean {
+                WebDiagnostics.event(v,"renderer_gone",mapOf("crashed" to detail.didCrash(),"priority" to detail.rendererPriorityAtExit(),"decision" to "remove_destroy_keep_native_diagnostics"))
+                sessionCheck?.cancel()
+                stop()
+                if (v === popup.value) popup.value = null
+                if (v === web) { web = null; browserGeneration.value++ }
+                loadWaiter?.completeExceptionally(ScanFailure("BROWSER_CLOSED"))
+                connected.value = false; pageLoading.value = false
+                browserError.value = "Процесс страницы завершился. Скопируйте лог; затем обновите страницу."
+                (v.parent as? android.view.ViewGroup)?.removeView(v)
+                WebDiagnostics.destroyed(v)
+                v.destroy()
+                return true
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                WebDiagnostics.event(view,"navigation_decision",mapOf("url" to Privacy.url(request.url.toString()),
+                    "main_frame" to request.isForMainFrame,"gesture" to request.hasGesture(),"redirect" to request.isRedirect,
+                    "method" to request.method.takeIf { it in setOf("GET","POST","HEAD") },
+                    "allowed" to (!request.isForMainFrame || PagePolicy.allowed(request.url.toString()))))
                 if (!request.isForMainFrame) return false
                 val allowed = PagePolicy.allowed(request.url.toString())
                 if (!allowed && view === activeWeb()) {
@@ -93,6 +132,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 return !allowed
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                WebDiagnostics.started(view,url)
                 if (view === activeWeb()) {
                     pageLoading.value = true
                     browserError.value = null
@@ -105,9 +145,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             override fun onPageCommitVisible(view: WebView, url: String?) {
+                WebDiagnostics.commit(view,url)
                 applyMobileUi(view, url)
             }
             override fun onPageFinished(view: WebView, url: String?) {
+                WebDiagnostics.finished(view,url)
                 applyMobileUi(view, url)
                 if (view === activeWeb()) {
                     pageLoading.value = false
@@ -124,6 +166,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                WebDiagnostics.event(view,"network_error",mapOf("url" to Privacy.url(request.url.toString()),"code" to error.errorCode,"main_frame" to request.isForMainFrame))
                 if (request.isForMainFrame) {
                     pageLoading.value = false
                     lastCode.value = "PAGE_LOAD_FAILED"
@@ -132,6 +175,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                WebDiagnostics.event(view,"tls_error",mapOf("url" to Privacy.url(error.url),"primary_error" to error.primaryError,"decision" to "cancel"))
                 handler.cancel()
                 pageLoading.value = false
                 lastCode.value = "TLS_FAILED"
@@ -140,7 +184,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         view.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(v: WebView, progress: Int) { WebDiagnostics.event(v,"load_progress",mapOf("percent" to progress)) }
+            override fun onConsoleMessage(m: ConsoleMessage): Boolean { WebDiagnostics.console(view,m); return true }
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                WebDiagnostics.event(view,"window_create_requested",mapOf("dialog" to isDialog,"gesture" to isUserGesture,
+                    "existing_popup" to (popup.value != null),"parser_running" to running.value,
+                    "accepted" to (isUserGesture && popup.value == null && !running.value)))
                 if (!isUserGesture || popup.value != null || running.value) return false
                 val child = WebView(view.context)
                 configure(child)
@@ -152,6 +201,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 return true
             }
             override fun onCloseWindow(window: WebView) {
+                WebDiagnostics.event(window,"window_close_requested")
                 if (window === popup.value) closePopup()
             }
         }
@@ -165,6 +215,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closePopup() {
         val child = popup.value ?: return
+        WebDiagnostics.event(child,"popup_closed")
         popup.value = null
         child.stopLoading()
         // AndroidView.onRelease destroys the child after it leaves the view hierarchy.
@@ -174,6 +225,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun detach(view: WebView) {
+        if (!WebDiagnostics.alive(view)) return
         stop()
         sessionCheck?.cancel()
         closePopup()
@@ -189,17 +241,18 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         view.stopLoading()
         view.webChromeClient = null
         view.webViewClient = WebViewClient()
+        WebDiagnostics.destroyed(view)
         view.destroy()
     }
 
-    fun openLogin() {
+    fun openLogin() { Diagnostics.button("openLogin");
         if (running.value) return
         if (web?.url == null) web?.loadUrl("https://vk.ru/")
     }
-    fun openMusic() { if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio") } }
-    fun openPlaylists() { if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio?section=playlists") } }
-    fun reload() { if (!running.value) activeWeb()?.reload() }
-    fun back(): Boolean {
+    fun openMusic() { Diagnostics.button("openMusic"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio") } }
+    fun openPlaylists() { Diagnostics.button("openPlaylists"); if (!running.value) { closePopup(); web?.loadUrl("https://vk.ru/audio?section=playlists") } }
+    fun reload() { Diagnostics.button("reload"); if (!running.value) activeWeb()?.reload() }
+    fun back(): Boolean { Diagnostics.button("back");
         val view = activeWeb() ?: return false
         if (running.value) return false
         if (view.canGoBack()) { view.goBack(); return true }
@@ -208,7 +261,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Only reads the music-page identity and DOM scope, never credentials or cookies. */
-    fun verifySession() {
+    fun verifySession() { Diagnostics.button("verifySession");
         if (running.value || popup.value != null) return
         sessionCheck?.cancel()
         sessionCheck = viewModelScope.launch {
@@ -235,20 +288,25 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             message.value = "Список музыки не распознан. Откройте «Мою музыку» и повторите проверку."
         }
     }
-    fun stop() { scanJob?.cancel() }
+    fun stop() { Diagnostics.button("stop"); scanJob?.cancel() }
 
     private suspend fun sample(advance: Boolean = true): PageSample {
         val view = web ?: throw ScanFailure("BROWSER_CLOSED")
         if (!PagePolicy.musicPage(view.url.orEmpty())) throw ScanFailure("NOT_MUSIC_PAGE")
-        val raw = withTimeout(15_000) {
+        Diagnostics.event("parser_sample_started", mapOf("advance" to advance))
+        val raw = try { withTimeout(15_000) {
             suspendCancellableCoroutine<String> { continuation ->
                 view.evaluateJavascript(if (advance) extractor else extractor.replace("})(true);", "})(false);")) { result -> if (continuation.isActive) continuation.resume(result ?: "null") }
             }
+        }
+        } catch (e: TimeoutCancellationException) {
+            Diagnostics.event("parser_javascript_timeout",mapOf("detector" to "evaluateJavascript_callback_timeout_15s")); throw e
         }
         if (raw.length > 4_000_000) throw ScanFailure("PAGE_TOO_LARGE")
         val decoded = JSONTokener(raw).nextValue() as? String ?: throw ScanFailure("EXTRACTION_FAILED")
         val page = try { store.json.decodeFromString<PageSample>(decoded) } catch (_: Exception) { throw ScanFailure("UNSUPPORTED_PAGE") }
         page.error?.let { throw ScanFailure(it) }
+        Diagnostics.event("parser_sample_result",mapOf("tracks" to page.tracks.size,"scoped" to page.scoped,"playlists_scoped" to page.playlistsScoped,"has_user_id" to (page.userId != null)))
         return page
     }
 
@@ -258,6 +316,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         val waiter = CompletableDeferred<Unit>()
         loadWaiter = waiter
         try {
+            WebDiagnostics.event(view,"app_load_url",mapOf("url" to Privacy.url(url)))
             view.loadUrl(url)
             withTimeout(40_000) { waiter.await() }
             delay(1200)
@@ -332,6 +391,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun scan(all: Boolean) {
+        Diagnostics.button(if (all) "scan_all" else "scan_current")
         if (running.value || !ready.value || web == null) return
         running.value = true
         lastCode.value = "SCANNING"
@@ -400,23 +460,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun clearCollection() {
+    fun clearCollection() { Diagnostics.button("clearCollection");
         if (running.value) return
         viewModelScope.launch { try { val empty = CollectionSnapshot(); store.save(empty); _snapshot.value = empty; message.value = "Коллекция очищена" }
             catch (_: Exception) { message.value = "Не удалось очистить коллекцию" } }
     }
-    fun diagnosticText(): String = buildString {
-        appendLine("VK Music Export ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-        appendLine("Android API: ${android.os.Build.VERSION.SDK_INT}")
-        appendLine("WebView: ${WebView.getCurrentWebViewPackage()?.versionName ?: "unknown"}")
-        appendLine("Browser profile: Chrome mobile compatibility")
-        appendLine("UA: ${web?.settings?.userAgentString ?: "not initialized"}")
-        appendLine("Page host: ${runCatching { java.net.URI(currentPage.value).host }.getOrNull() ?: "none"}")
-        appendLine("Result: ${lastCode.value}")
-        appendLine("Sources: ${_snapshot.value.sources.size}; entries: ${_snapshot.value.entriesCount}")
-        _snapshot.value.sources.groupingBy { it.reason }.eachCount().forEach { (reason, count) -> appendLine("$reason: $count") }
-    }
-    fun logout() {
+    fun logout() { Diagnostics.button("logout");
         if (running.value) return
         sessionCheck?.cancel()
         connected.value = false

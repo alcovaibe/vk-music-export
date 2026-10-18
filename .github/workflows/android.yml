@@ -117,7 +117,10 @@ jobs:
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
         run: python3 tools/prepare-signing.py
-      - name: Build and verify two signed release APKs
+      - name: Build release and verify against installed 0.3.2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: bash tools/build-release.sh
       - name: Enable KVM
         run: |

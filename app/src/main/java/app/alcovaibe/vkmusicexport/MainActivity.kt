@@ -1,5 +1,6 @@
 package app.alcovaibe.vkmusicexport
 
+import app.alcovaibe.vkmusicexport.diagnostics.*
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -119,10 +120,11 @@ private fun MusicApp(model: MusicViewModel) {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var confirm by remember { mutableStateOf<String?>(null) }
-    val web = remember { WebView(context).also(model::attach) }
+    val generation by model.browserGeneration.collectAsState()
+    val web = remember(generation) { WebView(context).also(model::attach) }
     DisposableEffect(web) { onDispose { model.detach(web) } }
     val keyboard = LocalSoftwareKeyboardController.current
-    val closeVk = { model.stop(); model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
+    val closeVk = { Diagnostics.button("close_browser"); model.stop(); model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
     val openVk = { browser = true; model.openLogin() }
     BackHandler(browser || selected != null || tab != 0) {
         when {
@@ -140,7 +142,7 @@ private fun MusicApp(model: MusicViewModel) {
                     it.visibility = if (browser && popup == null) View.VISIBLE else View.INVISIBLE
                 })
                 popup?.let { child ->
-                    AndroidView(factory = { child }, onRelease = { it.destroy() }, modifier = Modifier.fillMaxSize(),
+                    AndroidView(factory = { child }, onRelease = { if(WebDiagnostics.alive(it)) { WebDiagnostics.destroyed(it); it.destroy() } }, modifier = Modifier.fillMaxSize(),
                         update = { it.visibility = if (browser) View.VISIBLE else View.INVISIBLE })
                 }
             }
@@ -156,13 +158,13 @@ private fun MusicApp(model: MusicViewModel) {
                     }
                     Spacer(Modifier.width(10.dp))
                     Text("VK Music Export", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { confirm = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
+                    IconButton(onClick = { Diagnostics.button("settings"); confirm = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
                 }
             },
             bottomBar = {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                     listOf("Коллекция", "Экспорт").forEachIndexed { index, label ->
-                        NavigationBarItem(selected = tab == index, onClick = { tab = index; selected = null },
+                        NavigationBarItem(selected = tab == index, onClick = { Diagnostics.button(if(index == 0) "collection_tab" else "export_tab"); tab = index; selected = null },
                             icon = { Icon(if (index == 0) Icons.Default.Home else Icons.Default.Share, null) }, label = { Text(label) },
                             colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant))
                     }
@@ -187,12 +189,7 @@ private fun MusicApp(model: MusicViewModel) {
             Text("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", fontWeight = FontWeight.SemiBold)
             Text("Названия, исполнители и плейлисты сохраняются на телефоне. Для сбора оставьте приложение открытым.", style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { confirm = null; openVk() }) { Text(if (connected) "Открыть ВКонтакте" else "Подключить ВКонтакте") }
-            TextButton(onClick = {
-                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(
-                    ClipData.newPlainText("VK Music Export diagnostics", model.diagnosticText()))
-                android.widget.Toast.makeText(context, "Диагностика скопирована", android.widget.Toast.LENGTH_SHORT).show()
-                confirm = null
-            }) { Text("Скопировать диагностику") }
+            DiagnosticControls()
             TextButton(onClick = {
                 val updates = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest"))
                 try {
@@ -372,6 +369,7 @@ private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit) {
             }
             IconButton(enabled = !running, onClick = model::reload) { Icon(Icons.Default.Refresh, "Обновить страницу") }
         }
+        DiagnosticControls(compact = true)
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) else HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         error?.let { Text(it, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(14.dp),
             color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall) }
@@ -475,6 +473,7 @@ private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
         }
         item {
             Button(enabled = ready && snapshot.sources.isNotEmpty() && !exporting, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(16.dp), onClick = {
+                Diagnostics.button("export_music")
                 val format = ExportFormat.valueOf(formatName)
                 launcher.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = format.mime
