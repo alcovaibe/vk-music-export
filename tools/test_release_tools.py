@@ -77,6 +77,34 @@ class EmulatorDialogTest(unittest.TestCase):
         self.assertEqual(self.dialog("Quickstep isn't responding", 'Close app'), '20 30')
 
 class UpgradeDeviceGuardTest(unittest.TestCase):
+    def test_missing_accessibility_snapshot_retries_without_accepting_stale_xml(self):
+        script=(TOOLS/'upgrade-check.sh').read_text()
+        function=script[script.index('assert_visible() {'):script.index('\nadb shell am start -W',script.index('assert_visible() {'))]
+        with tempfile.TemporaryDirectory() as td:
+            directory=Path(td)
+            (directory/'upgrade-results').mkdir();(directory/'tools').mkdir()
+            (directory/'tools/emulator-dialog.py').write_text((TOOLS/'emulator-dialog.py').read_text())
+            # A stale successful snapshot must not mask failure of the first dump.
+            (directory/'upgrade-results/before.xml').write_text('<hierarchy><node text="UpgradeCheckFixture"/></hierarchy>')
+            adb=directory/'adb'
+            adb.write_text('''#!/bin/bash
+case "$*" in
+ "shell rm -f /sdcard/upgrade-window.xml") rm -f remote.xml;;
+ "shell uiautomator dump /sdcard/upgrade-window.xml")
+   n=$(cat attempts 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > attempts
+   if [[ "$n" == 1 ]]; then echo 'ERROR: null root node' >&2; else echo '<hierarchy><node text="UpgradeCheckFixture"/></hierarchy>' > remote.xml; fi;;
+ "pull /sdcard/upgrade-window.xml upgrade-results/before.xml") cp remote.xml upgrade-results/before.xml;;
+ *) exit 3;;
+esac
+''')
+            adb.chmod(0o755)
+            sleep=directory/'sleep';sleep.write_text('#!/bin/bash\nexit 0\n');sleep.chmod(0o755)
+            result=subprocess.run(['bash','-c','set -euo pipefail\n'+function+'\nassert_visible before'],cwd=td,
+                env=dict(os.environ,PATH=td+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual((directory/'attempts').read_text().strip(),'2')
+            self.assertIn('UI snapshot unavailable',result.stdout)
+
     def test_physical_device_is_rejected_before_root_or_install(self):
         with tempfile.TemporaryDirectory() as td:
             directory = Path(td)

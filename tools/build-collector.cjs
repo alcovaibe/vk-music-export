@@ -16,4 +16,12 @@ const output='app/src/main/assets/vk-chrome-bookmarklet.js';
   if(fs.readFileSync(output,'utf8')!==code||fs.readFileSync(output.replace('.js','.url'),'utf8')!==url)throw Error('Run npm ci --prefix tools && node tools/build-collector.cjs');
  }else {fs.writeFileSync(output,code);fs.writeFileSync(output.replace('.js','.url'),url)}
  console.log('Bookmark URL: '+url.length+' / 4950 characters');
+ const probe=await minify(fs.readFileSync('tools/layout-probe.js','utf8'),{ecma:2020,compress:{passes:3},mangle:true,format:{comments:false,ascii_only:true}});
+ const probeCode=probe.code+';void 0/*VKM_LAYOUT_1*/';
+ const probeUrl=new URL('javascript:'+probeCode.replaceAll('%','%25').replaceAll('#','%23').replaceAll('?','%3F')).href;
+ if(probeUrl.length>4950||/[^\x20-\x7e]/.test(probeUrl))throw Error('Layout bookmark exceeds safe input format');
+ const probePath='app/src/main/assets/vk-layout-bookmarklet.url';
+ if(process.argv.includes('--check')) {if(fs.readFileSync(probePath,'utf8')!==probeUrl)throw Error('Regenerate layout bookmark');}
+ else fs.writeFileSync(probePath,probeUrl);
+ console.log('Layout URL: '+probeUrl.length+' / 4950 characters');
 })().catch(e=>{console.error(e);process.exitCode=1});

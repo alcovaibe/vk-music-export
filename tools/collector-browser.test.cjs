@@ -7,7 +7,7 @@ function decoded(raw){
  return {source:{id:p[1],title:p[2],tracks:p[4].map((t,i)=>({key:t[0]===null?'capture:'+i:'pos:'+t[0],title:t[1],artist:t[2],vkId:t[3]}))},playlists:p[5].map(t=>({id:t[0],title:t[1]})),capture:{reason:reasons[p[6][0]]}};
 }
 const row=(n)=>`<div class="audio_row" data-full-id="1_1" data-index="${n}"><b class="audio_row__title">Песня 🎵</b><span class="audio_row__performer">Артист</span></div>`;
-async function setup(html,url='https://vk.ru/audio',failInit=false) {
+async function setup(html,url='https://vk.ru/audio',failInit=false,code=urlCode,panelId='vkm-export-panel') {
  const browser=await chromium.launch({executablePath:process.env.CHROME_BIN||'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({acceptDownloads:true});
  await page.route('**/*',r=>r.fulfill({status:200,contentType:'text/html',headers:{'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'"},body:'<meta charset="UTF-8">'+html}));
@@ -26,11 +26,11 @@ async function setup(html,url='https://vk.ru/audio',failInit=false) {
  const dialogs=[];let resolveFailure;
  const failure=new Promise(r=>resolveFailure=r);
  page.on('dialog',async d=>{dialogs.push(d.message());await d.accept();if(d.message()==='INIT')resolveFailure()});
- assert.ok(urlCode.length<=4950);
- assert.equal(await page.evaluate(u=>{const a=document.createElement('a');a.href=u;return a.href},urlCode),urlCode);
+ assert.ok(code.length<=4950);
+ assert.equal(await page.evaluate(u=>{const a=document.createElement('a');a.href=u;return a.href},code),code);
  const client=await page.context().newCDPSession(page);
- await client.send('Page.navigate',{url:urlCode,transitionType:'auto_bookmark'});
- if(failInit)await failure;else await page.locator('#vkm-export-panel').waitFor();
+ await client.send('Page.navigate',{url:code,transitionType:'auto_bookmark'});
+ if(failInit)await failure;else await page.locator('#'+panelId).waitFor();
  return {browser,page,dialogs};
 }
 test('bookmark launch acknowledges version and reports initialization failure without exception contents',async()=>{
@@ -97,4 +97,45 @@ test('modern VK header scopes its rows and excludes a recommendation section',as
 test('ambiguous modern headers do not enable a whole-page capture',async()=>{
  const {browser,page}=await setup('<section><h2 data-testid="MusicPlaylistTracks_Header">1</h2><div class="vkitAudioRow__root"></div></section><h2 data-testid="MusicPlaylistTracks_Header">2</h2>');
  try {await page.getByRole('button',{name:'Сбор',exact:true}).click();await page.waitForFunction(()=>document.getElementById('vkm-export-panel').textContent.includes('E6'));assert.equal(await page.getByRole('button',{name:'JSON',exact:true}).isEnabled(),false)}finally{await browser.close()}
+});
+
+test('layout probe downloads only fixed vocabulary counts and bounded ancestry on a mobile playlist',async()=>{
+ const code=fs.readFileSync('app/src/main/assets/vk-layout-bookmarklet.url','utf8');
+ const html=`<input type="tel" value="PRIVATE_PHONE"><input type="password" value="PRIVATE_PASSWORD"><script>PRIVATE_SCRIPT</script>
+ <main id="PRIVATE_ID" class="music_PRIVATE_TOKEN"><section id="au_search_items">
+ <div class="audio_item audio_PRIVATE_TOKEN" data-audio="PRIVATE_SESSION" data-index="PRIVATE_VALUE"><a class="ai_body" href="https://example.com/PRIVATE_URL"><b class="ai_title">PRIVATE_TITLE</b><span class="ai_artist">PRIVATE_ARTIST</span></a></div>
+ </section></main><iframe srcdoc="PRIVATE_HTML"></iframe>`;
+ const {browser,page,dialogs}=await setup(html,'https://m.vk.ru/audio?act=audio_playlist123_456_PRIVATE&access_token=PRIVATE_TOKEN',false,code,'vkm-layout-panel');
+ try {
+  assert.equal(dialogs[0],'VKM layout 1');
+  // Unlike the collector, the probe must not read text/HTML/form values at all.
+  await page.evaluate(()=>{
+   for(const [proto,key] of [[Node.prototype,'textContent'],[Element.prototype,'innerHTML'],[Element.prototype,'outerHTML'],[HTMLInputElement.prototype,'value']]) {
+    const d=Object.getOwnPropertyDescriptor(proto,key);Object.defineProperty(proto,key,{...d,get(){throw Error('Private content read forbidden')}});
+   }
+  });
+  const dp=page.waitForEvent('download');await page.locator('#vkm-layout-panel button').first().click();
+  const download=await dp,raw=fs.readFileSync(await download.path(),'utf8'),p=JSON.parse(raw);
+  assert.equal(download.suggestedFilename(),'vk-layout.json');assert.ok(Buffer.byteLength(raw)<=100000);
+  assert.equal(p.kind,'vkm-layout');assert.equal(p.schema,1);assert.equal(p.host_kind,'mobile');assert.equal(p.route_kind,'playlist');
+  assert.equal(p.counts.mobile_search,1);assert.equal(p.counts.mobile_rows,1);assert.equal(p.counts.mobile_title,1);assert.equal(p.counts.mobile_artist,1);
+  assert.equal(p.counts.legacy_root,0);assert.equal(p.counts.modern_header,0);assert.equal(p.counts.frames,1);
+  assert.ok(p.chains.length<=12 && p.chains.every(c=>c.length<=8));
+  assert.ok(p.chains.some(c=>c.some(n=>n.features.includes('mobile_search'))));
+  assert.equal(raw.includes('PRIVATE'),false);assert.equal(raw.includes('https:'),false);assert.equal(raw.includes('123'),false);
+  assert.deepEqual(Object.keys(p).sort(),'kind schema probe_version collector_version host_kind route_kind ready_state counts tags chains limited sample_limit ancestor_limit scope'.split(' ').sort());
+  for(const c of p.chains)for(const n of c){assert.deepEqual(Object.keys(n).sort(),['children','features','tag']);assert.ok(n.features.every(k=>Object.hasOwn(p.counts,k)))}
+ }finally{await browser.close()}
+});
+
+test('layout probe marks capped counts and bounds samples on an otherwise unrecognized page',async()=>{
+ const code=fs.readFileSync('app/src/main/assets/vk-layout-bookmarklet.url','utf8');
+ const {browser,page}=await setup('<section>'+Array(10001).fill('<div class="audio_UNKNOWN_PRIVATE">PRIVATE</div>').join('')+'</section>','https://m.vk.ru/audios123?access_token=PRIVATE_TOKEN',false,code,'vkm-layout-panel');
+ try {
+  const dp=page.waitForEvent('download');await page.getByRole('button',{name:'Скачать диагностику',exact:true}).click();
+  const raw=fs.readFileSync(await(await dp).path(),'utf8'),p=JSON.parse(raw);
+  assert.equal(p.counts.audio_class,10000);assert.equal(p.limited,true);assert.equal(p.route_kind,'user_music');
+  assert.equal(p.counts.legacy_root,0);assert.equal(p.counts.modern_header,0);
+  assert.ok(p.chains.length<=12&&p.chains.every(c=>c.length<=8));assert.equal(raw.includes('PRIVATE'),false);
+ }finally{await browser.close()}
 });

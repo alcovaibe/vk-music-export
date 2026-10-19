@@ -57,6 +57,26 @@ class ImportDeviceTest {
             }
             copied
         }
+        ui.onNodeWithText("Копировать диагностику разметки").performScrollTo().performClick()
+        ui.waitUntil(10000) {
+            var copied=false
+            ui.runOnUiThread {
+                val clip=(ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                if(clip.endsWith("/*VKM_LAYOUT_1*/")) {
+                    val field=android.widget.EditText(ui.activity).apply {
+                        inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+                        setSingleLine(true)
+                    }
+                    field.setText(clip)
+                    assertEquals(clip,field.text.toString())
+                    assertEquals(clip,android.net.Uri.parse(field.text.toString()).toString())
+                    assertEquals(app.alcovaibe.vkmusicexport.vk.CollectorBookmark.layoutCode(ui.activity),clip)
+                    assertTrue(clip.length<=4950 && clip.all {it.code in 32..126})
+                    copied=true
+                }
+            }
+            copied
+        }
         ui.onNodeWithText("Закрыть").performClick()
         val file=File(ui.activity.cacheDir,"diagnostic-export/import-fixture.json").apply{parentFile!!.mkdirs()}
         val raw=InstrumentationRegistry.getInstrumentation().context.assets.open("chrome-capture.json").bufferedReader().use{it.readText()}

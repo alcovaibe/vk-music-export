@@ -37,3 +37,9 @@ test('long overlapping samples retain all repeated entries in linear merge',()=>
  const b=a.slice(9000).concat([song('x','New')]);
  const result=merge(a,b);assert.equal(result.length,10001);assert.equal(result.at(-1)[1],'New');
 });
+test('layout bookmark is below the Android limit, stable through URL serialization and valid JS',()=>{
+ const url=require('node:fs').readFileSync('app/src/main/assets/vk-layout-bookmarklet.url','utf8');
+ assert.ok(url.length<=4950);assert.match(url,/\/\*VKM_LAYOUT_1\*\/$/);assert.equal(new URL(url).href,url);
+ assert.ok([...url].every(c=>c.charCodeAt(0)>=32&&c.charCodeAt(0)<=126));
+ new (require('node:vm').Script)(decodeURIComponent(url.slice(11)));
+});

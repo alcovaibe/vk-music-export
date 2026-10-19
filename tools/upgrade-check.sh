@@ -30,8 +30,15 @@ assert_collection() {
 assert_visible() {
   # Give Compose/WebView startup time, but fail if the saved source never appears.
   for attempt in $(seq 1 10); do
-    adb shell uiautomator dump /sdcard/upgrade-window.xml >/dev/null
-    adb pull /sdcard/upgrade-window.xml "upgrade-results/$1.xml" >/dev/null
+    # A fresh AVD can temporarily return a null accessibility root. Never read a stale dump.
+    adb shell rm -f /sdcard/upgrade-window.xml
+    rm -f "upgrade-results/$1.xml"
+    if ! adb shell uiautomator dump /sdcard/upgrade-window.xml >"upgrade-results/$1-dump.txt" 2>&1 ||
+       ! adb pull /sdcard/upgrade-window.xml "upgrade-results/$1.xml" >/dev/null 2>&1; then
+      echo "UI snapshot unavailable (attempt $attempt); retrying."
+      sleep 2
+      continue
+    fi
     # Emulator framework ANRs can cover the app after resizing the fresh AVD.
     # Only System UI / Quickstep dialogs are handled. App ANRs remain test failures.
     tap=$(python3 tools/emulator-dialog.py "upgrade-results/$1.xml")
