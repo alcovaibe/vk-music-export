@@ -43,3 +43,13 @@ test('unknown layout produces a clear error and no downloadable empty success',a
  const {browser,page}=await setup('<h1>Unsupported fixture</h1>');
  try {await page.getByRole('button',{name:'Начать сбор',exact:true}).click();await page.waitForFunction(()=>document.getElementById('vkm-export-panel').textContent.includes('UNSUPPORTED_LAYOUT'));assert.equal(await page.getByRole('button',{name:'Сохранить JSON',exact:true}).isEnabled(),false)}finally{await browser.close()}
 });
+
+test('catalog-only page does not import recommendation rows outside a recognized music container',async()=>{
+ const {browser,page}=await setup(`${row(0)}<div id="audio_playlists"><a href="/music/playlist/123_5">My list</a></div>`);
+ try {
+  await page.getByRole('button',{name:'Начать сбор',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('#vkm-export-panel button:nth-of-type(3)').disabled,{},{timeout:20000});
+  const dp=page.waitForEvent('download');await page.getByRole('button',{name:'Сохранить JSON',exact:true}).click();
+  const p=JSON.parse(fs.readFileSync(await (await dp).path(),'utf8'));assert.equal(p.source.tracks.length,0);assert.equal(p.playlists.length,1);
+ }finally{await browser.close()}
+});

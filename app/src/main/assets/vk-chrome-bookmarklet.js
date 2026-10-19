@@ -147,11 +147,11 @@ void (function () {
       if(p.error){finish(p.error);return;}
       if(!p.scoped && !p.playlistsScoped){finish('UNSUPPORTED_LAYOUT');return;}
       if((p.sourceId||'my-music')!==sourceId){finish('PAGE_CHANGED');return;}
-      if(String(p.sourceTitle||'').length>500 || p.tracks.some(t=>String(t.title).length>500||String(t.artist).length>500) || p.playlists.some(t=>String(t.title).length>500)){finish('METADATA_LIMIT');return;}
+      if(String(p.sourceTitle||'').length>500 || (p.scoped && p.tracks.some(t=>String(t.title).length>500||String(t.artist).length>500)) || p.playlists.some(t=>String(t.title).length>500)){finish('METADATA_LIMIT');return;}
       title=String(p.sourceTitle|| (sourceId==='my-music'?'Моя музыка':sourceId));
       if(Number.isSafeInteger(p.expectedCount)&&p.expectedCount>=0&&p.expectedCount<=1000000)expected=p.expectedCount;
-      unparsed=Math.max(unparsed,p.unparsedRows||0);ambiguous=ambiguous||!!p.ambiguousPositions;
-      entries=core.merge(entries,p.tracks.map(t=>({key:t.key,title:String(t.title),artist:String(t.artist),vkId:t.vkId||null})));
+      if(p.scoped){unparsed=Math.max(unparsed,p.unparsedRows||0);ambiguous=ambiguous||!!p.ambiguousPositions;}
+      entries=core.merge(entries,(p.scoped?p.tracks:[]).map(t=>({key:t.key,title:String(t.title),artist:String(t.artist),vkId:t.vkId||null})));
       for(const link of p.playlists) {if(!playlists.has(link.id)&&playlists.size>=1000){finish('CATALOG_LIMIT');return;}playlists.set(link.id,{id:link.id,title:String(link.title)});}
       if(entries.length>10000){entries=entries.slice(0,10000);finish('ENTRY_LIMIT');return;}
       if(!scrollable || !document.contains(scrollable)){finish('PAGE_CHANGED');return;}
