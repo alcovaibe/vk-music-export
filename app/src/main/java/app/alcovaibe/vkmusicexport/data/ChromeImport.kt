@@ -82,8 +82,8 @@ object ChromeImport {
     }
     fun merge(current: CollectionSnapshot, plan: ImportPlan): CollectionSnapshot {
         val sources=linkedMapOf<String,MusicSource>();current.sources.forEach{sources[it.id]=it}
-        plan.playlists.forEach{sources.putIfAbsent(it.id,it)}
         plan.source?.let{sources[it.id]=it}
+        plan.playlists.forEach{sources.putIfAbsent(it.id,it)}
         return current.copy(updatedAt=Instant.now().toString(),sources=sources.values.toList(),playlistDiscoveryConfirmed=false)
     }
 }

@@ -26,7 +26,7 @@ internal fun CollectorGuide(onDismiss: ()->Unit,onImport: ()->Unit,onMusic: ()->
             Text("2. Измени закладку: имя — VKM Export, адрес — скопированный код целиком, начиная с javascript:.")
             OutlinedButton(enabled=!copying,onClick={
                 copying=true;Diagnostics.button("copy_collector_bookmark")
-                scope.launch {
+                scope.launch(Dispatchers.Main.immediate) {
                     try {
                         val code=withContext(Dispatchers.IO){CollectorBookmark.code(context)}
                         check(code.length*2L<=240000)
