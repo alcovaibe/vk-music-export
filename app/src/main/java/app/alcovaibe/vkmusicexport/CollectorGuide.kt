@@ -24,6 +24,7 @@ internal fun CollectorGuide(onDismiss: ()->Unit,onImport: ()->Unit,onMusic: ()->
             Text("Один раз создай закладку VKM Export в Chrome:")
             Text("1. Скопируй код кнопкой ниже. В Chrome добавь любую страницу в закладки через ⋮ → ★.")
             Text("2. Измени закладку: имя — VKM Export, адрес — скопированный код целиком, начиная с javascript:.")
+            Text("В 0.5.1 код обновлён: замени адрес прежней закладки. Код теперь в одну строку; в конце есть метка VKM_END_051.")
             OutlinedButton(enabled=!copying,onClick={
                 copying=true;Diagnostics.button("copy_collector_bookmark")
                 scope.launch(Dispatchers.Main.immediate) {
@@ -32,13 +33,14 @@ internal fun CollectorGuide(onDismiss: ()->Unit,onImport: ()->Unit,onMusic: ()->
                         check(code.length*2L<=240000)
                         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("VKM Export",code))
                         Toast.makeText(context,"Код закладки скопирован",Toast.LENGTH_SHORT).show()
-                        Diagnostics.event("collector_bookmark_copied",mapOf("characters" to code.length))
+                        Diagnostics.event("collector_bookmark_copied",mapOf("characters" to code.length,"format" to "SINGLE_LINE_ASCII","collector_version" to "0.5.1"))
                     }catch (_: Exception) {Diagnostics.event("collector_bookmark_copy_failed");Toast.makeText(context,"Не удалось скопировать код. Повтори попытку.",Toast.LENGTH_LONG).show()}
                     finally {copying=false}
                 }
             },modifier=Modifier.fillMaxWidth()){Text(if(copying)"Готовим код…" else "Скопировать закладку")}
             Text("Для каждого списка:")
             Text("3. Открой в Chrome «Мою музыку» или отдельный плейлист. Нажми адресную строку, набери VKM Export и выбери закладку из подсказок — не поиск Google.")
+            Text("Появится сообщение «VKM Export 0.5.1: код запущен». Нажми ОК. Если вместо панели появится INIT_… — сообщи этот код. Если сообщения о запуске нет, выполнение нового кода не подтверждено.")
             Text("4. В появившейся панели нажми «Начать сбор». Дождись остановки или останови вручную. Затем «Сохранить JSON».")
             Text("5. Вернись в приложение, выбери «Импорт JSON» и файл из загрузок Chrome. Проверь числа перед подтверждением замены списка.")
             Text("Повтори для каждого нужного плейлиста. Пароли, коды, cookies и аудиофайлы не собираются. Неизвестная разметка или ограничения Chrome могут помешать запуску: это проверяется на телефоне.")

@@ -27,3 +27,4 @@ cookies*
 
 # Local Python checks
 __pycache__/
+/tools/node_modules/

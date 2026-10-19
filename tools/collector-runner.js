@@ -1,18 +1,20 @@
 /* User-started, metadata-only collector. No fetch, credentials, HTML, or storage access. */
 void (function () {
   'use strict';
-  if (window.top !== window) return;
+  alert('VKM Export 0.5.1: код запущен. Нажми ОК, чтобы открыть панель сбора.');
+  try {
+  if (window.top !== window) {alert('VKM Export: запусти закладку в основном окне страницы.');return;}
   const hosts=['vk.ru','vk.com','m.vk.ru','m.vk.com','music.vk.ru','music.vk.com'];
   if(location.protocol!=='https:' || !hosts.includes(location.hostname) || !/^\/(audio(?:s[0-9]+)?|music)(\/|$)/.test(location.pathname)) {
     alert('Открой в Chrome раздел «Моя музыка» или отдельный плейлист ВК и снова запусти закладку.');return;
   }
-  if(document.getElementById('vkm-export-panel')) return;
+  if(document.getElementById('vkm-export-panel')) {alert('VKM Export: панель уже создана. Перезагрузи страницу и запусти закладку снова.');return;}
   const core=/* CORE */;
   const sample=()=>JSON.parse(/* EXTRACTOR */);
   const original=location.href, sourceId=(()=>{
     try {const m=decodeURIComponent(original).match(/(?:audio_playlist|\/music\/playlist\/)(-?\d+)_(\d+)/);return m?'playlist:'+m[1]+':'+m[2]:'my-music';}catch(_){return null;}
   })();
-  if(!sourceId) return;
+  if(!sourceId) {alert('VKM Export: не удалось определить открытый список (INVALID_SOURCE).');return;}
   const panel=document.createElement('section');panel.id='vkm-export-panel';
   Object.assign(panel.style,{position:'fixed',left:'8px',right:'8px',bottom:'8px',zIndex:'2147483647',padding:'14px',background:'#202337',color:'white',borderRadius:'16px',font:'14px sans-serif',boxShadow:'0 4px 24px #0008',maxHeight:'45vh',overflow:'auto'});
   const status=document.createElement('p');status.textContent='VKM Export · Открытый список. Не закрывай вкладку во время сбора.';panel.appendChild(status);
@@ -74,4 +76,8 @@ void (function () {
   });save.disabled=true;
   button('Закрыть',()=>{if(running&&!confirm('Остановить сбор без сохранения?'))return;clearTimeout(timer);running=false;panel.remove();});
   document.documentElement.appendChild(panel);
+  } catch (error) {
+    const code=['TypeError','ReferenceError','SecurityError','SyntaxError','RangeError'].includes(error&&error.name)?error.name:'OTHER';
+    alert('VKM Export: панель не создана (INIT_'+code+'). Сообщи этот код разработчику.');
+  }
 })();

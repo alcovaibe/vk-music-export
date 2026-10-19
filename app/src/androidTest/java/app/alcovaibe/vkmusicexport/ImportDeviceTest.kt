@@ -40,7 +40,8 @@ class ImportDeviceTest {
             var copied=false
             ui.runOnUiThread {
                 val clip=(ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
-                copied=clip.startsWith("javascript:") && android.net.Uri.decode(clip).contains("vkm-export-panel")
+                copied=clip.startsWith("javascript:") && android.net.Uri.decode(clip).contains("vkm-export-panel") &&
+                    clip.endsWith(";void\"VKM_END_051\";") && clip.length<14000 && clip.all { it.code in 32..126 }
             }
             copied
         }

@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {chromium}=require('playwright-core');
 const code=fs.readFileSync('app/src/main/assets/vk-chrome-bookmarklet.js','utf8');
 const row=(n)=>`<div class="audio_row" data-full-id="1_1" data-index="${n}"><b class="audio_row__title">Песня 🎵</b><span class="audio_row__performer">Артист</span></div>`;
-async function setup(html,url='https://vk.ru/audio') {
+async function setup(html,url='https://vk.ru/audio',failInit=false) {
  const browser=await chromium.launch({executablePath:process.env.CHROME_BIN||'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});
  const page=await browser.newPage({acceptDownloads:true});
  await page.route('**/*',r=>r.fulfill({status:200,contentType:'text/html',headers:{'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'"},body:'<meta charset="UTF-8">'+html}));
@@ -12,9 +12,29 @@ async function setup(html,url='https://vk.ru/audio') {
   window.fetch=()=>{throw Error('Fetch forbidden')};
   Object.defineProperty(window,'localStorage',{get(){throw Error('Storage forbidden')}});
  });
- // DevTools evaluation exercises the actual Chromium DOM; Android bookmark invocation is a separate phone check.
- await page.evaluate(code);return {browser,page};
+ if(failInit)await page.evaluate(()=>{
+  const create=document.createElement.bind(document);
+  document.createElement=(...args)=>{if(args[0]==='section')throw new TypeError('PRIVATE_INPUT_MUST_NOT_BE_DISPLAYED');return create(...args)};
+ });
+ // Browser-initiated JavaScript URL navigation, using the exact native encoding.
+ // This still does not exercise Android's bookmark editor, keyboard or omnibox UI.
+ const dialogs=[];let resolveFailure;
+ const failure=new Promise(r=>resolveFailure=r);
+ page.on('dialog',async d=>{dialogs.push(d.message());await d.accept();if(d.message().includes('INIT_'))resolveFailure()});
+ const client=await page.context().newCDPSession(page);
+ await client.send('Page.navigate',{url:'javascript:'+code.replaceAll('%','%25').replaceAll('#','%23'),transitionType:'auto_bookmark'});
+ if(failInit)await failure;else await page.locator('#vkm-export-panel').waitFor();
+ return {browser,page,dialogs};
 }
+test('bookmark launch acknowledges version and reports initialization failure without exception contents',async()=>{
+ const {browser,page,dialogs}=await setup('<h1>Fixture</h1>','https://vk.ru/audio',true);
+ try {
+  assert.match(dialogs[0],/VKM Export 0\.5\.1: код запущен/);
+  assert.match(dialogs[1],/INIT_TypeError/);
+  assert.equal(dialogs.join('').includes('PRIVATE_INPUT'),false);
+  assert.equal(await page.locator('#vkm-export-panel').count(),0);
+ }finally{await browser.close()}
+});
 test('Chromium collector downloads metadata only, preserves repeats and removes playlist access keys',async()=>{
  const {browser,page}=await setup(`<input type="tel" value="PRIVATE_PHONE_CODE"><div id="audio_list">${row(0)}${row(1)}<b class="audio_page__count">2</b></div><div id="audio_playlists"><a href="/music/playlist/123_5_PRIVATE_TOKEN?access_token=PRIVATE_TOKEN">Для дороги</a></div>`);
  try {

@@ -21,3 +21,12 @@ test('generated bookmarklet is current and valid JavaScript',()=>{
  require('node:child_process').execFileSync(process.execPath,['tools/build-collector.cjs','--check']);
  new (require('node:vm').Script)(require('node:fs').readFileSync('app/src/main/assets/vk-chrome-bookmarklet.js','utf8'));
 });
+test('clipboard bookmark survives URL newline stripping and one percent decode',()=>{
+ const code=require('node:fs').readFileSync('app/src/main/assets/vk-chrome-bookmarklet.js','utf8');
+ assert.match(code,/;void"VKM_END_051";$/);
+ assert.equal(/[\r\n\t\u0080-\uffff]/.test(code),false);
+ const url='javascript:'+code.replaceAll('%','%25').replaceAll('#','%23');
+ assert.ok(url.length<14000,'Clipboard script size regression');
+ assert.equal(decodeURIComponent(new URL(url).href.slice(11)),code);
+ new (require('node:vm').Script)(decodeURIComponent(new URL(url).href.slice(11)));
+});
