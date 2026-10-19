@@ -34,7 +34,7 @@ internal class UpdateController(private val scope: CoroutineScope,private val ac
     private var active=false
     private var checkJob: Job?=null
     private var transfer: Job?=null
-    private var generation=0L
+    @Volatile private var generation=0L
     private var checkGeneration=0L
     private var lastManual: Long?=null
     init {
@@ -103,7 +103,7 @@ internal class UpdateController(private val scope: CoroutineScope,private val ac
         transfer=scope.launch(start=CoroutineStart.UNDISPATCHED) {
             try {
                 val token=withContext(Dispatchers.IO){access.read()} ?: throw UpdateProblem("ACCESS")
-                val file=service.download(token,release){received,total->mutable.update{if(gen==generation)it.copy(received=received,total=total)else it}}
+                val file=service.download(token,release){received,total->mutable.update{if(gen==generation&&it.status==UpdateStatus.DOWNLOADING&&it.release===release)it.copy(received=received,total=total)else it}}
                 if(gen==generation){mutable.update{it.copy(status=UpdateStatus.READY,apk=file)};record("download_verified")}
                 else withContext(Dispatchers.IO){file.delete()}
             }catch(e: CancellationException){throw e}
