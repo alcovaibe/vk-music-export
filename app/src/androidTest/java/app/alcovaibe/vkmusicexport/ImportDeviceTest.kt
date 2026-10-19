@@ -40,8 +40,20 @@ class ImportDeviceTest {
             var copied=false
             ui.runOnUiThread {
                 val clip=(ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                if(clip.startsWith("javascript:")) {
+                    val field=android.widget.EditText(ui.activity).apply {
+                        inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+                        setSingleLine(true)
+                    }
+                    // Real platform filter, matching the single-line URI field in Chromium's layout.
+                    // This does not automate the Chrome bookmark editor itself.
+                    field.setText("x".repeat(6000));assertEquals(5000,field.text.length)
+                    field.setText(clip);assertEquals(clip,field.text.toString())
+                    field.setText(android.net.Uri.parse(field.text.toString()).toString())
+                    assertEquals(clip,field.text.toString())
+                }
                 copied=clip.startsWith("javascript:") && android.net.Uri.decode(clip).contains("vkm-export-panel") &&
-                    clip.endsWith(";void\"VKM_END_051\";") && clip.length<14000 && clip.all { it.code in 32..126 }
+                    clip.endsWith("/*VKM_END_052*/") && clip.length<=4950 && clip.all { it.code in 32..126 }
             }
             copied
         }
@@ -64,7 +76,7 @@ class ImportDeviceTest {
             assertEquals(untouched,model.snapshot.value.sources.first{it.id==untouched.id})
             assertEquals("NOT_SCANNED",model.snapshot.value.sources.first{it.id=="playlist:123:5"}.reason)
             val after=ui.activity.getFileStreamPath("collection.json").readBytes()
-            file.writeText(raw.replace("\"kind\":","\"token\":\"PRIVATE_IMPORT_SECRET\",\"kind\":"))
+            file.writeText(raw.dropLast(1)+",\"PRIVATE_IMPORT_SECRET\"]")
             choose();ui.waitUntil(10000){model.message.value?.contains("Не удалось прочитать") == true}
             assertNull(model.pendingImport.value);assertArrayEquals(after,ui.activity.getFileStreamPath("collection.json").readBytes())
             val worker=Executors.newSingleThreadExecutor()

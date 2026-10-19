@@ -56,4 +56,26 @@ class ChromeImportTest {
         rejected(Json.encodeToString(fixture()).dropLast(20));rejected("[".repeat(40)+"]".repeat(40))
         try {ChromeImport.read(object:java.io.InputStream(){var n=0;override fun read():Int=if(n++<=ChromeImport.MAX_BYTES)32 else -1});fail()}catch(e:ImportFailure){assertEquals("FILE_TOO_LARGE",e.code)}
     }
+    private val compact="""[2,"my-music","Моя музыка","2 трека",[[0,"Песня 🎵","Артист","1_1"],[1,"Песня 🎵","Артист","1_1"]],[["playlist:-123:5","Для дороги"]],[0,9,0,false,true]]"""
+    @Test fun compactCaptureHasTheSameValidatedMeaningAsLegacyCapture() {
+        fun stable(p:ImportPlan)=p.copy(source=p.source?.copy(updatedAt=""),playlists=p.playlists.map{it.copy(updatedAt="")})
+        assertEquals(stable(parse(fixture())),stable(ChromeImport.parse(compact)))
+        assertEquals(ScanStatus.UNCONFIRMED,ChromeImport.parse(compact.replace("[0,\"Песня","[null,\"Песня").replace("[1,\"Песня","[null,\"Песня").replace("false,true]","true,true]")).source!!.status)
+    }
+    @Test fun compactShapeTypesVersionsAndFieldsAreStrict() {
+        listOf(compact.replace("[2,","[3,"),compact.replace("[2,","[\"2\","),
+            compact.dropLast(1)+",\"EXTRA\"]",compact.replace("[0,9,0,false,true]","[15,9,0,false,true]"),
+            compact.replace("[0,9,0,false,true]","[0,9,0,\"false\",true]"),
+            compact.replace("[0,\"Песня","[-1,\"Песня"),compact.replace("[0,\"Песня","[1.5,\"Песня"),
+            compact.replace("[0,9,0,false,true]","[0,0,0,false,true]"),
+            compact.replace("\"1_1\"","{\"token\":\"PRIVATE\"}"))
+            .forEach(::rejected)
+    }
+    @Test fun compactReasonCodesPreservePartialResultsAndCounterTextIsBounded() {
+        assertEquals("USER_STOPPED",ChromeImport.parse(compact.replace("[0,9,0,false,true]","[1,9,0,false,true]")).reason)
+        assertEquals(ScanStatus.UNCONFIRMED,ChromeImport.parse(compact.replace("2 трека","unknown")).source!!.status)
+        rejected(compact.replace("2 трека","x".repeat(501)))
+        rejected(compact.replace("[2,\"my-music\"","[2,\"https://evil.example/?token=PRIVATE\""))
+    }
+
 }

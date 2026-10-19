@@ -1,7 +1,7 @@
 package app.alcovaibe.vkmusicexport.data
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import java.io.InputStream
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -24,6 +24,36 @@ object ChromeImport {
     private val reasons=setOf("BOTTOM_STABLE","USER_STOPPED","SAMPLE_LIMIT","ENTRY_LIMIT","PAGE_CHANGED","LOGIN_OR_CAPTCHA",
         "NOT_MUSIC_PAGE","UNSUPPORTED_LAYOUT","NO_SUPPORTED_ROWS","LIST_CHANGED","POSITION_MODE_CHANGED",
         "VIRTUALIZED_WITHOUT_POSITIONS","SCRIPT_ERROR","SCROLL_STALLED","METADATA_LIMIT","CATALOG_LIMIT")
+    // Compact v2 keeps the self-contained bookmark within Android's 5000-character
+    // single-line field limit. The expanded model goes through the same v1 checks.
+    private val compactReasons=listOf("BOTTOM_STABLE","USER_STOPPED","SAMPLE_LIMIT","ENTRY_LIMIT","PAGE_CHANGED",
+        "LOGIN_OR_CAPTCHA","UNSUPPORTED_LAYOUT","NO_SUPPORTED_ROWS","LIST_CHANGED","POSITION_MODE_CHANGED",
+        "VIRTUALIZED_WITHOUT_POSITIONS","SCRIPT_ERROR","SCROLL_STALLED","METADATA_LIMIT","CATALOG_LIMIT")
+    private fun array(e: JsonElement, size: Int): JsonArray { check(e is JsonArray && e.size==size);return e as JsonArray }
+    private fun string(e: JsonElement): String { check(e is JsonPrimitive && e.isString);return (e as JsonPrimitive).content }
+    private fun number(e: JsonElement): Int {
+        check(e is JsonPrimitive && !e.isString && e.intOrNull!=null);return (e as JsonPrimitive).int
+    }
+    private fun bool(e: JsonElement): Boolean {
+        check(e is JsonPrimitive && !e.isString && e.booleanOrNull!=null);return (e as JsonPrimitive).boolean
+    }
+    private fun compact(e: JsonArray): ChromeCapture {
+        array(e,7);check(number(e[0])==2)
+        val id=string(e[1]);val title=string(e[2]).ifBlank {if(id=="my-music")"Моя музыка" else id}
+        val counter=string(e[3]);check(counter.length<=500 && counter.none {it<' ' || it=='\u007f'})
+        val count=Regex("^(\\d[\\d\\s]*)\\s*(?:трек\\S*|аудиозапис\\S*|songs?|tracks?)?$",RegexOption.IGNORE_CASE)
+            .matchEntire(counter.trim())?.groupValues?.get(1)?.replace(Regex("\\s"),"")?.toIntOrNull()?.takeIf{it in 0..1000000}
+        check(e[4] is JsonArray && (e[4] as JsonArray).size<=10000)
+        check(e[5] is JsonArray && (e[5] as JsonArray).size<=1000)
+        val tracks=(e[4] as JsonArray).mapIndexed {i,t ->
+            val row=array(t,4);val key=if(row[0]==JsonNull)"capture:$i" else "pos:${number(row[0])}"
+            PageTrack(key,string(row[1]),string(row[2]),if(row[3]==JsonNull)null else string(row[3]))
+        }
+        val catalog=(e[5] as JsonArray).map {val row=array(it,2);ChromePlaylist(string(row[0]),string(row[1]))}
+        val report=array(e[6],5);val code=number(report[0]);check(code in compactReasons.indices)
+        return ChromeCapture("vk_music_chrome_export",1,ChromeSource(id,title,tracks,count),catalog,
+            CaptureReport(compactReasons[code],number(report[1]),number(report[2]),bool(report[3]),bool(report[4])))
+    }
     private fun check(value: Boolean) { if(!value) throw ImportFailure("INVALID_CAPTURE") }
     private fun text(s: String): String {
         check(s.isNotBlank() && s.length<=500 && s.none {it<' ' || it=='\u007f'})
@@ -49,7 +79,10 @@ object ChromeImport {
             if(quoted) {if(escaped)escaped=false else if(c=='\\')escaped=true else if(c=='"')quoted=false}
             else if(c=='"')quoted=true else if(c=='{' || c=='[') {depth++;check(depth<=32)} else if(c=='}' || c==']')depth--
         }
-        val p=try {json.decodeFromString<ChromeCapture>(raw.removePrefix("\uFEFF"))}catch (_: Exception){throw ImportFailure("INVALID_CAPTURE")}
+        val p=try {
+            val e=json.parseToJsonElement(raw.removePrefix("\uFEFF"))
+            if(e is JsonArray)compact(e)else json.decodeFromJsonElement<ChromeCapture>(e)
+        }catch (_: Exception){throw ImportFailure("INVALID_CAPTURE")}
         check(p.kind=="vk_music_chrome_export" && p.schemaVersion==1)
         val r=p.capture;check(r.reason in reasons && r.samples in 1..600 && r.unparsedRows in 0..1000000)
         check(p.source.tracks.size<=10000 && p.playlists.size<=1000)
