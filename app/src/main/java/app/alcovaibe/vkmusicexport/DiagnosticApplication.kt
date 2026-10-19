@@ -30,6 +30,7 @@ class DiagnosticApplication : Application(), Application.ActivityLifecycleCallba
         })
         // Historical platform reasons only, never description/trace (may contain page data).
         Thread({
+            app.alcovaibe.vkmusicexport.vk.ChromeBrowser.recordProvider(this)
             runCatching { (getSystemService(ACTIVITY_SERVICE) as ActivityManager)
                 .getHistoricalProcessExitReasons(packageName, 0, 5).forEach {
                     Diagnostics.event("historical_exit", mapOf("reason" to it.reason, "status" to it.status,

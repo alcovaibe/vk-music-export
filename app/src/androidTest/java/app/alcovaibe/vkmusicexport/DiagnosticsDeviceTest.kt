@@ -34,50 +34,6 @@ class DiagnosticsDeviceTest {
         while(!button.isClickable) button=button.parent ?: return
         button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
     }
-    @Test fun browserProfileRetryReplacesAttachedViewAndPreservesSession() {
-        val model=androidx.lifecycle.ViewModelProvider(ui.activity)[MusicViewModel::class.java]
-        lateinit var original: android.webkit.WebView
-        val cookieReady=java.util.concurrent.atomic.AtomicBoolean(false)
-        ui.runOnUiThread {
-            original=model.activeWeb()!!
-            android.webkit.CookieManager.getInstance().setCookie("https://vk.ru/","profile_fixture=retained; Secure; Path=/") {cookieReady.set(it)}
-        }
-        ui.waitUntil(5_000) {cookieReady.get()}
-        ui.onNodeWithContentDescription("Настройки").performClick()
-        ui.onNodeWithText("Другие логи").performClick()
-        ui.onNodeWithText("Профиль входа").performClick()
-        ui.onNodeWithText("Открыть: Штатный WebView").performClick()
-        try {
-            ui.waitUntil(10_000) {model.activeWeb()!==original && model.activeWeb()?.isAttachedToWindow==true}
-            ui.runOnUiThread {
-                val active=model.activeWeb()!!
-                assertEquals(android.webkit.WebSettings.getDefaultUserAgent(ui.activity),active.settings.userAgentString)
-                assertEquals(app.alcovaibe.vkmusicexport.vk.BrowserProfile.Mode.SYSTEM_WEBVIEW,model.browserProfile.value)
-                assertTrue(android.webkit.CookieManager.getInstance().getCookie("https://vk.ru/").orEmpty().contains("profile_fixture=retained"))
-                active.stopLoading()
-                active.loadDataWithBaseURL("https://id.vk.com/auth","<body><button>Fixture</button><input type='password' value='PRIVATE_RENDER_SECRET'></body>","text/html","UTF-8",null)
-            }
-            ui.waitUntil(10_000) {model.currentPage.value=="https://id.vk.com/auth" && !model.pageLoading.value}
-            var drawsBefore=0L
-            ui.runOnUiThread {drawsBefore=(model.activeWeb() as DiagnosticWebView).diagnosticDrawCount;model.markWhiteScreen()}
-            var json=""
-            ui.waitUntil(15_000) {
-                json=exported()
-                val events=Json.parseToJsonElement(json).jsonObject["events"]!!.jsonArray.map{it.jsonObject}
-                events.any{it["type"]?.jsonPrimitive?.content=="white_screen_reported"} &&
-                    events.any{it["type"]?.jsonPrimitive?.content=="dom_structure" && it["data"]?.jsonObject?.get("inputs")?.jsonPrimitive?.int==1} &&
-                    events.any{it["type"]?.jsonPrimitive?.content=="visual_state_ready"}
-            }
-            assertFalse(json.contains("PRIVATE_RENDER_SECRET"))
-            ui.waitUntil(10_000) {
-                var redrawn=false
-                ui.runOnUiThread {redrawn=(model.activeWeb() as DiagnosticWebView).diagnosticDrawCount>drawsBefore}
-                redrawn
-            }
-        } finally {
-            ui.runOnUiThread {model.retryWithProfile(app.alcovaibe.vkmusicexport.vk.BrowserProfile.Mode.CHROME_COMPAT)}
-        }
-    }
     @Test fun nativeCopyAndPrivateFileProviderExport() {
         ui.onNodeWithContentDescription("Настройки").performClick()
         ui.onNodeWithText("Копировать лог").performClick()
@@ -104,32 +60,6 @@ class DiagnosticsDeviceTest {
             val text=ui.activity.contentResolver.openInputStream(uri)!!.bufferedReader().use{it.readText()}
             assertEquals(1,Json.parseToJsonElement(text).jsonObject["schema"]!!.jsonPrimitive.int)
         } finally {worker.shutdown()}
-    }
-    @Test fun privacyOnActualWebViewConsoleAndErrorCallbacks() {
-        val secret="SYNTHETIC_PRIVATE_79991234567_password_token_123456"
-        val done=java.util.concurrent.atomic.AtomicBoolean(false)
-        ui.runOnUiThread {
-            val view=androidx.lifecycle.ViewModelProvider(ui.activity)[MusicViewModel::class.java].activeWeb()!!
-            view.loadDataWithBaseURL("https://id.vk.com/auth?token=$secret", "<input name='phone' value='$secret'><input type='password' value='$secret'>", "text/html", "UTF-8", null)
-        }
-        ui.waitUntil(10_000) {
-            val model=androidx.lifecycle.ViewModelProvider(ui.activity)[MusicViewModel::class.java]
-            model.currentPage.value=="https://id.vk.com/auth" && !model.pageLoading.value
-        }
-        ui.runOnUiThread {
-            val view=androidx.lifecycle.ViewModelProvider(ui.activity)[MusicViewModel::class.java].activeWeb()!!
-            view.evaluateJavascript("console.error('TypeError $secret');setTimeout(()=>{throw new Error('$secret')},0);true") {done.set(true)}
-        }
-        ui.waitUntil(10_000) {done.get()}
-        var json=""
-        ui.waitUntil(10_000) {
-            json=exported()
-            Json.parseToJsonElement(json).jsonObject["events"]!!.jsonArray.any {
-                val o=it.jsonObject
-                o["type"]?.jsonPrimitive?.content=="javascript_error"
-            }
-        }
-        assertFalse("Synthetic credential escaped through WebView diagnostics",json.contains(secret))
     }
     @Test fun queuePressureReportsLossAndProducesValidJson() {
         val producers=(1..4).map { Thread {repeat(4000){Diagnostics.event("synthetic_pressure",mapOf("index" to it))}}.apply{start()} }

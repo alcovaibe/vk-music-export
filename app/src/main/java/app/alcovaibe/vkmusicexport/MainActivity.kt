@@ -1,16 +1,10 @@
 package app.alcovaibe.vkmusicexport
 
 import app.alcovaibe.vkmusicexport.diagnostics.*
-import app.alcovaibe.vkmusicexport.vk.BrowserProfile
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.webkit.WebView
-import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,21 +36,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import app.alcovaibe.vkmusicexport.data.*
 import app.alcovaibe.vkmusicexport.export.Exporter
 import app.alcovaibe.vkmusicexport.export.ExportFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.URI
 import java.time.LocalDate
 
 private val Ink = Color(0xFF202337)
@@ -88,7 +79,6 @@ class MainActivity : ComponentActivity() {
             MusicTheme { MusicApp(model) }
         }
     }
-    override fun onStop() { model.stop(); super.onStop() }
 }
 
 @Composable
@@ -111,128 +101,82 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 private fun MusicApp(model: MusicViewModel) {
     val context = LocalContext.current
     val snapshot by model.snapshot.collectAsState()
-    val running by model.running.collectAsState()
     val ready by model.ready.collectAsState()
-    val connected by model.connected.collectAsState()
+    val busy by model.busy.collectAsState()
     val message by model.message.collectAsState()
-    val popup by model.popup.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    var browser by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var confirm by remember { mutableStateOf<String?>(null) }
-    var profileDialog by remember { mutableStateOf(false) }
-    val generation by model.browserGeneration.collectAsState()
-    val web = remember(generation) { DiagnosticWebView(context).also(model::attach) }
-    DisposableEffect(web) { onDispose { model.detach(web) } }
-    val keyboard = LocalSoftwareKeyboardController.current
-    val closeVk = { Diagnostics.button("close_browser"); model.stop(); model.activeWeb()?.clearFocus(); keyboard?.hide(); browser = false }
-    val openVk = { Diagnostics.button("open_vk"); browser = true; model.openLogin() }
-    BackHandler(browser || selected != null || tab != 0) {
-        when {
-            browser -> if (!model.back()) closeVk()
-            selected != null -> selected = null
-            else -> tab = 0
-        }
+    var chromeUnavailable by remember { mutableStateOf(false) }
+    val openVk = {
+        Diagnostics.button("open_chrome")
+        chromeUnavailable = !app.alcovaibe.vkmusicexport.vk.ChromeBrowser.open(context)
     }
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Keep the same browser attached while the collection or export screen is visible.
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
-            if (browser) BrowserHeader(model, onClose = closeVk, onProfile = { profileDialog=true })
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                key(web) {
-                    AndroidView(factory = { web }, modifier = Modifier.fillMaxSize(), update = {
-                        it.visibility = if (browser && popup == null) View.VISIBLE else View.INVISIBLE
-                    })
+    BackHandler(selected != null || tab != 0) {
+        if (selected != null) selected = null else tab = 0
+    }
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(12.dp), color = Accent, modifier = Modifier.size(38.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(23.dp)) }
                 }
-                popup?.let { child ->
-                    key(child) {
-                        AndroidView(factory = { child }, onRelease = { if(WebDiagnostics.alive(it)) { WebDiagnostics.destroyed(it); it.destroy() } }, modifier = Modifier.fillMaxSize(),
-                            update = { it.visibility = if (browser) View.VISIBLE else View.INVISIBLE })
-                    }
-                }
+                Spacer(Modifier.width(10.dp))
+                Text("VK Music Export", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                IconButton(onClick = { Diagnostics.button("settings"); confirm = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
             }
-            if (browser) BrowserActions(model, onDone = closeVk)
-        }
-        if (!browser) Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = Accent, modifier = Modifier.size(38.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(23.dp)) }
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text("VK Music Export", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { Diagnostics.button("settings"); confirm = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
+        },
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                listOf("Коллекция", "Экспорт").forEachIndexed { index, label ->
+                    NavigationBarItem(selected = tab == index, onClick = { Diagnostics.button(if(index == 0) "collection_tab" else "export_tab"); tab = index; selected = null },
+                        icon = { Icon(if (index == 0) Icons.Default.Home else Icons.Default.Share, null) }, label = { Text(label) },
+                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant))
                 }
-            },
-            bottomBar = {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                    listOf("Коллекция", "Экспорт").forEachIndexed { index, label ->
-                        NavigationBarItem(selected = tab == index, onClick = { Diagnostics.button(if(index == 0) "collection_tab" else "export_tab"); tab = index; selected = null },
-                            icon = { Icon(if (index == 0) Icons.Default.Home else Icons.Default.Share, null) }, label = { Text(label) },
-                            colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant))
-                    }
-                }
-            }
-        ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                if (running) Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().clickable { browser = true }) {
-                    Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
-                        Text(message, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-                        Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth())
-                    }
-                }
-                if (tab == 0) CollectionScreen(snapshot, selected, query, ready, connected,
-                    onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk)
-                else ExportScreen(snapshot, ready)
             }
         }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            message?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp), color=MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (tab == 0) CollectionScreen(snapshot, selected, query, ready,
+                onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk)
+            else ExportScreen(snapshot, ready && !busy)
+        }
     }
-    if(profileDialog) {
-        val profile by model.browserProfile.collectAsState()
-        AlertDialog(onDismissRequest={profileDialog=false},title={Text("Профиль входа")},text={
-            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text("Сейчас: ${profile.label}")
-                Text("Выбор заново откроет вход в ВК. Коллекция и данные сессии сохраняются.")
-                BrowserProfile.Mode.entries.forEach { mode ->
-                    OutlinedButton(enabled=!running,onClick={
-                        keyboard?.hide()
-                        if(model.retryWithProfile(mode)) { profileDialog=false;confirm=null;browser=true }
-                    },modifier=Modifier.fillMaxWidth()) {Text("Открыть: ${mode.label}")}
-                }
-            }
-        },confirmButton={TextButton(onClick={profileDialog=false}){Text("Закрыть")}})
-    }
+    if (chromeUnavailable) AlertDialog(onDismissRequest={chromeUnavailable=false},
+        title={Text("Chrome недоступен")},
+        text={Text("Установи или включи Google Chrome и повтори открытие ВК. Встроенного браузера в приложении больше нет.")},
+        confirmButton={TextButton(onClick={chromeUnavailable=false}){Text("Понятно")}})
     if (confirm == "settings") AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Настройки") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", fontWeight = FontWeight.SemiBold)
-            Text("Названия, исполнители и плейлисты сохраняются на телефоне. Для сбора оставьте приложение открытым.", style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = { confirm = null; openVk() }) { Text(if (connected) "Открыть ВКонтакте" else "Подключить ВКонтакте") }
-            DiagnosticControls(onMarkWhite=model::markWhiteScreen,onProfile={profileDialog=true})
+            Text("Вход и выход из ВК выполняются в Google Chrome. Сохранённая коллекция и её экспорт доступны в приложении.", style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { confirm = null; openVk() }) { Text("Открыть ВК в Chrome") }
+            DiagnosticControls()
             TextButton(onClick = {
-                Diagnostics.button("updates"); val updates = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest"))
+                Diagnostics.button("updates")
                 try {
-                    context.startActivity(updates)
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest")))
                     confirm = null
                 } catch (_: android.content.ActivityNotFoundException) {
                     android.widget.Toast.makeText(context, "Откройте GitHub Releases в браузере", android.widget.Toast.LENGTH_LONG).show()
                 }
             }) { Text("Обновления на GitHub") }
-            TextButton(enabled = !running, onClick = { Diagnostics.button("request_logout"); confirm = "logout" }) { Text("Выйти из ВК") }
-            TextButton(enabled = !running, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
+            TextButton(enabled = ready && !busy, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = { TextButton(onClick = { Diagnostics.button("settings_done"); confirm = null }) { Text("Готово") } })
-    if (confirm == "clear" || confirm == "logout") AlertDialog(onDismissRequest = { confirm = null },
-        title = { Text(if (confirm == "clear") "Очистить коллекцию?" else "Выйти из ВК?") },
-        text = { Text(if (confirm == "clear") "Списки будут удалены из приложения. Экспортированные файлы останутся." else "Потребуется повторный вход. Собранные списки останутся на телефоне.") },
+    if (confirm == "clear") AlertDialog(onDismissRequest = { confirm = null },
+        title = { Text("Очистить коллекцию?") },
+        text = { Text("Списки будут удалены из приложения. Экспортированные файлы останутся.") },
         dismissButton = { TextButton(onClick = { Diagnostics.button("cancel_confirmation"); confirm = null }) { Text("Отмена") } },
-        confirmButton = { TextButton(onClick = { Diagnostics.button(if(confirm == "clear") "confirm_clear" else "confirm_logout"); if (confirm == "clear") model.clearCollection() else model.logout(); confirm = null }) { Text("Подтвердить") } })
+        confirmButton = { TextButton(onClick = { Diagnostics.button("confirm_clear"); model.clearCollection(); confirm = null }) { Text("Подтвердить") } })
 }
 
 @Composable
-private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, query: String, ready: Boolean, connected: Boolean,
+private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, query: String, ready: Boolean,
                              onSelect: (String?) -> Unit, onQuery: (String) -> Unit, onOpen: () -> Unit) {
     val source = snapshot.sources.find { it.id == selected }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
@@ -252,18 +196,18 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
         else if (snapshot.sources.isEmpty()) {
             item { WelcomeArtwork() }
             item {
-                Text("Вся твоя музыка.\nВ одном списке.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
+                Text("ВКонтакте.\nВ настоящем Chrome.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                 Spacer(Modifier.height(10.dp))
-                Text("Сохрани названия и исполнителей из «Моей музыки» и своих плейлистов ВК.",
+                Text("Войди в ВК через Google Chrome. Сбор музыки из Chrome будет добавлен следующим этапом.",
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 Button(onClick = onOpen, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(16.dp)) {
-                    Icon(if (connected) Icons.Default.CheckCircle else Icons.Default.AccountCircle, null, Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp)); Text(if (connected) "Открыть музыку и собрать" else "Подключить ВКонтакте", fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Default.AccountCircle, null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp)); Text("Открыть ВК в Chrome", fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(12.dp))
-                Text("Вход на сайте ВК · Пароль не хранится в приложении", Modifier.fillMaxWidth(),
+                Text("Вход остаётся в Chrome. Приложение пока не проверяет авторизацию.", Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else if (selected == null) {
@@ -275,8 +219,8 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
             }
             item {
                 FilledTonalButton(onClick = onOpen, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
-                    Icon(if (connected) Icons.Default.CheckCircle else Icons.Default.AccountCircle, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp)); Text(if (connected) "ВК подключён · Обновить коллекцию" else "Подключить ВК и обновить")
+                    Icon(Icons.Default.AccountCircle, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp)); Text("Открыть ВК в Chrome")
                 }
             }
             item { SourceRow("Все треки", "${snapshot.uniqueTracks().size} · общий список", -1, onClick = { onSelect("all") }) }
@@ -285,7 +229,7 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
                 SourceRow(sourceItem.title, "${tracks(sourceItem.entries.size)} · ${sourceItem.status.label}", snapshot.sources.indexOf(sourceItem),
                     onClick = { onSelect(sourceItem.id) })
             }
-            item { InfoNote("Сверь найденные плейлисты с ВК: полнота коллекции пока не подтверждена.") }
+            item { InfoNote("Это ранее сохранённая коллекция. Сбор и обновление музыки из Chrome будут добавлены следующим этапом.") }
         } else {
             item { OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), placeholder = { Text("Трек или исполнитель") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(16.dp)) }
@@ -374,72 +318,6 @@ private fun SourceRow(title: String, subtitle: String, index: Int, onClick: () -
 }
 
 @Composable
-private fun BrowserHeader(model: MusicViewModel, onClose: () -> Unit, onProfile: () -> Unit) {
-    val page by model.currentPage.collectAsState()
-    val loading by model.pageLoading.collectAsState()
-    val error by model.browserError.collectAsState()
-    val popup by model.popup.collectAsState()
-    val running by model.running.collectAsState()
-    Column {
-        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { Diagnostics.button("close_window"); if (popup != null) model.closePopup() else onClose() }) { Icon(Icons.Default.Close, if (popup != null) "Закрыть окно входа" else "К коллекции") }
-            Column(Modifier.weight(1f)) {
-                Text(if (popup != null) "Вход в ВКонтакте" else "ВКонтакте", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(runCatching { URI(page).host }.getOrNull() ?: "Открываем сайт ВК…", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
-            IconButton(enabled = !running, onClick = { Diagnostics.button("reload"); model.reload() }) { Icon(Icons.Default.Refresh, "Обновить страницу") }
-        }
-        DiagnosticControls(compact = true,onMarkWhite=model::markWhiteScreen,onProfile=onProfile)
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth()) else HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        error?.let { Text(it, Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer).padding(14.dp),
-            color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodySmall) }
-    }
-}
-
-@Composable
-private fun BrowserActions(model: MusicViewModel, onDone: () -> Unit) {
-    val running by model.running.collectAsState()
-    val connected by model.connected.collectAsState()
-    val loading by model.pageLoading.collectAsState()
-    val ready by model.ready.collectAsState()
-    val message by model.message.collectAsState()
-    val code by model.lastCode.collectAsState()
-    val popup by model.popup.collectAsState()
-    var more by remember { mutableStateOf(false) }
-    if (popup != null && !running) return
-    Surface(shadowElevation = 8.dp) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (running) {
-                Text(message, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                OutlinedButton(onClick = { Diagnostics.button("stop"); model.stop() }, modifier = Modifier.fillMaxWidth()) { Text("Остановить и сохранить") }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (connected && popup == null) TextButton(onClick = onDone, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Подключено · К коллекции")
-                    } else Button(onClick = { Diagnostics.button("openMusic"); model.openMusic() }, modifier = Modifier.weight(1f)) { Text("Открыть мою музыку") }
-                    Box {
-                        IconButton(onClick = { Diagnostics.button("page_menu"); more = true }) { Icon(Icons.Default.MoreVert, "Действия со страницей") }
-                        DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                            DropdownMenuItem(text = { Text("Моя музыка") }, onClick = { more = false; Diagnostics.button("openMusic"); model.openMusic() })
-                            DropdownMenuItem(text = { Text("Мои плейлисты") }, onClick = { more = false; Diagnostics.button("openPlaylists"); model.openPlaylists() })
-                            DropdownMenuItem(enabled = popup == null, text = { Text("Проверить подключение") }, onClick = { more = false; Diagnostics.button("verifySession"); model.verifySession() })
-                        }
-                    }
-                }
-                if (connected) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(enabled = ready && !loading, onClick = { Diagnostics.button("scan_current"); model.scan(false) }, modifier = Modifier.weight(1f)) { Text("Этот список") }
-                        Button(enabled = ready && !loading, onClick = { Diagnostics.button("scan_all"); model.scan(true) }, modifier = Modifier.weight(1f)) { Text("Собрать всё") }
-                }
-                if (popup == null && code !in setOf("NOT_STARTED", "BROWSING", "MUSIC_PAGE_READY", "SCANNING", "NAVIGATION_BLOCKED", "PAGE_LOAD_FAILED", "TLS_FAILED")) InfoNote(message)
-                if (connected && popup == null) InfoNote("Повторный сбор заменит сохранённую коллекцию.")
-            }
-        }
-    }
-}
-
-@Composable
 private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -467,7 +345,7 @@ private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
         item {
             Text("Забрать с собой", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
             Spacer(Modifier.height(8.dp))
-            Text(if (snapshot.sources.isEmpty()) "Сначала собери музыку во вкладке «Коллекция», затем выбери формат файла."
+            Text(if (snapshot.sources.isEmpty()) "Сохранённой коллекции пока нет. Сбор музыки из Chrome будет добавлен следующим этапом."
                 else "${tracks(snapshot.uniqueTracks().size)} · ${counted(snapshot.sources.size, "список", "списка", "списков")}. Выбери удобный формат.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { SectionLabel("ФОРМАТ ФАЙЛА") }
