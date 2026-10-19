@@ -52,7 +52,8 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
     val installer=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
     val visible=open||state.release!=null||state.status==UpdateStatus.DOWNLOADING||state.apk!=null
-    fun close(){controller.defer();onClose()}
+    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");controller.defer();onClose()}
+    fun closeCredentials(){Diagnostics.button("dismiss_update_access");input="";credentials=false}
     fun browse(url: String){try{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}catch (_: Exception){android.widget.Toast.makeText(context,"Не удалось открыть браузер",android.widget.Toast.LENGTH_LONG).show()}}
     fun install() {
         if(installing)return
@@ -96,10 +97,10 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
             if(state.status==UpdateStatus.DOWNLOADING)LinearProgressIndicator(progress={if(state.total>0)(state.received.toFloat()/state.total).coerceIn(0f,1f)else 0f},modifier=Modifier.fillMaxWidth())
             if(state.apk!=null)Text("Если Android откроет разрешение установки из этого приложения, разреши его, вернись и снова нажми «Установить».",style=MaterialTheme.typography.bodySmall)
             if(state.status!=UpdateStatus.DOWNLOADING&&state.apk==null) {
-                if(state.release!=null)TextButton(enabled=retryEnabled,onClick={controller.cancel();controller.check()}){Text("Проверить заново")}
+                if(state.release!=null)TextButton(enabled=retryEnabled,onClick={Diagnostics.button("refresh_update");controller.cancel();controller.check()}){Text("Проверить заново")}
                 TextButton(enabled=state.initialized&&!state.editing,onClick={Diagnostics.button("configure_update_access");input="";invalid=false;credentials=true}){Text(if(state.configured)"Изменить токен" else "Настроить доступ GitHub")}
                 if(state.configured)TextButton(enabled=!state.editing,onClick={Diagnostics.button("remove_update_access");controller.configure(null)}){Text("Удалить токен")}
-                TextButton(onClick={browse("https://github.com/alcovaibe/vk-music-export/releases/latest")}){Text("Открыть релизы GitHub")}
+                TextButton(onClick={Diagnostics.button("open_update_releases");browse("https://github.com/alcovaibe/vk-music-export/releases/latest")}){Text("Открыть релизы GitHub")}
             }
         }
     },confirmButton={
@@ -109,16 +110,17 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
             state.status!=UpdateStatus.DOWNLOADING->TextButton(enabled=retryEnabled&&state.initialized&&state.configured&&!state.editing&&state.status!=UpdateStatus.CHECKING,onClick={Diagnostics.button("check_updates");controller.check()}){Text("Проверить обновления")}
         }
     },dismissButton={TextButton(onClick=::close){Text(if(state.status==UpdateStatus.DOWNLOADING)"Отменить загрузку" else "Закрыть")}})
-    if(credentials)AlertDialog(onDismissRequest={input="";credentials=false},properties=DialogProperties(securePolicy=SecureFlagPolicy.SecureOn),title={Text("Доступ GitHub")},text={
+    if(credentials)AlertDialog(onDismissRequest=::closeCredentials,properties=DialogProperties(securePolicy=SecureFlagPolicy.SecureOn),title={Text("Доступ GitHub")},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text("Создай fine-grained token: владелец alcovaibe → Only select repositories → vk-music-export → Contents: Read-only. Выбери срок действия. Вставь токен только здесь.")
-            TextButton(onClick={browse("https://github.com/settings/personal-access-tokens/new")}){Text("Создать токен в GitHub")}
+            TextButton(onClick={Diagnostics.button("open_update_token_setup");browse("https://github.com/settings/personal-access-tokens/new")}){Text("Создать токен в GitHub")}
             OutlinedTextField(value=input,onValueChange={if(it.length<=256){input=it;invalid=false}else invalid=true},label={Text("Токен GitHub")},singleLine=true,
                 visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),modifier=Modifier.fillMaxWidth().testTag("update_token"),isError=invalid)
             if(invalid)Text("Нужен fine-grained токен github_pat_… длиной до 256 символов.")
             Text("Токен хранится на устройстве в зашифрованном виде. Можно удалить его здесь или отозвать в GitHub.",style=MaterialTheme.typography.bodySmall)
         }
     },confirmButton={TextButton(enabled=!state.editing,onClick={
+        Diagnostics.button("save_update_access")
         if(UpdateProtocol.validToken(input.trim())){controller.configure(input);input="";credentials=false}else invalid=true
-    }){Text("Сохранить и проверить")}},dismissButton={TextButton(onClick={input="";credentials=false}){Text("Отмена")}})
+    }){Text("Сохранить и проверить")}},dismissButton={TextButton(onClick=::closeCredentials){Text("Отмена")}})
 }
