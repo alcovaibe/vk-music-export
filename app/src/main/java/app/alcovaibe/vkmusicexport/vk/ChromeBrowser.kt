@@ -22,10 +22,12 @@ object ChromeBrowser {
             "version_code" to info?.longVersionCode,"mode" to "external_chrome",
             "auth_status" to "not_observable","webview_used" to false))
     }
-    fun open(context: Context): Boolean {
-        Diagnostics.event("chrome_launch_requested",mapOf("package" to PACKAGE,"destination" to "vk_home"))
+    fun open(context: Context): Boolean = launch(context,HOME,"vk_home")
+    fun openMusic(context: Context): Boolean = launch(context,"https://vk.ru/audio","music")
+    private fun launch(context: Context, url: String, destination: String): Boolean {
+        Diagnostics.event("chrome_launch_requested",mapOf("package" to PACKAGE,"destination" to destination))
         return try {
-            context.startActivity(loginIntent())
+            context.startActivity(loginIntent().setData(Uri.parse(url)))
             // Dispatch is not evidence of page load, successful login, or a transferred session.
             Diagnostics.event("chrome_launch_dispatched",mapOf("auth_status" to "not_observable"))
             true

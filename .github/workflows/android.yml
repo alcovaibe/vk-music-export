@@ -29,7 +29,11 @@ jobs:
       - name: Release automation regression tests
         run: python3 -m unittest discover -s tools -p 'test_release_tools.py'
       - name: Extractor regression tests
-        run: node --test tools/extractor.test.cjs
+        run: node --test tools/extractor.test.cjs tools/collector.test.cjs
+      - name: Collector on real Chromium with synthetic pages
+        run: |
+          npm install --prefix "$RUNNER_TEMP/collector-test" playwright-core@1.62.1 --ignore-scripts --no-audit --no-fund
+          NODE_PATH="$RUNNER_TEMP/collector-test/node_modules" node --test tools/collector-browser.test.cjs
       - name: Test, lint and assemble
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
       - name: Upload installable debug APK
@@ -117,7 +121,7 @@ jobs:
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
         run: python3 tools/prepare-signing.py
-      - name: Build release and verify against installed 0.3.4
+      - name: Build release and verify against installed 0.4.0
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

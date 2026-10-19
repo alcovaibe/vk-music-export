@@ -63,7 +63,7 @@ class InterfaceTest {
     @Test fun chromeDispatchPreservesCollectionAndNativeExport() {
         val model = ViewModelProvider(ui.activity)[MusicViewModel::class.java]
         ui.waitUntil(10_000) { model.ready.value }
-        ui.onNodeWithText("Открыть ВК в Chrome").assertIsDisplayed()
+        ui.onNodeWithText("Открыть ВК в Chrome").performScrollTo().assertIsDisplayed()
         capture("01-collection")
         ui.onNodeWithText("Экспорт").performClick()
         ui.onNodeWithText("Забрать с собой").assertIsDisplayed()

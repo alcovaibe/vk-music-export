@@ -104,6 +104,9 @@ private fun MusicApp(model: MusicViewModel) {
     val ready by model.ready.collectAsState()
     val busy by model.busy.collectAsState()
     val message by model.message.collectAsState()
+    val pending by model.pendingImport.collectAsState()
+    var collectorGuide by remember { mutableStateOf(false) }
+    val importFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::stageImport) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -141,10 +144,25 @@ private fun MusicApp(model: MusicViewModel) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             message?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp), color=MaterialTheme.colorScheme.onSurfaceVariant) }
+            if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (tab == 0) CollectionScreen(snapshot, selected, query, ready,
-                onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk)
+                onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk, onCollect={collectorGuide=true}, onImport={Diagnostics.button("choose_import");importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))}, canImport=ready && !busy && pending==null)
             else ExportScreen(snapshot, ready && !busy)
         }
+    }
+    if(collectorGuide) CollectorGuide(onDismiss={collectorGuide=false},onImport={collectorGuide=false;importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))},onMusic={chromeUnavailable=!app.alcovaibe.vkmusicexport.vk.ChromeBrowser.openMusic(context)})
+    pending?.let { plan ->
+        val previous=plan.source?.let{incoming->snapshot.sources.firstOrNull{it.id==incoming.id}}
+        AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text("Импорт из Chrome")},text={
+            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text("Треков: ${plan.tracks}. Плейлистов в каталоге: ${plan.playlists.size}.")
+                plan.source?.let {Text("Список: ${it.title} · ${it.status.label}")}
+                if(previous!=null)Text("Импорт заменит этот список: сохранено ${previous.entries.size}, в файле ${plan.tracks} треков. Остальные списки сохранятся.")
+                else Text("Список будет добавлен в коллекцию. Каталог плейлистов не заменяет уже собранные треки.")
+                Text("Обнаруженный плейлист может ещё не содержать треков. Его нужно собрать отдельно в Chrome.")
+            }
+        },confirmButton={TextButton(enabled=!busy,onClick=model::confirmImport){Text(if(previous!=null)"Заменить список" else "Импортировать")}},
+            dismissButton={TextButton(enabled=!busy,onClick=model::cancelImport){Text("Отмена")}})
     }
     if (chromeUnavailable) AlertDialog(onDismissRequest={chromeUnavailable=false},
         title={Text("Chrome недоступен")},
@@ -165,7 +183,7 @@ private fun MusicApp(model: MusicViewModel) {
                     android.widget.Toast.makeText(context, "Откройте GitHub Releases в браузере", android.widget.Toast.LENGTH_LONG).show()
                 }
             }) { Text("Обновления на GitHub") }
-            TextButton(enabled = ready && !busy, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
+            TextButton(enabled = ready && !busy && pending==null, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = { TextButton(onClick = { Diagnostics.button("settings_done"); confirm = null }) { Text("Готово") } })
     if (confirm == "clear") AlertDialog(onDismissRequest = { confirm = null },
@@ -177,7 +195,7 @@ private fun MusicApp(model: MusicViewModel) {
 
 @Composable
 private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, query: String, ready: Boolean,
-                             onSelect: (String?) -> Unit, onQuery: (String) -> Unit, onOpen: () -> Unit) {
+                             onSelect: (String?) -> Unit, onQuery: (String) -> Unit, onOpen: () -> Unit, onCollect: () -> Unit, onImport: () -> Unit, canImport: Boolean) {
     val source = snapshot.sources.find { it.id == selected }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -192,13 +210,19 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
                     style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
             }
         }
+        item {
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick=onCollect,modifier=Modifier.weight(1f)){Text("Сбор из Chrome")}
+                FilledTonalButton(enabled=canImport,onClick=onImport,modifier=Modifier.weight(1f)){Text("Импорт JSON")}
+            }
+        }
         if (!ready) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         else if (snapshot.sources.isEmpty()) {
             item { WelcomeArtwork() }
             item {
                 Text("ВКонтакте.\nВ настоящем Chrome.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                 Spacer(Modifier.height(10.dp))
-                Text("Войди в ВК через Google Chrome. Сбор музыки из Chrome будет добавлен следующим этапом.",
+                Text("Открой музыку в Chrome, запусти закладку-сборщик и импортируй сохранённый JSON.",
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
@@ -229,7 +253,7 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
                 SourceRow(sourceItem.title, "${tracks(sourceItem.entries.size)} · ${sourceItem.status.label}", snapshot.sources.indexOf(sourceItem),
                     onClick = { onSelect(sourceItem.id) })
             }
-            item { InfoNote("Это ранее сохранённая коллекция. Сбор и обновление музыки из Chrome будут добавлены следующим этапом.") }
+            item { InfoNote("Для обновления списка собери его в Chrome и импортируй JSON. Каталог плейлистов не подтверждает полноту сбора.") }
         } else {
             item { OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), placeholder = { Text("Трек или исполнитель") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(16.dp)) }
@@ -345,7 +369,7 @@ private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
         item {
             Text("Забрать с собой", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
             Spacer(Modifier.height(8.dp))
-            Text(if (snapshot.sources.isEmpty()) "Сохранённой коллекции пока нет. Сбор музыки из Chrome будет добавлен следующим этапом."
+            Text(if (snapshot.sources.isEmpty()) "Коллекция пока пуста. Во вкладке «Коллекция» открой «Сбор из Chrome» и импортируй JSON сборщика."
                 else "${tracks(snapshot.uniqueTracks().size)} · ${counted(snapshot.sources.size, "список", "списка", "списков")}. Выбери удобный формат.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { SectionLabel("ФОРМАТ ФАЙЛА") }
