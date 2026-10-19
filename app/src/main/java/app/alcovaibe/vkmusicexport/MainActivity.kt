@@ -148,11 +148,11 @@ private fun MusicApp(model: MusicViewModel) {
             message?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp), color=MaterialTheme.colorScheme.onSurfaceVariant) }
             if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (tab == 0) CollectionScreen(snapshot, selected, query, ready,
-                onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk, onCollect={collectorGuide=true}, onImport={Diagnostics.button("choose_import");importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))}, canImport=ready && !busy && pending==null)
+                onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk, onCollect={Diagnostics.button("collector_guide");collectorGuide=true}, onImport={Diagnostics.button("choose_import");importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))}, canImport=ready && !busy && pending==null)
             else ExportScreen(snapshot, ready && !busy)
         }
     }
-    if(collectorGuide) CollectorGuide(onDismiss={collectorGuide=false},onImport={collectorGuide=false;importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))},onMusic={chromeUnavailable=!app.alcovaibe.vkmusicexport.vk.ChromeBrowser.openMusic(context)})
+    if(collectorGuide) CollectorGuide(onDismiss={Diagnostics.button("close_collector_guide");collectorGuide=false},onImport={Diagnostics.button("choose_import");collectorGuide=false;importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))},onMusic={Diagnostics.button("collector_open_music");chromeUnavailable=!app.alcovaibe.vkmusicexport.vk.ChromeBrowser.openMusic(context)})
     pending?.let { plan ->
         val previous=plan.source?.let{incoming->snapshot.sources.firstOrNull{it.id==incoming.id}}
         AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text("Импорт из Chrome")},text={

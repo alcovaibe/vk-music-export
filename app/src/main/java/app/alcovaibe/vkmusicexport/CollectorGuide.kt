@@ -33,7 +33,7 @@ internal fun CollectorGuide(onDismiss: ()->Unit,onImport: ()->Unit,onMusic: ()->
                         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("VKM Export",code))
                         Toast.makeText(context,"Код закладки скопирован",Toast.LENGTH_SHORT).show()
                         Diagnostics.event("collector_bookmark_copied",mapOf("characters" to code.length))
-                    }catch (_: Exception) {Toast.makeText(context,"Не удалось скопировать код. Повтори попытку.",Toast.LENGTH_LONG).show()}
+                    }catch (_: Exception) {Diagnostics.event("collector_bookmark_copy_failed");Toast.makeText(context,"Не удалось скопировать код. Повтори попытку.",Toast.LENGTH_LONG).show()}
                     finally {copying=false}
                 }
             },modifier=Modifier.fillMaxWidth()){Text(if(copying)"Готовим код…" else "Скопировать закладку")}
