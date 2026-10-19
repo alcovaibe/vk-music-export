@@ -58,9 +58,9 @@ test('Chromium collector downloads metadata only, preserves repeats and removes 
 test('Chromium virtualized rows are accumulated in position order and manual stop remains partial',async()=>{
  const {browser,page}=await setup(`<div id="audio_list">${row(0)}${row(1)}</div>`);
  try {
-  await page.getByRole('button',{name:'Сбор',exact:true}).click();await page.waitForFunction(()=>document.getElementById('vkm-export-panel').textContent.endsWith('#1'));
-  await page.evaluate(html=>document.getElementById('audio_list').innerHTML=html,row(1)+row(2));await page.waitForFunction(()=>document.getElementById('vkm-export-panel').textContent.endsWith('#2'));
-  await page.evaluate(html=>document.getElementById('audio_list').innerHTML=html,row(2)+row(3));await page.waitForFunction(()=>document.getElementById('vkm-export-panel').textContent.endsWith('#3'));
+  await page.getByRole('button',{name:'Сбор',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#vkm-export-panel p').textContent.endsWith('#1'));
+  await page.evaluate(html=>document.getElementById('audio_list').innerHTML=html,row(1)+row(2));await page.waitForFunction(()=>document.querySelector('#vkm-export-panel p').textContent.endsWith('#2'));
+  await page.evaluate(html=>document.getElementById('audio_list').innerHTML=html,row(2)+row(3));await page.waitForFunction(()=>document.querySelector('#vkm-export-panel p').textContent.endsWith('#3'));
   await page.getByRole('button',{name:'Стоп',exact:true}).click();
   const dp=page.waitForEvent('download');await page.getByRole('button',{name:'JSON',exact:true}).click();
   const p=decoded(fs.readFileSync(await (await dp).path(),'utf8'));assert.deepEqual(p.source.tracks.map(t=>t.key),['pos:0','pos:1','pos:2','pos:3']);assert.equal(p.capture.reason,'USER_STOPPED');
