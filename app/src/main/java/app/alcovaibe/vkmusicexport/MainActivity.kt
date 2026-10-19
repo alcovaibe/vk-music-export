@@ -68,6 +68,9 @@ private fun tracks(n: Int) = counted(n, "трек", "трека", "треков"
 
 class MainActivity : ComponentActivity() {
     private val model: MusicViewModel by viewModels()
+    private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
+    override fun onResume(){super.onResume();updates.controller.resume()}
+    override fun onPause(){updates.controller.pause();super.onPause()}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -78,7 +81,7 @@ class MainActivity : ComponentActivity() {
                     WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                 window.insetsController?.setSystemBarsAppearance(if (dark) 0 else lightBars, lightBars)
             }
-            MusicTheme { MusicApp(model) }
+            MusicTheme { MusicApp(model,updates.controller) }
         }
     }
 }
@@ -100,7 +103,7 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MusicApp(model: MusicViewModel) {
+private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.updates.UpdateController) {
     val context = LocalContext.current
     val snapshot by model.snapshot.collectAsState()
     val ready by model.ready.collectAsState()
@@ -108,6 +111,7 @@ private fun MusicApp(model: MusicViewModel) {
     val message by model.message.collectAsState()
     val pending by model.pendingImport.collectAsState()
     var collectorGuide by remember { mutableStateOf(false) }
+    var updatePanel by remember{mutableStateOf(false)}
     val importFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::stageImport) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
@@ -176,18 +180,11 @@ private fun MusicApp(model: MusicViewModel) {
             Text("Вход и выход из ВК выполняются в Google Chrome. Сохранённая коллекция и её экспорт доступны в приложении.", style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { confirm = null; openVk() }) { Text("Открыть ВК в Chrome") }
             DiagnosticControls()
-            TextButton(onClick = {
-                Diagnostics.button("updates")
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/alcovaibe/vk-music-export/releases/latest")))
-                    confirm = null
-                } catch (_: android.content.ActivityNotFoundException) {
-                    android.widget.Toast.makeText(context, "Откройте GitHub Releases в браузере", android.widget.Toast.LENGTH_LONG).show()
-                }
-            }) { Text("Обновления на GitHub") }
+            TextButton(onClick={Diagnostics.button("updates");confirm=null;updatePanel=true}){Text("Обновления приложения")}
             TextButton(enabled = ready && !busy && pending==null, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = { TextButton(onClick = { Diagnostics.button("settings_done"); confirm = null }) { Text("Готово") } })
+    app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,updatePanel){updatePanel=false}
     if (confirm == "clear") AlertDialog(onDismissRequest = { confirm = null },
         title = { Text("Очистить коллекцию?") },
         text = { Text("Списки будут удалены из приложения. Экспортированные файлы останутся.") },

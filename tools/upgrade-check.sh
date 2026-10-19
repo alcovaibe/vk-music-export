@@ -10,7 +10,14 @@ package=app.alcovaibe.vkmusicexport
 appdata=/data/user/0/$package
 mkdir -p upgrade-results
 trap 'result=$?; echo "Upgrade check failed at line $LINENO (exit $result)"; adb logcat -d -b crash > upgrade-results/crash.txt || true; exit "$result"' ERR
-adb root
+# adbd may close the connection while switching to root on a fresh AVD.
+root_ready=false
+for attempt in $(seq 1 5); do
+  adb root > upgrade-results/adb-root.txt 2>&1 || true
+  if timeout 20 adb wait-for-device && [[ "$(adb shell id -u | tr -d '\r')" == 0 ]]; then root_ready=true; break; fi
+  sleep 2
+done
+[[ "$root_ready" == true ]]
 adb wait-for-device
 adb shell wm size 720x1600
 adb shell wm density 294
@@ -28,7 +35,7 @@ assert_collection() {
   test "$actual" = "$expected"
 }
 assert_visible() {
-  # Give Compose/WebView startup time, but fail if the saved source never appears.
+  # Give Compose startup time, but fail if the saved source never appears.
   for attempt in $(seq 1 10); do
     # A fresh AVD can temporarily return a null accessibility root. Never read a stale dump.
     adb shell rm -f /sdcard/upgrade-window.xml
