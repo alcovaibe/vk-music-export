@@ -20,7 +20,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             try {
-                _snapshot.value = store.read()
+                val loaded=store.read()
+                // Preserve the file; an old interrupted scan must not appear to still be running.
+                _snapshot.value = loaded.copy(sources=loaded.sources.map {
+                    if(it.status==ScanStatus.SCANNING) it.copy(status=ScanStatus.INTERRUPTED,reason="PROCESS_STOPPED") else it
+                })
                 Diagnostics.event("collection_loaded", mapOf("sources" to _snapshot.value.sources.size,"entries" to _snapshot.value.entriesCount))
             } catch (_: Exception) {
                 message.value = "Не удалось прочитать сохранённую коллекцию. Файл оставлен на устройстве."

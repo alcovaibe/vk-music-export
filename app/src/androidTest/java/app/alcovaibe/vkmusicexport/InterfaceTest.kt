@@ -74,7 +74,7 @@ class InterfaceTest {
         val track = Track("123_1", "Демо-трек", "Демо-исполнитель")
         val demo = CollectionSnapshot(sources = listOf(
             MusicSource("my-music", "Моя музыка", "https://vk.ru/audio", listOf(Entry("0", track, 1),Entry("1",track,2))),
-            MusicSource("playlist:123:1", "Для дороги", "https://vk.ru/audio", listOf(Entry("0", track, 1)), status = ScanStatus.PARTIAL)
+            MusicSource("playlist:123:1", "Для дороги", "https://vk.ru/audio", listOf(Entry("0", track, 1)), status = ScanStatus.SCANNING)
         ))
         runBlocking { CollectionStore(context).save(demo) }
         val before=context.getFileStreamPath("collection.json").readBytes()
@@ -110,7 +110,7 @@ class InterfaceTest {
             ui.onNodeWithText("Сохранить JSON").performScrollTo().performClick()
             ui.waitUntil(10_000) {runCatching {kotlinx.serialization.json.Json.decodeFromString<CollectionSnapshot>(file.readText()).entriesCount==3}.getOrDefault(false)}
             val exported=kotlinx.serialization.json.Json.decodeFromString<CollectionSnapshot>(file.readText())
-            assertEquals(demo.sources,exported.sources)
+            assertEquals(demo.sources.map { if(it.status==ScanStatus.SCANNING) it.copy(status=ScanStatus.INTERRUPTED,reason="PROCESS_STOPPED") else it },exported.sources)
             assertArrayEquals(before,context.getFileStreamPath("collection.json").readBytes())
         } finally { androidx.test.espresso.intent.Intents.release() }
         ui.onNodeWithText("Коллекция").performClick()
