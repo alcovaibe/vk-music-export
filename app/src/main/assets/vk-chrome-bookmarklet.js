@@ -152,7 +152,7 @@ void (function () {
       if(Number.isSafeInteger(p.expectedCount)&&p.expectedCount>=0&&p.expectedCount<=1000000)expected=p.expectedCount;
       unparsed=Math.max(unparsed,p.unparsedRows||0);ambiguous=ambiguous||!!p.ambiguousPositions;
       entries=core.merge(entries,p.tracks.map(t=>({key:t.key,title:String(t.title),artist:String(t.artist),vkId:t.vkId||null})));
-      for(const p of p.playlists) {if(!playlists.has(p.id)&&playlists.size>=1000){finish('CATALOG_LIMIT');return;}playlists.set(p.id,{id:p.id,title:String(p.title)});}
+      for(const link of p.playlists) {if(!playlists.has(link.id)&&playlists.size>=1000){finish('CATALOG_LIMIT');return;}playlists.set(link.id,{id:link.id,title:String(link.title)});}
       if(entries.length>10000){entries=entries.slice(0,10000);finish('ENTRY_LIMIT');return;}
       if(!scrollable || !document.contains(scrollable)){finish('PAGE_CHANGED');return;}
       const bottom=scrollable.scrollTop+scrollable.clientHeight>=scrollable.scrollHeight-8;

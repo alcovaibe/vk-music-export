@@ -16,6 +16,8 @@ import android.view.WindowInsetsController
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -154,7 +156,7 @@ private fun MusicApp(model: MusicViewModel) {
     pending?.let { plan ->
         val previous=plan.source?.let{incoming->snapshot.sources.firstOrNull{it.id==incoming.id}}
         AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text("Импорт из Chrome")},text={
-            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text("Треков: ${plan.tracks}. Плейлистов в каталоге: ${plan.playlists.size}.")
                 plan.source?.let {Text("Список: ${it.title} · ${it.status.label}")}
                 if(previous!=null)Text("Импорт заменит этот список: сохранено ${previous.entries.size}, в файле ${plan.tracks} треков. Остальные списки сохранятся.")
