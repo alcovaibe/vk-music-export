@@ -17,9 +17,40 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import android.content.ContextWrapper
 
 @RunWith(AndroidJUnit4::class)
 class NativeAudioDeviceTest {
+    @Test fun atomicAudioIndexRetainsFiveRunsRecoversInterruptedWorkAndDetectsTamperedFiles() {
+        val target=InstrumentationRegistry.getInstrumentation().targetContext
+        val base=File(target.cacheDir,"native-storage-test").apply{deleteRecursively();mkdirs()}
+        val context=object: ContextWrapper(target) {
+            override fun getFilesDir()=File(base,"files").apply{mkdirs()}
+            override fun getNoBackupFilesDir()=File(base,"no-backup").apply{mkdirs()}
+            override fun getCacheDir()=File(base,"cache").apply{mkdirs()}
+        }
+        try {
+            val store=NativeFiles(context);assertFalse(store.recover())
+            val track=NativeTrack("12_34","Storage fixture","CI",2)
+            var first: SavedAudio?=null
+            repeat(6){n->
+                val output=File(store.temporary,"working-$n").apply{writeBytes(ByteArray(2048){n.toByte()})}
+                val row=store.commit(TransferResult(output,ProcessedAudio("mp3","audio/mpeg",2000)),track){}
+                if(n==0)first=row
+                assertEquals(row,NativeFiles(context).read().first())
+            }
+            assertEquals(5,store.read().size);assertFalse(store.file(first!!).exists())
+            store.begin("old-operation");store.begin("new-operation");store.finish("old-operation","completed")
+            File(store.temporary,"unfinished.media").writeText("PARTIAL")
+            val reconstructed=NativeFiles(context)
+            assertTrue(reconstructed.recover());assertEquals(0,reconstructed.temporary.listFiles()!!.size)
+            assertEquals(5,reconstructed.read().size)
+            val row=reconstructed.read().first();assertTrue(reconstructed.verified(row){}.isFile)
+            reconstructed.file(row).appendText("TAMPER")
+            assertEquals(MusicError.INCOMPLETE,assertThrows(MusicFailure::class.java){reconstructed.verified(row){}}.code)
+            assertFalse(NativeFiles(context).recover())
+        }finally{base.deleteRecursively()}
+    }
     @Test fun actualMedia3ExtractionOfMp3AndAacFromDirectAndTransportStreamsProducesDecodableAudio()=runBlocking {
         val instrumentation=InstrumentationRegistry.getInstrumentation();val context=instrumentation.targetContext
         val dir=File(context.cacheDir,"native-audio-device-test").apply{mkdirs()}

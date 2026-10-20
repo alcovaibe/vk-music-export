@@ -30,7 +30,10 @@ internal class NativeMusicViewModel(application: Application): AndroidViewModel(
     init {
         viewModelScope.launch {
             try {
-                val loaded=withContext(Dispatchers.IO){Triple(vault.read()!=null,files.read(),files.recover())}
+                val loaded=withContext(Dispatchers.IO){
+                    val interrupted=if(NativeMusicGate.mutex.tryLock())try{files.recover()}finally{NativeMusicGate.mutex.unlock()}else false
+                    Triple(vault.read()!=null,files.read(),interrupted)
+                }
                 _state.value=NativeMusicState(initialized=true,configured=loaded.first,saved=loaded.second,
                     message=if(loaded.third)"Предыдущая операция прервана. Готовые файлы сохранены; проверку можно повторить." else null)
             }catch(_: Exception){_state.value=NativeMusicState(initialized=true,error=MusicError.STORAGE)}

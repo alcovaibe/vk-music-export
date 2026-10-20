@@ -29,16 +29,15 @@ internal class NativeFiles(context: Context) {
         rows.filter{file(it).isFile}
     }
     fun recover(): Boolean = synchronized(lock) {
-        if(recovered)return@synchronized false
         root.mkdirs();temporary.mkdirs()
-        // A single ViewModel owns active transfers; startup is before any operation is accepted.
+        // Caller holds the process operation gate. No active transfer is reclaimed by another Activity.
         temporary.listFiles()?.filter{it.isFile}?.forEach{it.delete()}
         val o=readOperation();val interrupted=o?.get("state")?.jsonPrimitive?.content=="running"
         if(interrupted)writeOperation(o!!.getValue("id").jsonPrimitive.content,"interrupted")
         // Remove files left between the audio rename and atomic index commit after a process kill.
         val known=read().map{it.fileName}.toSet()
         root.listFiles()?.filter{it.isFile&&it.name !in known}?.forEach{it.delete()}
-        recovered=true;interrupted
+        interrupted
     }
     private fun readOperation(): JsonObject? {
         if(!operation.baseFile.exists()&&!File(operation.baseFile.path+".bak").exists())return null
@@ -79,5 +78,5 @@ internal class NativeFiles(context: Context) {
     private fun write(file: AtomicFile,text: String) {
         val out=file.startWrite();try{out.write(text.toByteArray(Charsets.UTF_8));file.finishWrite(out)}catch(e: Exception){file.failWrite(out);throw e}
     }
-    private companion object {val lock=Any();var recovered=false}
+    private companion object {val lock=Any()}
 }
