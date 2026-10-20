@@ -128,7 +128,7 @@ internal object DeviceAuthProtocol {
         val hash=text(o,"auth_hash");check(Regex("[A-Za-z0-9_.=\\-]{8,4096}").matches(hash))
         val url=browserUrl(text(o,"auth_url")).toString()
         val expiry=number(o,"expires_in")
-        // Current VK responses use Unix seconds despite the field's name. Historical replies used a duration.
+        // Current VK responses use Unix seconds despite the field's name. A relative duration is also accepted for compatibility.
         val remaining=if(expiry>=1_000_000_000L) {
             val ms=Math.subtractExact(Math.multiplyExact(expiry,1000),wallTimeMs)
             if(ms<=0)throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
