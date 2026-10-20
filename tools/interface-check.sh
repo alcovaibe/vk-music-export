@@ -8,5 +8,11 @@ adb shell wm density 294
 adb shell am force-stop com.android.launcher3
 ./gradlew connectedDebugAndroidTest --stacktrace
 result=$?
+if [[ "$result" != 0 ]]; then
+  # A fresh disposable AVD can show a framework ANR above the app. Keep the
+  # process/window evidence instead of treating missing focus as an app result.
+  adb shell dumpsys window windows | python3 -c 'import sys; print("".join(x for x in sys.stdin if "mCurrentFocus" in x or "mFocusedApp" in x))' || true
+  adb logcat -d -b events | python3 -c 'import sys; print("".join(x for x in sys.stdin if "am_anr" in x or "am_crash" in x)[-12000:])' || true
+fi
 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
 exit "$result"

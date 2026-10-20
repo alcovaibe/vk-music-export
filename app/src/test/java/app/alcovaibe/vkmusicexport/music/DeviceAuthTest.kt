@@ -61,15 +61,17 @@ class DeviceAuthTest {
             failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.browserUrl(bad)}
     }
     @Test fun serverApprovalDoesNotAcceptPartialPasswordOrUnsupportedTokenResults() {
-        for(status in listOf(0,1,200))assertEquals(status==1,(DeviceAuthProtocol.poll(json("{\"status\":"+status+"}")) as DeviceCheck.Pending).confirmPhone)
+        for(status in listOf(0,1,200))assertEquals(status==1,(DeviceAuthProtocol.poll(json("{\"status\":"+status+"}")) as DeviceCheck.Pending).opened)
         assertEquals(DeviceCheck.Expired,DeviceAuthProtocol.poll(json("""{"status":4}""")))
+        assertEquals(DeviceCheck.Declined,DeviceAuthProtocol.poll(json("""{"status":3}""")))
+        assertEquals(DeviceCheck.VerificationRequired,DeviceAuthProtocol.poll(json("""{"status":5}""")))
         val raw="{\"status\":2,\"access_token\":\""+token+"\",\"need_password\":0,\"is_partial\":false}"
         val approved=DeviceAuthProtocol.poll(json(raw)) as DeviceCheck.Approved
         assertEquals(token,approved.access.token);assertFalse(approved.toString().contains(token))
         failure(DeviceAuthIssue.PARTIAL){DeviceAuthProtocol.poll(json(raw.replace("\"need_password\":0","\"need_password\":1")))}
         failure(DeviceAuthIssue.PARTIAL){DeviceAuthProtocol.poll(json(raw.replace("\"is_partial\":false","\"is_partial\":true")))}
         failure(DeviceAuthIssue.UNSUPPORTED_TOKEN){DeviceAuthProtocol.poll(json("""{"status":2,"super_app_token":"SECRET_SUPER_TOKEN"}"""))}
-        for(bad in listOf("""{"status":"2"}""","""{"status":3}""","""{"status":2}""",
+        for(bad in listOf("""{"status":"2"}""","""{"status":6}""","""{"status":2}""",
             raw.replace("\"is_partial\":false","\"is_partial\":\"false\""),
             raw.replace(token,"github_pat_"+"X".repeat(60))))
             failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.poll(json(bad))}
@@ -90,6 +92,7 @@ class DeviceAuthTest {
                 "/method/auth.getQrAuthData"->"{\"response\":{\"code_auth_verification_hash\":\""+verify+"\",\"app\":{}}}"
                 "/method/auth.getAuthCode"->"{\"response\":{\"auth_hash\":\""+hash+"\",\"auth_url\":\"https://qr.vk.ru/s?q=ONE_TIME_URL_SECRET\",\"expires_in\":1792518600}}"
                 "/method/auth.checkAuthCode"->"{\"response\":{\"status\":2,\"access_token\":\""+token+"\"}}"
+                "/method/auth.validateAuthCode"->"{\"response\":{\"status\":0}}"
                 else->error("Unexpected endpoint")
             }
             Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(200).message("OK")
@@ -99,7 +102,9 @@ class DeviceAuthTest {
         val s=api.begin("VK Music Export / synthetic device")
         assertEquals(181000L,s.expiresAt);assertEquals("qr.vk.ru",DeviceAuthProtocol.browserUrl(s.url).host)
         assertEquals(token,(api.poll(s) as DeviceCheck.Approved).access.token)
-        assertEquals(4,requests.size)
+        val code="184937"
+        assertEquals(DeviceValidation.ACCEPTED,api.validate(s,DeviceConfirmationCode.from(code)!!))
+        assertEquals(5,requests.size)
         for((i,r) in requests.withIndex()) {
             assertNull(r.header("Cookie"));assertNull(r.header("Authorization"))
             assertEquals("https://id.vk.com",r.header("Origin"));assertEquals(NativeProtocol.DEFAULT_AGENT,r.header("User-Agent"))
@@ -108,16 +113,23 @@ class DeviceAuthTest {
             val b=r.body as FormBody;val fields=(0 until b.size).associate{b.name(it) to b.value(it)}
             assertEquals(DeviceAuthProtocol.WEB_CLIENT,fields["client_id"])
             assertEquals(if(i<2)DeviceAuthProtocol.INIT_VERSION else DeviceAuthProtocol.PAIR_VERSION,fields["v"])
-            if(i<2)assertEquals("",fields["access_token"]) else assertEquals(anon,fields["anonymous_token"])
+            when {
+                i<2 -> assertEquals("",fields["access_token"])
+                i==4 -> {
+                    assertEquals(anon,fields["access_token"]);assertNull(fields["anonymous_token"])
+                    assertEquals(hash,fields["auth_hash"]);assertEquals(code,fields["validation_code"])
+                }
+                else -> assertEquals(anon,fields["anonymous_token"])
+            }
             assertFalse(fields.containsKey("client_secret"));assertFalse(fields.containsKey("password"))
             if(i==1){assertEquals(DeviceAuthProtocol.WEB_CLIENT,fields["app_id"]);assertEquals("",fields["uuid"])}
             if(i==2)assertEquals(verify,fields["verification_hash"])
             if(i==3)assertEquals("1",fields["web_auth"])
         }
         val logged=events.joinToString()
-        for(secret in listOf(anon,verify,hash,token,url,"ONE_TIME_URL_SECRET","synthetic device","auth_url","code_auth_verification_hash"))
+        for(secret in listOf(anon,verify,hash,token,url,code,"ONE_TIME_URL_SECRET","synthetic device","auth_url","code_auth_verification_hash"))
             assertFalse(logged.contains(secret))
-        for(stage in listOf("anonymous","qr_bootstrap","create","poll"))assertTrue(logged.contains("stage="+stage))
+        for(stage in listOf("anonymous","qr_bootstrap","create","poll","validate"))assertTrue(logged.contains("stage="+stage))
         assertTrue(logged.contains("expiry_format=unix_seconds"));assertTrue(logged.contains("media_type=json"))
         assertFalse(client.followRedirects);assertFalse(client.followSslRedirects)
     }
@@ -147,18 +159,19 @@ class DeviceAuthTest {
         val e=try{VkDeviceAuthClient(client,{0L}){_,_->}.begin("Fixture");null}catch(e: DeviceAuthFailure){e}
         assertEquals(DeviceAuthIssue.HTTP,e!!.issue);assertEquals(1,calls.get())
     }
-    @Test fun pairingWaitsForUserGestureAndForegroundThenResumesAfterPhoneConfirmation()=runBlocking {
+    @Test fun pairingWaitsForUserGestureAndForegroundThenResumesAfterRequestIsOpened()=runBlocking {
         val foreground=MutableStateFlow(false);val opened=MutableStateFlow(false);val calls=AtomicInteger()
         val paused=CompletableDeferred<Unit>()
         val session=DeviceSession(anon,hash,url,5000)
         val api=object: DeviceAuthApi {
+            override suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation=error("Unexpected confirmation")
             override suspend fun begin(deviceName: String)=session
             override suspend fun poll(session: DeviceSession): DeviceCheck =
                 if(calls.incrementAndGet()==1)DeviceCheck.Pending(true) else DeviceCheck.Approved(MusicAccess(token,"Client"))
         }
         val result=async {
             awaitDeviceAccess(api,session,opened,foreground,{0L},1){phase->
-                if(phase==DeviceAuthPhase.CONFIRM_PHONE){foreground.value=false;paused.complete(Unit)}
+                if(phase==DeviceAuthPhase.REQUEST_OPENED){foreground.value=false;paused.complete(Unit)}
             }
         }
         yield();assertEquals(0,calls.get())
@@ -169,6 +182,7 @@ class DeviceAuthTest {
     }
     @Test fun expirationAndCancellationCannotBecomeAuthenticationSuccess()=runBlocking {
         val api=object: DeviceAuthApi {
+            override suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation=error("Unexpected confirmation")
             override suspend fun begin(deviceName: String)=error("Not called")
             override suspend fun poll(session: DeviceSession)=error("Must not poll")
         }

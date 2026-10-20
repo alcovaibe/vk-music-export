@@ -92,6 +92,7 @@ class InterfaceTest {
             // Intercept dispatch: this tests our real native button/intent, not Chrome or VK login.
             androidx.test.espresso.intent.Intents.intending(chrome).respondWith(android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED,null))
             ui.onNodeWithText("Открыть ВК в Chrome").performScrollTo().performClick()
+            awaitTestWindowFocus(ui.activity)
             androidx.test.espresso.intent.Intents.intended(chrome)
             assertArrayEquals(before,context.getFileStreamPath("collection.json").readBytes())
             ui.onNodeWithText("ВК подключён",substring=true).assertDoesNotExist()

@@ -31,12 +31,14 @@ class ImportDeviceTest {
         val untouched=MusicSource("playlist:9:9","Keep","https://vk.ru/music/playlist/9_9",listOf(Entry("k",Track(title="Keep",artist="Artist"),1)))
         runBlocking {CollectionStore(context).save(CollectionSnapshot(sources=listOf(old,untouched)))}
         ui.runOnUiThread {ui.activity.viewModelStore.clear()};ui.activityRule.scenario.recreate()
+        awaitTestWindowFocus(ui.activity)
         val model=ViewModelProvider(ui.activity)[MusicViewModel::class.java]
         ui.waitUntil(10000){model.ready.value}
         val saved=ui.activity.getFileStreamPath("collection.json").readBytes()
         ui.onNodeWithText("Сбор из Chrome").performScrollTo().performClick()
         ui.onNodeWithText("Скопировать закладку").performScrollTo().performClick()
         ui.waitUntil(10000) {
+            dismissKnownFrameworkDialog()
             var copied=false
             ui.runOnUiThread {
                 val clip=(ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
@@ -59,6 +61,7 @@ class ImportDeviceTest {
         }
         ui.onNodeWithText("Копировать диагностику разметки").performScrollTo().performClick()
         ui.waitUntil(10000) {
+            dismissKnownFrameworkDialog()
             var copied=false
             ui.runOnUiThread {
                 val clip=(ui.activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString().orEmpty()

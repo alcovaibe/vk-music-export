@@ -58,6 +58,7 @@ class NativeBrowserAuthDeviceTest {
             override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("Not called")
         }
         val auth=object: DeviceAuthApi {
+            override suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation=error("Unexpected confirmation")
             override suspend fun begin(deviceName: String)=DeviceSession(anon,hash,"https://vk.com/activate#SYNTHETIC",SystemClock.elapsedRealtime()+20000)
             override suspend fun poll(session: DeviceSession): DeviceCheck {
                 polls.incrementAndGet();return DeviceCheck.Approved(MusicAccess(fresh,NativeProtocol.DEFAULT_AGENT))

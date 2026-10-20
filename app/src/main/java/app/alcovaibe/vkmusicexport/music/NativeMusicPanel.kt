@@ -7,15 +7,20 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.alcovaibe.vkmusicexport.SettingsPage
 import app.alcovaibe.vkmusicexport.SecureSettingsContent
@@ -23,6 +28,9 @@ import androidx.core.content.FileProvider
 import app.alcovaibe.vkmusicexport.data.MusicSource
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import app.alcovaibe.vkmusicexport.export.Exporter
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -47,24 +55,28 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         NativeAccessScreen(onBack={configure=false},onSave={token,agent->model.configure(token,agent);configure=false})
         return
     }
+    if(!state.stopping && state.authPhase in setOf(DeviceAuthPhase.ENTER_CODE,DeviceAuthPhase.VALIDATING_CODE)) {
+        DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
+        return
+    }
     SettingsPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen") {
                 Text("Эксперимент: первые 10 треков и 10 подборок. Массовая выгрузка пока не реализована.")
                 Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
-                Text("Приложение создаст одноразовую заявку веб-версии ВК. Подтверди её на странице ВК в Chrome и вернись сюда: результат будет получен автоматически.")
+                Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
                 Text("Это внутренний протокол ВК. Веб-сессия может иметь права шире музыки, а музыкальный метод может быть недоступен. Новый доступ сохраняется только после успешной проверки музыки.",style=MaterialTheme.typography.bodySmall)
                 if(state.stage!="browser_auth")Button(enabled=state.initialized&&!state.busy,onClick=model::authenticate) {
                     Text(if(state.configured)"Подключить ВК заново через Chrome" else "Подключить ВК через Chrome")
                 }
                 state.authPhase?.let{Text(it.label,Modifier.testTag("native_auth_phase"))}
                 if(state.busy&&state.stage=="browser_auth") {
-                    if(state.authPhase in setOf(DeviceAuthPhase.READY,DeviceAuthPhase.WAITING,DeviceAuthPhase.CONFIRM_PHONE))
+                    if(!state.stopping && state.authPhase in setOf(DeviceAuthPhase.READY,DeviceAuthPhase.WAITING,DeviceAuthPhase.REQUEST_OPENED))
                         Button(onClick={model.openAuthChrome(context)}){Text("Открыть подтверждение ВК")}
-                    Text("Заявка действует не более 5 минут. Пока открыт Chrome, ожидание приостановлено; после возвращения проверка продолжится.",style=MaterialTheme.typography.bodySmall)
+                    Text("Срок заявки идёт и в Chrome: не более 5 минут. Проверка результата продолжается после возвращения в приложение.",style=MaterialTheme.typography.bodySmall)
                 }
                 state.authIssue?.let{Text(it.label+" Код: AUTH_"+it.name,color=MaterialTheme.colorScheme.error)}
                 HorizontalDivider()
                 Text("Ручной доступ",style=MaterialTheme.typography.titleMedium)
-                Text("Если у тебя уже есть музыкальный токен ВК, его можно ввести вручную. Пароли и коды приложение не запрашивает.",style=MaterialTheme.typography.bodySmall)
+                Text("Если у тебя уже есть музыкальный токен ВК, его можно ввести вручную. Пароль и SMS-коды вводи только на странице ВК.",style=MaterialTheme.typography.bodySmall)
                 if(!state.initialized)LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(if(state.configured)"Доступ ВК сохранён на устройстве" else "Музыкальный доступ ВК не настроен")
                 Button(enabled=state.initialized&&!state.busy,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
@@ -79,14 +91,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 if(state.busy) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     val p=state.progress
-                    Text(if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК" else when(p?.stage) {
+                    Text(if(state.stopping)"Завершаем предыдущую операцию…"
+                    else if(state.waitingForSlot)"Ожидаем завершения предыдущей операции…"
+                    else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК" else when(p?.stage) {
                         "segments"->"Получено сегментов: ${p.segment}/${p.segments} · ${p.bytes/1024} КБ"
                         "verifying"->"Проверка формата и длительности"
                         "receiving"->"Получение потока · ${p.bytes/1024} КБ"
                         else->"Проверка музыкального доступа"
                     })
                     if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
-                    TextButton(onClick=model::cancel){Text("Остановить")}
+                    TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
                 }
                 state.probe?.let { probe ->
                     HorizontalDivider()
@@ -148,6 +162,49 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Попробуй сохранить файл.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
+}
+
+@Composable
+internal fun DeviceConfirmationScreen(state: NativeMusicState,onSubmit: (String)->Unit,onCancel: ()->Unit,onBrowser: ()->Unit) {
+    var code by remember {mutableStateOf(TextFieldValue())}
+    var fieldEpoch by remember {mutableIntStateOf(0)}
+    val owner=LocalLifecycleOwner.current
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    val submitting=state.authCodePending||state.authPhase==DeviceAuthPhase.VALIDATING_CODE
+    fun clear(){code=TextFieldValue();fieldEpoch++;focus.clearFocus(force=true);keyboard?.hide()}
+    fun cancel(){clear();onCancel()}
+    fun submit(){if(!submitting&&code.text.length==6){val entered=code.text;clear();onSubmit(entered)}}
+    DisposableEffect(owner,focus) {
+        val observer=LifecycleEventObserver{_,event->if(event==Lifecycle.Event.ON_PAUSE||event==Lifecycle.Event.ON_STOP)clear()}
+        owner.lifecycle.addObserver(observer)
+        onDispose{owner.lifecycle.removeObserver(observer);clear()}
+    }
+    SecureSettingsContent {
+        SettingsPage("Код подключения ВК",onBack={cancel()},tag="native_auth_code_screen") {
+            Text("ВК запросил подтверждение текущего подключения.",style=MaterialTheme.typography.titleMedium)
+            Text("Введи 6 цифр, показанных на странице VK ID «Запрос входа с нового устройства», и нажми «Подтвердить код».")
+            Text("Пароль и SMS-коды вводи только на странице ВК.",style=MaterialTheme.typography.bodySmall)
+            // Recreate the sensitive input connection after clearing: an IME must not
+            // retain its previous edit buffer/selection when the Activity resumes.
+            key(fieldEpoch) {
+            OutlinedTextField(value=code,onValueChange={next->if(next.text.length<=6&&next.text.all{it in '0'..'9'})code=next},
+                label={Text("Код подключения · 6 цифр")},enabled=!submitting,
+                modifier=Modifier.fillMaxWidth().testTag("native_auth_confirmation_code"),singleLine=true,
+                visualTransformation=PasswordVisualTransformation(),
+                keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword,autoCorrectEnabled=false,imeAction=ImeAction.Done),
+                keyboardActions=KeyboardActions(onDone={submit()}))
+            }
+            state.authCodeIssue?.let{Text(it.label,Modifier.testTag("native_auth_code_error"),color=MaterialTheme.colorScheme.error)}
+            Button(enabled=code.text.length==6&&!submitting,onClick={submit()},modifier=Modifier.testTag("native_auth_submit_code")) {
+                Text(if(submitting)"Проверяем код…" else "Подтвердить код")
+            }
+            if(submitting)LinearProgressIndicator(Modifier.fillMaxWidth())
+            TextButton(enabled=!submitting,onClick={clear();onBrowser()}){Text("Показать страницу VK ID в Chrome")}
+            Text("Код относится только к этой заявке. При неверном коде можно повторить ввод; новая заявка автоматически не создаётся.",style=MaterialTheme.typography.bodySmall)
+            TextButton(onClick={cancel()},modifier=Modifier.testTag("native_auth_cancel_code")){Text("Отменить подключение")}
+        }
+    }
 }
 
 @Composable

@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import androidx.browser.customtabs.CustomTabsIntent
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
@@ -17,14 +19,18 @@ internal enum class DeviceAuthPhase(val label: String) {
     PREPARING("Создаём одноразовую заявку ВК…"),
     READY("Заявка готова. Открой подтверждение в Chrome."),
     WAITING("Подтверди вход в Chrome и вернись в приложение."),
-    CONFIRM_PHONE("ВК ожидает подтверждения входа на телефоне. Заверши его на странице ВК и вернись."),
+    REQUEST_OPENED("ВК отметил открытие заявки. Подтверди запрос и вернись в приложение."),
+    ENTER_CODE("ВК запросил код подключения. Введи код со страницы VK ID здесь, в приложении."),
+    VALIDATING_CODE("Отправляем код подключения ВК…"),
+    AWAITING_APPROVAL("Код принят. Ожидаем завершения заявки ВК…"),
     VERIFYING("Вход подтверждён. Проверяем доступ к музыке…"),
     CONNECTED("Музыкальный доступ подтверждён и сохранён на устройстве."),
     FAILED("Подключение не завершено.")
 }
 internal enum class DeviceAuthIssue(val label: String) {
     EXPIRED("Срок одноразовой заявки истёк. Начни вход заново."),
-    RESPONSE("ВК изменил или не поддерживает этот протокол входа. Скопируй диагностический лог."),
+    DECLINED("Подключение отменено на стороне ВК. Можно начать новую заявку."),
+    RESPONSE("Не удалось обработать ответ ВК. Скопируй диагностический лог этой попытки."),
     PARTIAL("ВК выдал неполную сессию. Этот способ входа пока не поддерживается; доступ не сохранён."),
     UNSUPPORTED_TOKEN("ВК выдал другой тип токена. Его обмен пока не поддерживается; доступ не сохранён."),
     BROWSER("Не удалось открыть Google Chrome. Включи его и повтори."),
@@ -47,15 +53,31 @@ internal class DeviceSession(val anonymous: String, val hash: String, val url: S
     override fun toString() = "DeviceSession([redacted])"
 }
 internal sealed interface DeviceCheck {
-    data class Pending(val confirmPhone: Boolean): DeviceCheck
+    data class Pending(val opened: Boolean): DeviceCheck
     class Approved(val access: MusicAccess): DeviceCheck {
         override fun toString() = "Approved([redacted])"
     }
     data object Expired: DeviceCheck
+    data object Declined: DeviceCheck
+    data object VerificationRequired: DeviceCheck
+}
+internal enum class DeviceValidation { ACCEPTED, INCORRECT, EXPIRED }
+internal enum class DeviceCodeIssue(val label: String) {
+    FORMAT("Введи 6 цифр кода подключения со страницы VK ID."),
+    INCORRECT("ВК не принял код. Проверь код текущей заявки и повтори.")
+}
+/** Not a data class: credentials must never be printed by generated toString/copy. */
+internal class DeviceConfirmationCode private constructor(val value: String) {
+    override fun toString() = "DeviceConfirmationCode([redacted])"
+    companion object {
+        fun from(value: String): DeviceConfirmationCode? =
+            if(value.length==6 && value.all{it in '0'..'9'})DeviceConfirmationCode(value) else null
+    }
 }
 internal interface DeviceAuthApi {
     suspend fun begin(deviceName: String): DeviceSession
     suspend fun poll(session: DeviceSession): DeviceCheck
+    suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation
 }
 
 /** Experimental VK WEB device pairing, not the official Android client's identity or secret. */
@@ -141,6 +163,8 @@ internal object DeviceAuthProtocol {
         when(number(o,"status")) {
             0L,1L,200L -> DeviceCheck.Pending(number(o,"status")==1L)
             4L -> DeviceCheck.Expired
+            3L -> DeviceCheck.Declined
+            5L -> DeviceCheck.VerificationRequired
             2L -> {
                 if(flag(o,"need_password") || flag(o,"is_partial"))throw DeviceAuthFailure(DeviceAuthIssue.PARTIAL)
                 val token=(o["access_token"] as? JsonPrimitive)?.takeIf{it.isString}?.content
@@ -149,6 +173,14 @@ internal object DeviceAuthProtocol {
                 check(token!=null && NativeProtocol.validAccess(token,NativeProtocol.DEFAULT_AGENT))
                 DeviceCheck.Approved(MusicAccess(token!!,NativeProtocol.DEFAULT_AGENT))
             }
+            else -> throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
+        }
+    }
+    fun validation(response: JsonElement): DeviceValidation = parse {
+        when(number(response.jsonObject,"status")) {
+            0L -> DeviceValidation.ACCEPTED
+            1L -> DeviceValidation.INCORRECT
+            2L -> DeviceValidation.EXPIRED
             else -> throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         }
     }
@@ -180,6 +212,7 @@ internal class VkDeviceAuthClient(private val client: OkHttpClient=NetworkClient
         val stage=when(method) {
             "auth.getAnonymToken"->"anonymous";"auth.getQrAuthData"->"qr_bootstrap"
             "auth.getAuthCode"->"create";"auth.checkAuthCode"->"poll"
+            "auth.validateAuthCode"->"validate"
             else->throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         }
         val version=if(stage in setOf("anonymous","qr_bootstrap"))DeviceAuthProtocol.INIT_VERSION else DeviceAuthProtocol.PAIR_VERSION
@@ -226,28 +259,73 @@ internal class VkDeviceAuthClient(private val client: OkHttpClient=NetworkClient
         observe("native_auth_poll_result",mapOf("status" to status,"token_kind" to kind))
         return DeviceAuthProtocol.poll(response)
     }
+    override suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation {
+        if(now()>=session.expiresAt)return DeviceValidation.EXPIRED
+        val response=request("auth.validateAuthCode",mapOf("auth_hash" to session.hash,
+            "validation_code" to code.value,"access_token" to session.anonymous))
+        val status=(response as? JsonObject)?.get("status")?.let{it as? JsonPrimitive}
+            ?.takeIf{!it.isString}?.intOrNull?.takeIf{it in -1..10000}
+        observe("native_auth_validation_result",mapOf("status" to status))
+        return DeviceAuthProtocol.validation(response)
+    }
 }
 
 /** No polling while Chrome/app is backgrounded. Expiration also covers waiting for the user's gesture. */
 internal suspend fun awaitDeviceAccess(api: DeviceAuthApi,session: DeviceSession,opened: StateFlow<Boolean>,
-    foreground: StateFlow<Boolean>,now: ()->Long,pollMs: Long=5000,onPhase: (DeviceAuthPhase)->Unit): MusicAccess {
+    foreground: StateFlow<Boolean>,now: ()->Long,pollMs: Long=5000,
+    confirmationCodes: ReceiveChannel<DeviceConfirmationCode>?=null,onIncorrectCode: ()->Unit={},
+    onPhase: (DeviceAuthPhase)->Unit): MusicAccess {
     val remaining=session.expiresAt-now()
     if(remaining<=0)throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
     try {
         return withTimeout(remaining) {
             opened.first{it}
+            var needsCode=false
+            var codeAccepted=false
+            fun checkDeadline(){if(now()>=session.expiresAt)throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)}
             while(true) {
                 foreground.first{it}
-                if(now()>=session.expiresAt)throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
+                checkDeadline()
                 when(val r=api.poll(session)) {
                     is DeviceCheck.Approved -> {
                         foreground.first{it}
+                        checkDeadline()
                         return@withTimeout r.access
                     }
                     DeviceCheck.Expired -> throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
-                    is DeviceCheck.Pending -> onPhase(if(r.confirmPhone)DeviceAuthPhase.CONFIRM_PHONE else DeviceAuthPhase.WAITING)
+                    DeviceCheck.Declined -> throw DeviceAuthFailure(DeviceAuthIssue.DECLINED)
+                    DeviceCheck.VerificationRequired -> {
+                        if(!codeAccepted)needsCode=true
+                        onPhase(if(codeAccepted)DeviceAuthPhase.AWAITING_APPROVAL else DeviceAuthPhase.ENTER_CODE)
+                    }
+                    is DeviceCheck.Pending -> onPhase(when {
+                        codeAccepted -> DeviceAuthPhase.AWAITING_APPROVAL
+                        needsCode -> DeviceAuthPhase.ENTER_CODE
+                        r.opened -> DeviceAuthPhase.REQUEST_OPENED
+                        else -> DeviceAuthPhase.WAITING
+                    })
                 }
-                delay(pollMs)
+                // Keep polling for decline/approval/expiry while the code screen is open.
+                // A buffered submission belongs only to this in-memory request, never to the next one.
+                if(needsCode && confirmationCodes!=null) {
+                    val code=withTimeoutOrNull(pollMs){confirmationCodes.receive()}
+                    if(code!=null) {
+                        foreground.first{it};checkDeadline()
+                        onPhase(DeviceAuthPhase.VALIDATING_CODE)
+                        when(api.validate(session,code)) {
+                            DeviceValidation.ACCEPTED -> {
+                                needsCode=false;codeAccepted=true
+                                onPhase(DeviceAuthPhase.AWAITING_APPROVAL)
+                            }
+                            DeviceValidation.INCORRECT -> {
+                                onIncorrectCode();onPhase(DeviceAuthPhase.ENTER_CODE)
+                            }
+                            DeviceValidation.EXPIRED -> throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
+                        }
+                    }
+                }else {
+                    delay(pollMs)
+                }
             }
             @Suppress("UNREACHABLE_CODE") throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         }
@@ -259,8 +337,12 @@ internal suspend fun awaitDeviceAccess(api: DeviceAuthApi,session: DeviceSession
 
 internal fun openDeviceAuthChrome(context: Context,url: String): Boolean = try {
     val safe=DeviceAuthProtocol.browserUrl(url)
-    context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(safe.toString())).setPackage("com.android.chrome").apply {
-        if(context !is android.app.Activity)addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    })
+    val tab=CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+        .setSendToExternalDefaultHandlerEnabled(false).build()
+    tab.intent.setPackage("com.android.chrome")
+    if(context !is android.app.Activity)tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    tab.launchUrl(context,Uri.parse(safe.toString()))
+    Diagnostics.event("native_auth_browser_provider",mapOf("package" to "com.android.chrome",
+        "mode" to "chrome_custom_tab","entry_host" to safe.host,"auth_status" to "not_proven"))
     true
 }catch(_: Exception){false}
