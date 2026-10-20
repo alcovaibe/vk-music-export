@@ -121,9 +121,14 @@ internal class NativeMusicViewModel(application: Application): AndroidViewModel(
             }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
         }
     }
-    fun cancel() {
+    fun cancel()=stop("native_stop_button")
+    fun stopForWindow()=stop("native_window_closed")
+    fun stopInBackground()=stop("activity_onStop")
+    private fun stop(detector: String) {
         if(!_state.value.busy)return
-        Diagnostics.button("native_music_cancel");generation++;work?.cancel()
+        if(detector=="native_stop_button")Diagnostics.button("native_music_cancel")
+        Diagnostics.event("native_music_cancel",mapOf("detector" to detector))
+        generation++;work?.cancel()
         _state.update{it.copy(busy=false,stage="",progress=null,message="Операция остановлена. Готовые файлы сохранены.")}
     }
     fun forget() {

@@ -43,7 +43,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val saveM4a=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mp4")){uri->
         selectedFile?.let{row->if(uri!=null)model.saveFile(row,uri)};selectedFile=null
     }
-    Dialog(onDismissRequest={model.cancel();onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    Dialog(onDismissRequest={model.stopForWindow();onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding()) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Прямой доступ ВК",style=MaterialTheme.typography.headlineSmall)
@@ -129,7 +129,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         }
                     }
                 }
-                TextButton(onClick={Diagnostics.button("native_music_close");model.cancel();onDismiss()}){Text("Закрыть")}
+                TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
             }
         }
     }

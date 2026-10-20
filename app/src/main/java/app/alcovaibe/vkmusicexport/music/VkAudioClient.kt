@@ -33,8 +33,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
             if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
             musicCheck(response.status==200,MusicError.HTTP)
-            val text = strictUtf8(response.bytes)
-            NativeProtocol.envelope(text)
+            withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes))}
         } catch(e: CancellationException){throw e}
           catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode));throw e}
           catch(_: SSLException){throw MusicFailure(MusicError.TLS)}

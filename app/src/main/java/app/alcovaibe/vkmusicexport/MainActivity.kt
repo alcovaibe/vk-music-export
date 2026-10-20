@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
     override fun onResume(){super.onResume();updates.controller.resume()}
     override fun onPause(){updates.controller.pause();super.onPause()}
-    override fun onStop(){nativeMusic.cancel();super.onStop()}
+    override fun onStop(){nativeMusic.stopInBackground();super.onStop()}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
