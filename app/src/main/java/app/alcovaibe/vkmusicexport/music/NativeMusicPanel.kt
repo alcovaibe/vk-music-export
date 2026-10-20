@@ -10,15 +10,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.SecureFlagPolicy
+import app.alcovaibe.vkmusicexport.SettingsPage
+import app.alcovaibe.vkmusicexport.SecureSettingsContent
 import androidx.core.content.FileProvider
 import app.alcovaibe.vkmusicexport.data.MusicSource
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
@@ -34,7 +34,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val state by model.state.collectAsState()
-    var configure by remember {mutableStateOf(false)}
+    var configure by rememberSaveable {mutableStateOf(false)}
     var selectedFile by remember {mutableStateOf<SavedAudio?>(null)}
     var openError by remember {mutableStateOf(false)}
     val saveMp3=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mpeg")){uri->
@@ -43,12 +43,28 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val saveM4a=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mp4")){uri->
         selectedFile?.let{row->if(uri!=null)model.saveFile(row,uri)};selectedFile=null
     }
-    Dialog(onDismissRequest={model.stopForWindow();onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding()) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                Text("Прямой доступ ВК",style=MaterialTheme.typography.headlineSmall)
-                Text("Эксперимент: первые 10 треков и 10 подборок. Массовая выгрузка и автоматический вход ещё не реализованы.")
-                Text("Сессия Chrome сюда не переносится. Для проверки нужен уже выданный тебе токен ВК с доступом к музыке. Приложение не получает пароль ВК.",style=MaterialTheme.typography.bodyMedium)
+    if(configure) {
+        NativeAccessScreen(onBack={configure=false},onSave={token,agent->model.configure(token,agent);configure=false})
+        return
+    }
+    SettingsPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen") {
+                Text("Эксперимент: первые 10 треков и 10 подборок. Массовая выгрузка пока не реализована.")
+                Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
+                Text("Приложение создаст одноразовую заявку веб-версии ВК. Подтверди её на странице ВК в Chrome и вернись сюда: результат будет получен автоматически.")
+                Text("Это внутренний протокол ВК. Веб-сессия может иметь права шире музыки, а музыкальный метод может быть недоступен. Новый доступ сохраняется только после успешной проверки музыки.",style=MaterialTheme.typography.bodySmall)
+                if(state.stage!="browser_auth")Button(enabled=state.initialized&&!state.busy,onClick=model::authenticate) {
+                    Text(if(state.configured)"Подключить ВК заново через Chrome" else "Подключить ВК через Chrome")
+                }
+                state.authPhase?.let{Text(it.label,Modifier.testTag("native_auth_phase"))}
+                if(state.busy&&state.stage=="browser_auth") {
+                    if(state.authPhase in setOf(DeviceAuthPhase.READY,DeviceAuthPhase.WAITING,DeviceAuthPhase.CONFIRM_PHONE))
+                        Button(onClick={model.openAuthChrome(context)}){Text("Открыть подтверждение ВК")}
+                    Text("Заявка действует не более 5 минут. Пока открыт Chrome, ожидание приостановлено; после возвращения проверка продолжится.",style=MaterialTheme.typography.bodySmall)
+                }
+                state.authIssue?.let{Text(it.label+" Код: AUTH_"+it.name,color=MaterialTheme.colorScheme.error)}
+                HorizontalDivider()
+                Text("Ручной доступ",style=MaterialTheme.typography.titleMedium)
+                Text("Если у тебя уже есть музыкальный токен ВК, его можно ввести вручную. Пароли и коды приложение не запрашивает.",style=MaterialTheme.typography.bodySmall)
                 if(!state.initialized)LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(if(state.configured)"Доступ ВК сохранён на устройстве" else "Музыкальный доступ ВК не настроен")
                 Button(enabled=state.initialized&&!state.busy,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
@@ -63,13 +79,13 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 if(state.busy) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     val p=state.progress
-                    Text(when(p?.stage) {
+                    Text(if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК" else when(p?.stage) {
                         "segments"->"Получено сегментов: ${p.segment}/${p.segments} · ${p.bytes/1024} КБ"
                         "verifying"->"Проверка формата и длительности"
                         "receiving"->"Получение потока · ${p.bytes/1024} КБ"
                         else->"Проверка музыкального доступа"
                     })
-                    Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
+                    if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
                     TextButton(onClick=model::cancel){Text("Остановить")}
                 }
                 state.probe?.let { probe ->
@@ -90,7 +106,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     Text(state.selected?.title?:"Моя музыка",style=MaterialTheme.typography.titleMedium)
                     Text("Проверочная выборка: ${page.tracks.size}/${page.count}. Полнота не подтверждена.")
                     OutlinedButton(enabled=!state.busy,onClick={
-                        Diagnostics.button("native_music_preview_sample");model.sample()?.let{onSample(it);onDismiss()}
+                        Diagnostics.button("native_music_preview_sample");model.sample()?.let{onSample(it)}
                     }){Text("Сохранить выборку в коллекцию…")}
                     page.tracks.forEachIndexed { i,track ->
                         ElevatedCard(Modifier.fillMaxWidth()) {
@@ -130,30 +146,33 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
-            }
-        }
-    }
-    if(configure) {
-        var token by remember {mutableStateOf("")};var agent by remember {mutableStateOf(NativeProtocol.DEFAULT_AGENT)}
-        var invalid by remember {mutableStateOf(false)}
-        AlertDialog(onDismissRequest={token="";agent="";configure=false},properties=DialogProperties(securePolicy=SecureFlagPolicy.SecureOn),
-            title={Text("Музыкальный доступ ВК")},text={
-                Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Text("Введи только токен ВК, не GitHub и не адрес страницы. Если токен выдан определённому клиенту, укажи его исходный User-Agent. Эти значения не попадают в диагностический лог.")
-                    Text("Автоматическое получение токена пока не реализовано. Если готового музыкального токена нет, этот способ подключения ещё нельзя проверить.")
-                    OutlinedTextField(value=token,onValueChange={if(it.length<=4096)token=it},label={Text("Токен ВК")},
-                        modifier=Modifier.fillMaxWidth().testTag("native_vk_token"),singleLine=true,visualTransformation=PasswordVisualTransformation(),
-                        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password))
-                    OutlinedTextField(value=agent,onValueChange={if(it.length<=512)agent=it},label={Text("User-Agent доступа")},
-                        modifier=Modifier.fillMaxWidth().testTag("native_vk_agent"),singleLine=true,
-                        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password))
-                    if(invalid)Text(MusicError.INVALID_ACCESS.label,color=MaterialTheme.colorScheme.error)
-                }
-            },confirmButton={TextButton(onClick={
-                if(!NativeProtocol.validAccess(token,agent))invalid=true else {
-                    model.configure(token,agent);token="";agent="";configure=false
-                }
-            }){Text("Сохранить и проверить ВК")}},dismissButton={TextButton(onClick={token="";agent="";configure=false}){Text("Отмена")}})
     }
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Попробуй сохранить файл.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
+}
+
+@Composable
+private fun NativeAccessScreen(onBack: ()->Unit,onSave: (String,String)->Unit) {
+    var token by remember {mutableStateOf("")}
+    var agent by remember {mutableStateOf(NativeProtocol.DEFAULT_AGENT)}
+    var invalid by remember {mutableStateOf(false)}
+    fun close(){token="";agent="";onBack()}
+    SecureSettingsContent {
+        SettingsPage("Музыкальный доступ ВК",onBack=::close,tag="native_access_screen") {
+            Text("Введи уже выданный токен ВК. Если он выдан определённому клиенту, укажи исходный User-Agent. Эти значения не попадают в диагностический лог.")
+            OutlinedTextField(value=token,onValueChange={if(it.length<=4096){token=it;invalid=false}},label={Text("Токен ВК")},
+                modifier=Modifier.fillMaxWidth().testTag("native_vk_token"),singleLine=true,visualTransformation=PasswordVisualTransformation(),
+                keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false))
+            OutlinedTextField(value=agent,onValueChange={if(it.length<=512)agent=it},label={Text("User-Agent доступа")},
+                modifier=Modifier.fillMaxWidth().testTag("native_vk_agent"),singleLine=true,
+                keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false))
+            if(invalid)Text(MusicError.INVALID_ACCESS.label,color=MaterialTheme.colorScheme.error)
+            Button(onClick={
+                Diagnostics.button("native_music_submit_access")
+                if(!NativeProtocol.validAccess(token,agent))invalid=true else {
+                    onSave(token,agent);token="";agent=""
+                }
+            }){Text("Сохранить и проверить ВК")}
+            TextButton(onClick={Diagnostics.button("native_music_access_cancel");close()}){Text("Отмена")}
+        }
+    }
 }

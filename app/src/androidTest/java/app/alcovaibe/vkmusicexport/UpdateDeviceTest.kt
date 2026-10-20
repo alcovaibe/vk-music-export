@@ -51,13 +51,13 @@ class UpdateUiDeviceTest {
         ui.waitUntil(10000){updates.controller.state.value.initialized}
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
         ui.onNodeWithContentDescription("Настройки").performClick()
-        ui.onNodeWithText("Обновления приложения").performClick()
+        ui.onNodeWithText("Обновления приложения").performScrollTo().performClick()
         ui.onNodeWithText("Настроить доступ GitHub").performScrollTo().performClick()
         ui.onNodeWithTag("update_token").performTextInput("not-a-valid-token")
-        ui.onNodeWithText("Сохранить и проверить").performClick()
+        ui.onNodeWithText("Сохранить и проверить").performScrollTo().performClick()
         ui.onNodeWithText("Нужен fine-grained токен github_pat_… длиной до 256 символов.").assertExists()
         assertFalse(File(ui.activity.noBackupFilesDir,"update-access.bin").exists())
-        ui.onNodeWithText("Отмена").performClick();ui.onNodeWithText("Закрыть").performClick()
+        ui.onNodeWithText("Отмена").performScrollTo().performClick();ui.onNodeWithText("Закрыть").performScrollTo().performClick()
         val after=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
         assertArrayEquals(collection,after)
     }

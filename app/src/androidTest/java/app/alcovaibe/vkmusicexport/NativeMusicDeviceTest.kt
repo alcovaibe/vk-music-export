@@ -118,10 +118,10 @@ class NativeMusicUiDeviceTest {
         ui.onNodeWithText("Прямой доступ ВК · эксперимент").performClick()
         ui.onNodeWithText("Настроить доступ ВК").performScrollTo().performClick()
         ui.onNodeWithTag("native_vk_token").performTextInput("github_pat_"+"WRONG_SERVICE_".repeat(8))
-        ui.onNodeWithText("Сохранить и проверить ВК").performClick()
+        ui.onNodeWithText("Сохранить и проверить ВК").performScrollTo().performClick()
         ui.onNodeWithText(MusicError.INVALID_ACCESS.label).assertExists()
         assertFalse(File(ui.activity.noBackupFilesDir,"native-music-access.bin").exists())
-        ui.onNodeWithText("Отмена").performClick();ui.onNodeWithText("Закрыть").performScrollTo().performClick()
+        ui.onNodeWithText("Отмена").performScrollTo().performClick();ui.onNodeWithText("Закрыть").performScrollTo().performClick()
         assertArrayEquals(collection,ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes())
     }
 }

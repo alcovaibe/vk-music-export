@@ -85,7 +85,7 @@ class RunJournal(private val root: File, runId: String? = null,
             put("schema", 1); put("startup_snapshot",JsonArray(startup)); put("run_id", id); put("exported_at", Instant.now().toString())
             put("recovery_invalid_records", damaged)
             put("history_truncated", parts.firstOrNull()?.nameWithoutExtension?.toIntOrNull()?.let { it > 0 } ?: false)
-            put("observability", "Current builds launch external Google Chrome. The app observes intent dispatch and native lifecycle only; it cannot observe Chrome page loads, DOM, console, UA/Client Hints, cookies, requests or login completion. Dispatch and returning to the app are not proof of authentication. Retained earlier runs may contain partial WebView callbacks, which are not a network trace. Process kill can lose queued or unsynced events; no shutdown event is not proof of a crash.")
+            put("observability", "Chrome is external: the app observes intent dispatch and native lifecycle, not Chrome page loads, DOM, console, UA/Client Hints, cookies or requests. Native VK API and experimental device-pairing events contain partial metadata from the app's own HTTPS clients; they are not a complete network trace. Browser dispatch, returning to the app and pairing approval alone do not prove music access. CONNECTED requires a successful native music probe and encrypted credential storage. Retained earlier runs may contain partial WebView callbacks. Missing events do not prove absence of requests; process kill can lose queued or unsynced events. No shutdown event is not proof of a crash.")
             put("events", JsonArray(records))
         }.toString()
     }

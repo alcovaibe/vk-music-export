@@ -19,8 +19,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.SecureFlagPolicy
+import app.alcovaibe.vkmusicexport.SettingsPage
+import app.alcovaibe.vkmusicexport.SecureSettingsContent
 import app.alcovaibe.vkmusicexport.BuildConfig
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import java.io.File
@@ -51,8 +51,8 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
     }
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
     val installer=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
-    val visible=open||state.release!=null||state.status==UpdateStatus.DOWNLOADING||state.apk!=null
-    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");controller.defer();onClose()}
+    val visible=open
+    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");input="";credentials=false;controller.defer();onClose()}
     fun closeCredentials(){Diagnostics.button("dismiss_update_access");input="";credentials=false}
     fun browse(url: String){try{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}catch (_: Exception){android.widget.Toast.makeText(context,"Не удалось открыть браузер",android.widget.Toast.LENGTH_LONG).show()}}
     fun install() {
@@ -70,8 +70,7 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
             finally{if(!launched)installing=false}
         }
     }
-    if(visible&&!credentials)AlertDialog(onDismissRequest=::close,title={Text("Обновления")},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    if(visible&&!credentials)SettingsPage("Обновления",onBack=::close,tag="updates_screen") {
             Text("Установлено: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             Text(if(state.configured)"Доступ к приватным релизам настроен" else "Для приватных релизов нужен токен GitHub")
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
@@ -102,25 +101,30 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
                 if(state.configured)TextButton(enabled=!state.editing,onClick={Diagnostics.button("remove_update_access");controller.configure(null)}){Text("Удалить токен")}
                 TextButton(onClick={Diagnostics.button("open_update_releases");browse("https://github.com/alcovaibe/vk-music-export/releases/latest")}){Text("Открыть релизы GitHub")}
             }
-        }
-    },confirmButton={
+
         when {
             state.apk!=null->TextButton(enabled=!installing,onClick=::install){Text("Установить")}
             state.release!=null&&state.status!=UpdateStatus.DOWNLOADING->TextButton(onClick={Diagnostics.button("download_update");controller.download()}){Text("Скачать обновление")}
             state.status!=UpdateStatus.DOWNLOADING->TextButton(enabled=retryEnabled&&state.initialized&&state.configured&&!state.editing&&state.status!=UpdateStatus.CHECKING,onClick={Diagnostics.button("check_updates");controller.check()}){Text("Проверить обновления")}
         }
-    },dismissButton={TextButton(onClick=::close){Text(if(state.status==UpdateStatus.DOWNLOADING)"Отменить загрузку" else "Закрыть")}})
-    if(credentials)AlertDialog(onDismissRequest=::closeCredentials,properties=DialogProperties(securePolicy=SecureFlagPolicy.SecureOn),title={Text("Доступ GitHub")},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+
+        TextButton(onClick=::close){Text(if(state.status==UpdateStatus.DOWNLOADING)"Отменить загрузку" else "Закрыть")}
+    }
+
+    if(visible&&credentials)SecureSettingsContent {
+        SettingsPage("Доступ GitHub",onBack=::closeCredentials,tag="update_access_screen") {
             Text("Создай fine-grained token: владелец alcovaibe → Only select repositories → vk-music-export → Contents: Read-only. Выбери срок действия. Вставь токен только здесь.")
             TextButton(onClick={Diagnostics.button("open_update_token_setup");browse("https://github.com/settings/personal-access-tokens/new")}){Text("Создать токен в GitHub")}
             OutlinedTextField(value=input,onValueChange={if(it.length<=256){input=it;invalid=false}else invalid=true},label={Text("Токен GitHub")},singleLine=true,
                 visualTransformation=PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false),modifier=Modifier.fillMaxWidth().testTag("update_token"),isError=invalid)
             if(invalid)Text("Нужен fine-grained токен github_pat_… длиной до 256 символов.")
             Text("Токен хранится на устройстве в зашифрованном виде. Можно удалить его здесь или отозвать в GitHub.",style=MaterialTheme.typography.bodySmall)
-        }
-    },confirmButton={TextButton(enabled=!state.editing,onClick={
+            TextButton(enabled=!state.editing,onClick={
         Diagnostics.button("save_update_access")
         if(UpdateProtocol.validToken(input.trim())){controller.configure(input);input="";credentials=false}else invalid=true
-    }){Text("Сохранить и проверить")}},dismissButton={TextButton(onClick=::closeCredentials){Text("Отмена")}})
+    }){Text("Сохранить и проверить")}
+            TextButton(onClick=::closeCredentials){Text("Отмена")}
+        }
+    }
+
 }

@@ -5,8 +5,8 @@ set -euo pipefail
 build_tools="$ANDROID_HOME/build-tools/36.0.0"
 mkdir -p release-output upgrade-input
 # Verify the actual owner-installed release, not a newly rebuilt surrogate.
-gh release download v0.6.0-build.1050 --pattern 'VK-Music-Export-0.6.0-1050.apk' --dir upgrade-input --clobber
-mv upgrade-input/VK-Music-Export-0.6.0-1050.apk upgrade-input/previous.apk
+gh release download v0.7.0-build.1053 --pattern 'VK-Music-Export-0.7.0-1053.apk' --dir upgrade-input --clobber
+mv upgrade-input/VK-Music-Export-0.7.0-1053.apk upgrade-input/previous.apk
 ./gradlew lintRelease assembleRelease --stacktrace
 cp app/build/outputs/apk/release/app-release.apk upgrade-input/current.apk
 expected=$(openssl x509 -in config/release-certificate.pem -outform DER | sha256sum | cut -d' ' -f1)
@@ -40,3 +40,14 @@ Path('release-output/build-info.json').write_text(json.dumps({
 PY
 cp config/release-certificate.pem release-output/
 (cd release-output && sha256sum *.apk > SHA256SUMS.txt)
+
+# Public evidence only: permits checking uploaded assets against this exact build.
+python3 - <<'PYEVIDENCE'
+import hashlib, json
+from pathlib import Path
+info = json.loads(Path('release-output/build-info.json').read_text())
+apk = Path('release-output') / info['apk']
+print('RELEASE_BUILD_INFO=' + json.dumps(info, sort_keys=True))
+print('RELEASE_APK_SHA256=' + hashlib.sha256(apk.read_bytes()).hexdigest())
+print('RELEASE_PUBLIC_CERT_PEM_SHA256=' + hashlib.sha256(Path('release-output/release-certificate.pem').read_bytes()).hexdigest())
+PYEVIDENCE

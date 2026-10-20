@@ -70,8 +70,8 @@ class MainActivity : ComponentActivity() {
     private val model: MusicViewModel by viewModels()
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
-    override fun onResume(){super.onResume();updates.controller.resume()}
-    override fun onPause(){updates.controller.pause();super.onPause()}
+    override fun onResume(){super.onResume();nativeMusic.setForeground(true);updates.controller.resume()}
+    override fun onPause(){nativeMusic.setForeground(false);updates.controller.pause();super.onPause()}
     override fun onStop(){nativeMusic.stopInBackground();super.onStop()}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -113,8 +113,8 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     val message by model.message.collectAsState()
     val pending by model.pendingImport.collectAsState()
     var collectorGuide by remember { mutableStateOf(false) }
-    var updatePanel by remember{mutableStateOf(false)}
-    var nativePanel by remember{mutableStateOf(false)}
+    var settingsScreen by rememberSaveable{mutableStateOf<String?>(null)}
+    val updateState by updates.state.collectAsState()
     val importFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::stageImport) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
@@ -125,10 +125,10 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
         Diagnostics.button("open_chrome")
         chromeUnavailable = !app.alcovaibe.vkmusicexport.vk.ChromeBrowser.open(context)
     }
-    BackHandler(selected != null || tab != 0) {
+    BackHandler(settingsScreen==null && (selected != null || tab != 0)) {
         if (selected != null) selected = null else tab = 0
     }
-    Scaffold(
+    if(settingsScreen==null) Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 14.dp),
@@ -138,7 +138,7 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
                 }
                 Spacer(Modifier.width(10.dp))
                 Text("VK Music Export", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                IconButton(onClick = { Diagnostics.button("settings"); confirm = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
+                IconButton(onClick = { Diagnostics.button("settings"); settingsScreen = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
             }
         },
         bottomBar = {
@@ -152,6 +152,9 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            if(updateState.release!=null) TextButton(onClick={Diagnostics.button("updates_available");settingsScreen="updates"}) {
+                Text(if(updateState.apk!=null)"Установить обновление" else "Доступно обновление приложения")
+            }
             message?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp), color=MaterialTheme.colorScheme.onSurfaceVariant) }
             if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (tab == 0) CollectionScreen(snapshot, selected, query, ready,
@@ -179,19 +182,16 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
         title={Text("Chrome недоступен")},
         text={Text("Установи или включи Google Chrome и повтори открытие ВК. Встроенного браузера в приложении больше нет.")},
         confirmButton={TextButton(onClick={chromeUnavailable=false}){Text("Понятно")}})
-    if (confirm == "settings") AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Настройки") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", fontWeight = FontWeight.SemiBold)
-            Text("Вход и выход из ВК выполняются в Google Chrome. Сохранённая коллекция и её экспорт доступны в приложении.", style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = { confirm = null; openVk() }) { Text("Открыть ВК в Chrome") }
-            TextButton(onClick={Diagnostics.button("native_music_panel");confirm=null;nativePanel=true}){Text("Прямой доступ ВК · эксперимент")}
-            DiagnosticControls()
-            TextButton(onClick={Diagnostics.button("updates");confirm=null;updatePanel=true}){Text("Обновления приложения")}
-            TextButton(enabled = ready && !busy && pending==null, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
-        }
-    }, confirmButton = { TextButton(onClick = { Diagnostics.button("settings_done"); confirm = null }) { Text("Готово") } })
-    app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,updatePanel){updatePanel=false}
-    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,nativePanel,onDismiss={nativePanel=false},onSample=model::stageNativeSample)
+    if(settingsScreen=="settings") SettingsScreen(
+        canClear=ready&&!busy&&pending==null,
+        onBack={Diagnostics.button("settings_back");settingsScreen=null},
+        onBrowser=openVk,
+        onNative={Diagnostics.button("native_music_panel");settingsScreen="native"},
+        onUpdates={Diagnostics.button("updates");settingsScreen="updates"},
+        onClear={Diagnostics.button("request_clear");confirm="clear"})
+    app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,settingsScreen=="updates"){settingsScreen="settings"}
+    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,settingsScreen=="native",
+        onDismiss={settingsScreen="settings"},onSample={model.stageNativeSample(it);settingsScreen=null})
     if (confirm == "clear") AlertDialog(onDismissRequest = { confirm = null },
         title = { Text("Очистить коллекцию?") },
         text = { Text("Списки будут удалены из приложения. Экспортированные файлы останутся.") },

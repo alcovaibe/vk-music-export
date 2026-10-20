@@ -46,7 +46,7 @@ internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: In
 internal data class NativeProbe(val owner: Long, val library: NativePage)
 
 internal object NativeProtocol {
-    const val DEFAULT_AGENT = "VK-Music-Export/0.7 (Android; personal audio access probe)"
+    const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 10
     val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById")
     private val idPattern = Regex("-?[1-9][0-9]{0,18}_[1-9][0-9]{0,18}")

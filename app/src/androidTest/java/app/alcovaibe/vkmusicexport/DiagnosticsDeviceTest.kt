@@ -36,7 +36,7 @@ class DiagnosticsDeviceTest {
     }
     @Test fun nativeCopyAndPrivateFileProviderExport() {
         ui.onNodeWithContentDescription("Настройки").performClick()
-        ui.onNodeWithText("Копировать лог").performClick()
+        ui.onNodeWithText("Копировать лог").performScrollTo().performClick()
         ui.waitUntil(25_000) {
             dismissFrameworkDialog()
             var available=false
