@@ -61,9 +61,10 @@ internal interface DeviceAuthApi {
 /** Experimental VK WEB device pairing, not the official Android client's identity or secret. */
 internal object DeviceAuthProtocol {
     const val WEB_CLIENT = "7913379"
-    const val BOOTSTRAP = "https://id.vk.com/qr_auth?scheme=vkcom_dark&app_id=7913379&origin=https%3A%2F%2Fvk.com"
+    const val INIT_VERSION = "5.276"
+    const val PAIR_VERSION = "5.126"
     private val browserHosts = setOf("vk.com","vk.ru","m.vk.com","m.vk.ru","id.vk.com","id.vk.ru",
-        "login.vk.com","login.vk.ru","oauth.vk.com","oauth.vk.ru")
+        "login.vk.com","login.vk.ru","oauth.vk.com","oauth.vk.ru","qr.vk.ru")
     private fun check(value: Boolean) { if(!value)throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE) }
     private inline fun <T> parse(block: ()->T): T = try {block()}
         catch(e: DeviceAuthFailure){throw e}
@@ -74,20 +75,39 @@ internal object DeviceAuthProtocol {
         check(u.scheme=="https" && u.port==443 && u.username.isEmpty() && u.password.isEmpty() && u.host in browserHosts)
         u
     }
-    fun bootstrap(raw: String): DeviceBootstrap = parse {
-        fun field(key: String): String {
-            val regex=Regex("\""+key+"\"\\s*:\\s*\"([A-Za-z0-9_.=\\-]{8,8192})\"")
-            val values=regex.findAll(raw).map{it.groupValues[1]}.distinct().take(2).toList()
-            check(values.size==1);return values.single()
-        }
-        DeviceBootstrap(field("anonymous_token"),field("code_auth_verification_hash"))
+    private fun opaque(value: String) = Regex("[A-Za-z0-9_.=\\-]{8,8192}").matches(value)
+    fun anonymous(response: JsonElement): String = parse {
+        val token=text(response.jsonObject,"token");check(opaque(token));token
     }
-    fun response(raw: String): JsonElement = try {NativeProtocol.envelope(raw)}
-        catch(e: MusicFailure) {
+    fun bootstrap(anonymous: String,response: JsonElement): DeviceBootstrap = parse {
+        check(opaque(anonymous))
+        val verification=text(response.jsonObject,"code_auth_verification_hash")
+        check(opaque(verification));DeviceBootstrap(anonymous,verification)
+    }
+    /** Only fixed classifications and presence flags may cross the journal boundary. */
+    fun response(raw: String,shape: (Map<String,Any?>)->Unit = {}): JsonElement {
+        val first=raw.firstOrNull{!it.isWhitespace()}
+        val metadata=mutableMapOf<String,Any?>("parser" to "vk_auth_json_v2","body_kind" to when(first) {
+            '{'->"json_object_like";'['->"json_array_like";'<'->"html_like";null->"empty";else->"other"
+        })
+        return try {
+            val result=NativeProtocol.envelope(raw)
+            val o=result as? JsonObject
+            metadata.putAll(mapOf("success_envelope" to true,"response_object" to (o!=null),
+                "anonymous_present" to (o?.containsKey("token")==true),
+                "verification_present" to (o?.containsKey("code_auth_verification_hash")==true),
+                "pair_hash_present" to (o?.containsKey("auth_hash")==true),
+                "pair_link_present" to (o?.containsKey("auth_url")==true),
+                "expiry_present" to (o?.containsKey("expires_in")==true),
+                "status_present" to (o?.containsKey("status")==true)))
+            shape(metadata);result
+        }catch(e: MusicFailure) {
+            metadata["success_envelope"]=false;shape(metadata)
             val issue=if(e.code==MusicError.RATE_LIMIT)DeviceAuthIssue.RATE_LIMIT
                 else if(e.remoteCode!=null)DeviceAuthIssue.SERVER else DeviceAuthIssue.RESPONSE
             throw DeviceAuthFailure(issue,e.remoteCode)
         }
+    }
     private fun text(o: JsonObject,key: String): String {
         val p=o[key] as? JsonPrimitive;check(p?.isString==true);return p!!.content
     }
@@ -102,12 +122,19 @@ internal object DeviceAuthProtocol {
         p as JsonPrimitive
         return p.booleanOrNull ?: when(p.intOrNull){0->false;1->true;else->throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)}
     }
-    fun session(response: JsonElement,b: DeviceBootstrap,startedAt: Long): DeviceSession = parse {
+    fun session(response: JsonElement,b: DeviceBootstrap,startedAt: Long,
+        wallTimeMs: Long = System.currentTimeMillis()): DeviceSession = parse {
         val o=response.jsonObject
         val hash=text(o,"auth_hash");check(Regex("[A-Za-z0-9_.=\\-]{8,4096}").matches(hash))
         val url=browserUrl(text(o,"auth_url")).toString()
-        val ttl=number(o,"expires_in");check(ttl in 1..86400)
-        DeviceSession(b.anonymous,hash,url,Math.addExact(startedAt,ttl.coerceAtMost(300)*1000))
+        val expiry=number(o,"expires_in")
+        // Current VK responses use Unix seconds despite the field's name. Historical replies used a duration.
+        val remaining=if(expiry>=1_000_000_000L) {
+            val ms=Math.subtractExact(Math.multiplyExact(expiry,1000),wallTimeMs)
+            if(ms<=0)throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
+            check(ms<=86_400_000);ms
+        }else {check(expiry in 1..86400);expiry*1000}
+        DeviceSession(b.anonymous,hash,url,Math.addExact(startedAt,remaining.coerceAtMost(300_000)))
     }
     fun poll(response: JsonElement): DeviceCheck = parse {
         val o=response.jsonObject
@@ -129,54 +156,66 @@ internal object DeviceAuthProtocol {
 
 internal class VkDeviceAuthClient(private val client: OkHttpClient=NetworkClients.api(),
     private val now: ()->Long={SystemClock.elapsedRealtime()},
+    private val wallNow: ()->Long={System.currentTimeMillis()},
     private val observe: (String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}): DeviceAuthApi {
     private suspend fun read(request: Request,stage: String,max: Int): BoundedResponse = try {
         val r=client.newCall(request).readBounded(max)
-        observe("native_auth_http",mapOf("stage" to stage,"http_status" to r.status,"bytes" to r.bytes.size))
+        val kind=when(r.mediaType) {
+            "application/json"->"json";"text/html","application/xhtml+xml"->"html"
+            null->"missing";else->"other"
+        }
+        observe("native_auth_http",mapOf("stage" to stage,"http_status" to r.status,"bytes" to r.bytes.size,"media_type" to kind))
         if(r.status==429)throw DeviceAuthFailure(DeviceAuthIssue.RATE_LIMIT)
         r
     }catch(e: CancellationException){throw e}
      catch(e: DeviceAuthFailure){throw e}
      catch(_: SSLException){throw DeviceAuthFailure(DeviceAuthIssue.TLS)}
-     catch(e: MusicFailure){throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)}
+     catch(e: MusicFailure){
+         observe("native_auth_transport_failure",mapOf("stage" to stage,"code" to e.code.name))
+         throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
+     }
      catch(_: Exception){throw DeviceAuthFailure(DeviceAuthIssue.NETWORK)}
 
-    private suspend fun bootstrap(): DeviceBootstrap {
-        var url=DeviceAuthProtocol.BOOTSTRAP
-        repeat(3) {
-            val r=read(Request.Builder().url(url).header("User-Agent",NativeProtocol.DEFAULT_AGENT).build(),"bootstrap",2_097_152)
-            if(r.status in setOf(301,302,303,307,308)) {
-                val next=DeviceAuthProtocol.browserUrl(url).resolve(r.location ?: throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE))
-                    ?: throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
-                val safe=DeviceAuthProtocol.browserUrl(next.toString())
-                if(safe.host !in setOf("id.vk.com","id.vk.ru"))throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
-                url=safe.toString()
-            }else {
-                if(r.status!=200)throw DeviceAuthFailure(DeviceAuthIssue.HTTP)
-                return withContext(Dispatchers.Default){DeviceAuthProtocol.bootstrap(strictUtf8(r.bytes))}
-            }
-        }
-        throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
-    }
     private suspend fun request(method: String,fields: Map<String,String>): JsonElement {
-        if(method !in setOf("auth.getAuthCode","auth.checkAuthCode"))throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
-        val form=FormBody.Builder().add("v","5.199").add("client_id",DeviceAuthProtocol.WEB_CLIENT).add("https","1")
+        val stage=when(method) {
+            "auth.getAnonymToken"->"anonymous";"auth.getQrAuthData"->"qr_bootstrap"
+            "auth.getAuthCode"->"create";"auth.checkAuthCode"->"poll"
+            else->throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
+        }
+        val version=if(stage in setOf("anonymous","qr_bootstrap"))DeviceAuthProtocol.INIT_VERSION else DeviceAuthProtocol.PAIR_VERSION
+        val form=FormBody.Builder().add("v",version).add("client_id",DeviceAuthProtocol.WEB_CLIENT)
         fields.forEach{(k,v)->form.add(k,v)}
-        val stage=if(method=="auth.getAuthCode")"create" else "poll"
+        observe("native_auth_request",mapOf("stage" to stage,"phase" to "start","protocol" to "vk_web_json_v2","api_version" to version))
         val r=read(Request.Builder().url("https://api.vk.com/method/"+method).header("User-Agent",NativeProtocol.DEFAULT_AGENT)
+            .header("Origin","https://id.vk.com").header("Referer","https://id.vk.com/").header("Accept","application/json")
             .post(form.build()).build(),stage,1_048_576)
         if(r.status!=200)throw DeviceAuthFailure(DeviceAuthIssue.HTTP)
-        return withContext(Dispatchers.Default){DeviceAuthProtocol.response(strictUtf8(r.bytes))}
+        return withContext(Dispatchers.Default){
+            val raw=try{strictUtf8(r.bytes)}catch(_: MusicFailure){
+                observe("native_auth_response_shape",mapOf("stage" to stage,"parser" to "strict_utf8","valid" to false))
+                throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
+            }
+            DeviceAuthProtocol.response(raw){shape->observe("native_auth_response_shape",mapOf("stage" to stage)+shape)}
+        }
     }
     override suspend fun begin(deviceName: String): DeviceSession {
-        val b=bootstrap();val started=now()
+        val anonymous=DeviceAuthProtocol.anonymous(request("auth.getAnonymToken",mapOf("access_token" to "")))
+        val b=DeviceAuthProtocol.bootstrap(anonymous,request("auth.getQrAuthData",mapOf("access_token" to "",
+            "app_id" to DeviceAuthProtocol.WEB_CLIENT,"app_settings" to "","http_origin" to "","http_referer" to "",
+            "lang" to "3","oauth_version" to "","origin" to "https://vk.com","scheme" to "vkcom_dark",
+            "scope" to "","scope_string" to "","uuid" to "")))
         val r=request("auth.getAuthCode",mapOf("device_name" to deviceName.take(120),"force_regenerate" to "1",
-            "auth_code_flow" to "0","anonymous_token" to b.anonymous,"verification_hash" to b.verification))
-        return DeviceAuthProtocol.session(r,b,started)
+            "auth_code_flow" to "0","anonymous_token" to b.anonymous,"verification_hash" to b.verification,"is_switcher_flow" to ""))
+        val started=now()
+        val session=DeviceAuthProtocol.session(r,b,started,wallNow())
+        val expiry=(r as? JsonObject)?.get("expires_in")?.jsonPrimitive?.longOrNull ?: 0
+        observe("native_auth_session",mapOf("phase" to "ready","expiry_format" to
+            if(expiry>=1_000_000_000L)"unix_seconds" else "relative_seconds","remaining_ms" to (session.expiresAt-started)))
+        return session
     }
     override suspend fun poll(session: DeviceSession): DeviceCheck {
         if(now()>=session.expiresAt)return DeviceCheck.Expired
-        val response=request("auth.checkAuthCode",mapOf("auth_hash" to session.hash,"anonymous_token" to session.anonymous))
+        val response=request("auth.checkAuthCode",mapOf("auth_hash" to session.hash,"anonymous_token" to session.anonymous,"web_auth" to "1"))
         val o=response as? JsonObject
         val status=(o?.get("status") as? JsonPrimitive)?.takeIf{!it.isString}?.intOrNull?.takeIf{it in -1..10000}
         val kind=when {

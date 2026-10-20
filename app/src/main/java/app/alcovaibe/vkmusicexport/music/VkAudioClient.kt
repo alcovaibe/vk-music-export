@@ -61,7 +61,7 @@ internal object NetworkClients {
         .connectTimeout(10,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).callTimeout(35,TimeUnit.SECONDS).build()
     fun media() = api().newBuilder().callTimeout(2,TimeUnit.MINUTES).build()
 }
-internal data class BoundedResponse(val status: Int,val bytes: ByteArray,val location: String?)
+internal data class BoundedResponse(val status: Int,val bytes: ByteArray,val location: String?,val mediaType: String? = null)
 internal fun strictUtf8(bytes: ByteArray): String = try {
     Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
         .decode(ByteBuffer.wrap(bytes)).toString().removePrefix("\uFEFF")
@@ -83,5 +83,5 @@ internal suspend fun Call.readBounded(max: Int): BoundedResponse = withResponse 
             musicCheck(out.size()+n<=max,MusicError.TOO_LARGE);out.write(buffer,0,n)}
     }
     musicCheck(body.contentLength()<0 || out.size().toLong()==body.contentLength(),MusicError.INCOMPLETE)
-    BoundedResponse(r.code,out.toByteArray(),r.header("Location"))
+    BoundedResponse(r.code,out.toByteArray(),r.header("Location"),body.contentType()?.let{it.type+"/"+it.subtype})
 }

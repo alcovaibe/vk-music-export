@@ -23,13 +23,18 @@ class DeviceAuthTest {
         assertEquals(issue,e.issue)
         for(secret in listOf(anon,verify,hash,token,url))assertFalse(e.toString().contains(secret))
     }
-    @Test fun bootstrapRejectsAmbiguousOrMissingValuesAndNeverPrintsCredentials() {
-        val raw="{\"anonymous_token\":\""+anon+"\",\"code_auth_verification_hash\":\""+verify+"\"}"
-        val b=DeviceAuthProtocol.bootstrap(raw+raw)
+    @Test fun jsonBootstrapRequiresTypedBoundedFieldsAndNeverPrintsCredentials() {
+        val a=DeviceAuthProtocol.anonymous(json("{\"token\":\""+anon+"\",\"expired_at\":1792518600}"))
+        val b=DeviceAuthProtocol.bootstrap(a,json("{\"code_auth_verification_hash\":\""+verify+"\"}"))
         assertEquals(anon,b.anonymous);assertEquals(verify,b.verification)
         assertFalse(b.toString().contains(anon));assertFalse(b.toString().contains(verify))
-        failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.bootstrap(raw+"{\"anonymous_token\":\"ANOTHER_SECRET_VALUE\"}")}
-        failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.bootstrap("<html>Login required</html>")}
+        for(raw in listOf("{}","{\"token\":false}","{\"token\":\"short\"}","[]","{\"token\":\""+"A".repeat(8193)+"\"}"))
+            failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.anonymous(json(raw))}
+        for(raw in listOf("{}","{\"code_auth_verification_hash\":23}","{\"code_auth_verification_hash\":\"short\"}"))
+            failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.bootstrap(anon,json(raw))}
+        val events=mutableListOf<String>()
+        failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.response("<!doctype html><script>PRIVATE_PAGE_SECRET</script>"){events.add(it.toString())}}
+        assertTrue(events.single().contains("html_like"));assertFalse(events.single().contains("PRIVATE_PAGE_SECRET"))
     }
     @Test fun pairingExpiryIsBoundedAndOnlyFirstPartyHttpsBrowserLinksAreAccepted() {
         val raw="""{"auth_hash":"PAIRING_SECRET_FIXTURE","auth_url":"https://vk.com/activate#ONE_TIME_URL_SECRET","expires_in":600}"""
@@ -41,6 +46,19 @@ class DeviceAuthTest {
         for(bad in listOf("http://vk.com/activate","https://vk.com.evil.test/activate","https://vk.com@evil.test/",
             "https://secret@vk.com/activate","https://vk.com:8443/activate","https://127.0.0.1/","https://vk.com\\@evil.test/",
             "https://vk.com/activate\nsecret"))failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.browserUrl(bad)}
+    }
+    @Test fun unixExpiryBecomesMonotonicDeadlineAndInvalidClockRangesAreRejected() {
+        val wall=1792518420000L
+        fun reply(expiry:String)=json("{\"auth_hash\":\""+hash+"\",\"auth_url\":\"https://qr.vk.ru/s?q=ONE_TIME_URL_SECRET\",\"expires_in\":"+expiry+"}")
+        assertEquals(181000L,DeviceAuthProtocol.session(reply("1792518600"),bootstrap,1000L,wall).expiresAt)
+        assertEquals(301000L,DeviceAuthProtocol.session(reply("1792519020"),bootstrap,1000L,wall).expiresAt)
+        failure(DeviceAuthIssue.EXPIRED){DeviceAuthProtocol.session(reply("1792518419"),bootstrap,1000L,wall)}
+        failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.session(reply("1792691220"),bootstrap,1000L,wall)}
+        failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.session(reply(Long.MAX_VALUE.toString()),bootstrap,1000L,wall)}
+        failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.session(reply("\"1792518600\""),bootstrap,1000L,wall)}
+        for(bad in listOf("https://qr.vk.ru.evil.test/s?q=SECRET","https://qr.vk.ru@evil.test/s?q=SECRET",
+            "http://qr.vk.ru/s?q=SECRET","https://qr.vk.ru:8443/s?q=SECRET","https://secret@qr.vk.ru/s?q=SECRET"))
+            failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.browserUrl(bad)}
     }
     @Test fun serverApprovalDoesNotAcceptPartialPasswordOrUnsupportedTokenResults() {
         for(status in listOf(0,1,200))assertEquals(status==1,(DeviceAuthProtocol.poll(json("{\"status\":"+status+"}")) as DeviceCheck.Pending).confirmPhone)
@@ -63,38 +81,63 @@ class DeviceAuthTest {
         assertEquals(DeviceAuthIssue.SERVER,e.issue);assertEquals(15,e.remoteCode)
         assertFalse(e.toString().contains("TOKEN_SECRET"));assertFalse(e.toString().contains("7999"))
     }
-    @Test fun actualRequestBuildersKeepSecretsInPostBodiesAndDiagnosticsContainOnlyMetadata()=runBlocking {
+    @Test fun actualRequestBuildersUseCurrentJsonBootstrapAndKeepSecretsOutOfDiagnostics()=runBlocking {
         val requests=mutableListOf<Request>();val events=mutableListOf<String>()
         val client=NetworkClients.api().newBuilder().addInterceptor {chain->
             val r=chain.request();requests.add(r)
             val body=when(r.url.encodedPath) {
-                "/qr_auth"->"{\"anonymous_token\":\""+anon+"\",\"code_auth_verification_hash\":\""+verify+"\"}"
-                "/method/auth.getAuthCode"->"{\"response\":{\"auth_hash\":\""+hash+"\",\"auth_url\":\""+url+"\",\"expires_in\":120}}"
+                "/method/auth.getAnonymToken"->"{\"response\":{\"token\":\""+anon+"\",\"expired_at\":1792518600}}"
+                "/method/auth.getQrAuthData"->"{\"response\":{\"code_auth_verification_hash\":\""+verify+"\",\"app\":{}}}"
+                "/method/auth.getAuthCode"->"{\"response\":{\"auth_hash\":\""+hash+"\",\"auth_url\":\"https://qr.vk.ru/s?q=ONE_TIME_URL_SECRET\",\"expires_in\":1792518600}}"
                 "/method/auth.checkAuthCode"->"{\"response\":{\"status\":2,\"access_token\":\""+token+"\"}}"
                 else->error("Unexpected endpoint")
             }
             Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                 .body(body.toResponseBody("application/json".toMediaType())).build()
         }.build()
-        val api=VkDeviceAuthClient(client,{1000L}){t,f->events.add(t+f.toString())}
+        val api=VkDeviceAuthClient(client,{1000L},{1792518420000L}){type,f->events.add(type+f.toString())}
         val s=api.begin("VK Music Export / synthetic device")
+        assertEquals(181000L,s.expiresAt);assertEquals("qr.vk.ru",DeviceAuthProtocol.browserUrl(s.url).host)
         assertEquals(token,(api.poll(s) as DeviceCheck.Approved).access.token)
-        assertEquals(3,requests.size)
-        for(r in requests) {
+        assertEquals(4,requests.size)
+        for((i,r) in requests.withIndex()) {
             assertNull(r.header("Cookie"));assertNull(r.header("Authorization"))
+            assertEquals("https://id.vk.com",r.header("Origin"));assertEquals(NativeProtocol.DEFAULT_AGENT,r.header("User-Agent"))
             assertFalse(r.url.toString().contains(anon));assertFalse(r.url.toString().contains(hash))
-            if(r.url.host=="api.vk.com") {
-                assertNull(r.url.query);assertEquals("POST",r.method)
-                val b=r.body as FormBody;val fields=(0 until b.size).associate{b.name(it) to b.value(it)}
-                assertEquals(DeviceAuthProtocol.WEB_CLIENT,fields["client_id"]);assertEquals(anon,fields["anonymous_token"])
-                assertFalse(fields.containsKey("client_secret"));assertFalse(fields.containsKey("password"))
-            }
+            assertEquals("api.vk.com",r.url.host);assertNull(r.url.query);assertEquals("POST",r.method)
+            val b=r.body as FormBody;val fields=(0 until b.size).associate{b.name(it) to b.value(it)}
+            assertEquals(DeviceAuthProtocol.WEB_CLIENT,fields["client_id"])
+            assertEquals(if(i<2)DeviceAuthProtocol.INIT_VERSION else DeviceAuthProtocol.PAIR_VERSION,fields["v"])
+            if(i<2)assertEquals("",fields["access_token"]) else assertEquals(anon,fields["anonymous_token"])
+            assertFalse(fields.containsKey("client_secret"));assertFalse(fields.containsKey("password"))
+            if(i==1){assertEquals(DeviceAuthProtocol.WEB_CLIENT,fields["app_id"]);assertEquals("",fields["uuid"])}
+            if(i==2)assertEquals(verify,fields["verification_hash"])
+            if(i==3)assertEquals("1",fields["web_auth"])
         }
         val logged=events.joinToString()
-        for(secret in listOf(anon,verify,hash,token,url,"synthetic device"))assertFalse(logged.contains(secret))
+        for(secret in listOf(anon,verify,hash,token,url,"ONE_TIME_URL_SECRET","synthetic device","auth_url","code_auth_verification_hash"))
+            assertFalse(logged.contains(secret))
+        for(stage in listOf("anonymous","qr_bootstrap","create","poll"))assertTrue(logged.contains("stage="+stage))
+        assertTrue(logged.contains("expiry_format=unix_seconds"));assertTrue(logged.contains("media_type=json"))
         assertFalse(client.followRedirects);assertFalse(client.followSslRedirects)
     }
-    @Test fun bootstrapNeverFollowsRedirectToAnUnapprovedHost()=runBlocking {
+    @Test fun failureOfFirstJsonStageStopsBeforeCreatingOrOpeningAnything()=runBlocking {
+        val requests=mutableListOf<Request>();val events=mutableListOf<String>()
+        val client=NetworkClients.api().newBuilder().addInterceptor {chain->
+            requests.add(chain.request())
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("<html>PRIVATE_BODY_SECRET +79991234567</html>".toResponseBody("text/html".toMediaType())).build()
+        }.build()
+        val e=try{VkDeviceAuthClient(client,{0L}){type,f->events.add(type+f.toString())}.begin("Fixture");null}
+            catch(e:DeviceAuthFailure){e}
+        assertEquals(DeviceAuthIssue.RESPONSE,e!!.issue);assertEquals(1,requests.size)
+        assertEquals("/method/auth.getAnonymToken",requests.single().url.encodedPath)
+        val logged=events.joinToString()
+        assertTrue(logged.contains("html_like"));assertTrue(logged.contains("media_type=html"))
+        assertTrue(logged.contains("success_envelope=false"))
+        assertFalse(logged.contains("PRIVATE_BODY_SECRET"));assertFalse(logged.contains("79991234567"))
+    }
+    @Test fun jsonApiNeverFollowsRedirectToAnUnapprovedHost()=runBlocking {
         val calls=AtomicInteger()
         val client=NetworkClients.api().newBuilder().addInterceptor {chain->
             calls.incrementAndGet()
@@ -102,7 +145,7 @@ class DeviceAuthTest {
                 .header("Location","https://evil.test/collect").body("".toResponseBody()).build()
         }.build()
         val e=try{VkDeviceAuthClient(client,{0L}){_,_->}.begin("Fixture");null}catch(e: DeviceAuthFailure){e}
-        assertEquals(DeviceAuthIssue.RESPONSE,e!!.issue);assertEquals(1,calls.get())
+        assertEquals(DeviceAuthIssue.HTTP,e!!.issue);assertEquals(1,calls.get())
     }
     @Test fun pairingWaitsForUserGestureAndForegroundThenResumesAfterPhoneConfirmation()=runBlocking {
         val foreground=MutableStateFlow(false);val opened=MutableStateFlow(false);val calls=AtomicInteger()
