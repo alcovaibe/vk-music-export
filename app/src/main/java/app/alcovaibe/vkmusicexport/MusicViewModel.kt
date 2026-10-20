@@ -58,6 +58,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun cancelImport() {Diagnostics.button("cancel_import");pendingImport.value=null}
+    fun stageNativeSample(source: MusicSource) {
+        if(!ready.value||busy.value||pendingImport.value!=null)return
+        pendingImport.value=ImportPlan(source,emptyList(),"NATIVE_ACCESS_SAMPLE_FIRST_10",source.entries.size)
+        Diagnostics.event("native_sample_preview",mapOf("entries" to source.entries.size,"complete" to false))
+    }
     fun confirmImport() {
         val plan=pendingImport.value ?: return
         if(busy.value)return
@@ -68,7 +73,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 val next=withContext(Dispatchers.Default){ChromeImport.merge(_snapshot.value,plan)}
                 store.save(next);_snapshot.value=next;pendingImport.value=null
                 message.value="Импортировано: ${plan.tracks} треков, ${plan.playlists.size} плейлистов в каталоге."
-                Diagnostics.event("chrome_import_saved",mapOf("entries" to plan.tracks,"catalog" to plan.playlists.size))
+                Diagnostics.event(if(plan.reason=="NATIVE_ACCESS_SAMPLE_FIRST_10")"native_sample_saved" else "chrome_import_saved",mapOf("entries" to plan.tracks,"catalog" to plan.playlists.size))
             }catch (_: Exception) {
                 message.value="Не удалось сохранить импорт. Прежняя коллекция сохранена."
                 Diagnostics.event("chrome_import_save_failed")

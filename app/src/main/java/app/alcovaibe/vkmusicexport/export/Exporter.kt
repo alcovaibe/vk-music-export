@@ -20,10 +20,11 @@ object Exporter {
 
     fun text(snapshot: CollectionSnapshot): String = snapshot.uniqueTracks().joinToString("\n") { line(it.artist, it.title) }
     fun csv(snapshot: CollectionSnapshot): String = buildString {
-        append("source_id,playlist,position,vk_id,artist,title,status\r\n")
+        append("source_id,playlist,position,vk_id,artist,title,status,duration_seconds,album_id,album,restricted\r\n")
         snapshot.sources.forEach { source -> source.entries.forEach { entry ->
             append(listOf(source.id, source.title, entry.position.toString(), entry.track.vkId.orEmpty(),
-                entry.track.artist, entry.track.title, source.status.name).joinToString(",", transform = ::cell))
+                entry.track.artist, entry.track.title, source.status.name,entry.track.durationSeconds?.toString().orEmpty(),
+                entry.track.album?.id.orEmpty(),entry.track.album?.title.orEmpty(),entry.track.restricted.toString()).joinToString(",", transform = ::cell))
             append("\r\n")
         } }
     }

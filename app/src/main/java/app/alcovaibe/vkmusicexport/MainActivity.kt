@@ -69,8 +69,10 @@ private fun tracks(n: Int) = counted(n, "трек", "трека", "треков"
 class MainActivity : ComponentActivity() {
     private val model: MusicViewModel by viewModels()
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
+    private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
     override fun onResume(){super.onResume();updates.controller.resume()}
     override fun onPause(){updates.controller.pause();super.onPause()}
+    override fun onStop(){nativeMusic.cancel();super.onStop()}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -81,7 +83,7 @@ class MainActivity : ComponentActivity() {
                     WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                 window.insetsController?.setSystemBarsAppearance(if (dark) 0 else lightBars, lightBars)
             }
-            MusicTheme { MusicApp(model,updates.controller) }
+            MusicTheme { MusicApp(model,updates.controller,nativeMusic) }
         }
     }
 }
@@ -103,7 +105,7 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.updates.UpdateController) {
+private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
     val context = LocalContext.current
     val snapshot by model.snapshot.collectAsState()
     val ready by model.ready.collectAsState()
@@ -112,6 +114,7 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     val pending by model.pendingImport.collectAsState()
     var collectorGuide by remember { mutableStateOf(false) }
     var updatePanel by remember{mutableStateOf(false)}
+    var nativePanel by remember{mutableStateOf(false)}
     val importFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::stageImport) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
@@ -159,13 +162,15 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     if(collectorGuide) CollectorGuide(onDismiss={Diagnostics.button("close_collector_guide");collectorGuide=false},onImport={Diagnostics.button("choose_import");collectorGuide=false;importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))},onMusic={Diagnostics.button("collector_open_music");chromeUnavailable=!app.alcovaibe.vkmusicexport.vk.ChromeBrowser.openMusic(context)})
     pending?.let { plan ->
         val previous=plan.source?.let{incoming->snapshot.sources.firstOrNull{it.id==incoming.id}}
-        AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text("Импорт из Chrome")},text={
+        val nativeSample=plan.reason=="NATIVE_ACCESS_SAMPLE_FIRST_10"
+        AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text(if(nativeSample)"Сохранение выборки ВК" else "Импорт из Chrome")},text={
             Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text("Треков: ${plan.tracks}. Плейлистов в каталоге: ${plan.playlists.size}.")
+                if(nativeSample)Text("Это только первые 10 позиций. Выборка останется помеченной как частичная, даже если количество совпало.")
                 plan.source?.let {Text("Список: ${it.title} · ${it.status.label}")}
                 if(previous!=null)Text("Импорт заменит этот список: сохранено ${previous.entries.size}, в файле ${plan.tracks} треков. Остальные списки сохранятся.")
                 else Text("Список будет добавлен в коллекцию. Каталог плейлистов не заменяет уже собранные треки.")
-                Text("Обнаруженный плейлист может ещё не содержать треков. Его нужно собрать отдельно в Chrome.")
+                if(!nativeSample)Text("Обнаруженный плейлист может ещё не содержать треков. Его нужно собрать отдельно в Chrome.")
             }
         },confirmButton={TextButton(enabled=!busy,onClick=model::confirmImport){Text(if(previous!=null)"Заменить список" else "Импортировать")}},
             dismissButton={TextButton(enabled=!busy,onClick=model::cancelImport){Text("Отмена")}})
@@ -179,12 +184,14 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
             Text("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", fontWeight = FontWeight.SemiBold)
             Text("Вход и выход из ВК выполняются в Google Chrome. Сохранённая коллекция и её экспорт доступны в приложении.", style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { confirm = null; openVk() }) { Text("Открыть ВК в Chrome") }
+            TextButton(onClick={Diagnostics.button("native_music_panel");confirm=null;nativePanel=true}){Text("Прямой доступ ВК · эксперимент")}
             DiagnosticControls()
             TextButton(onClick={Diagnostics.button("updates");confirm=null;updatePanel=true}){Text("Обновления приложения")}
             TextButton(enabled = ready && !busy && pending==null, onClick = { Diagnostics.button("request_clear"); confirm = "clear" }) { Text("Очистить коллекцию", color = MaterialTheme.colorScheme.error) }
         }
     }, confirmButton = { TextButton(onClick = { Diagnostics.button("settings_done"); confirm = null }) { Text("Готово") } })
     app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,updatePanel){updatePanel=false}
+    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,nativePanel,onDismiss={nativePanel=false},onSample=model::stageNativeSample)
     if (confirm == "clear") AlertDialog(onDismissRequest = { confirm = null },
         title = { Text("Очистить коллекцию?") },
         text = { Text("Списки будут удалены из приложения. Экспортированные файлы останутся.") },

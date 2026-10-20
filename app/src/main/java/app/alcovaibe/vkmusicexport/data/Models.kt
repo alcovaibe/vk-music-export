@@ -4,7 +4,11 @@ import kotlinx.serialization.Serializable
 import java.time.Instant
 
 @Serializable
-data class Track(val vkId: String? = null, val title: String, val artist: String)
+data class Track(val vkId: String? = null, val title: String, val artist: String,
+    val durationSeconds: Int? = null, val album: AlbumMetadata? = null, val restricted: Boolean = false)
+
+@Serializable
+data class AlbumMetadata(val id: String, val title: String)
 
 @Serializable
 data class Entry(val key: String, val track: Track, val position: Int)
