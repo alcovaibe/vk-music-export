@@ -24,6 +24,8 @@ jobs:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
@@ -79,6 +81,8 @@ jobs:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Enable KVM
@@ -105,6 +109,7 @@ jobs:
           profile: pixel_6
           ram-size: ${{ matrix.ram-size }}
           disk-size: 8G
+          pre-emulator-launch-script: grep -E '^target=android-${{ matrix.api-level }}([.]0)?$' "$ANDROID_AVD_HOME/test.ini"
           disable-animations: true
           script: bash tools/interface-check.sh ${{ matrix.api-level }}
       - name: Upload interface screenshots and reports
@@ -147,6 +152,8 @@ jobs:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Allocate increasing Android versionCode
