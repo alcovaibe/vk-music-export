@@ -15,7 +15,7 @@ val releaseKeystore = providers.environmentVariable("RELEASE_KEYSTORE_PATH").orN
 
 android {
     namespace = "app.alcovaibe.vkmusicexport"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "app.alcovaibe.vkmusicexport"
         minSdk = 36
@@ -46,9 +46,9 @@ android {
     buildFeatures { compose = true; buildConfig = true }
 }
 dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("androidx.browser:browser:1.10.0")
-    implementation("androidx.media3:media3-extractor:1.9.3")
+    implementation(libs.okhttp)
+    implementation(libs.androidx.browser)
+    implementation(libs.androidx.media3.extractor)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -59,14 +59,14 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.serialization.json)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.test.espresso:espresso-intents:3.6.1")
+    testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.espresso.intents)
     androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
