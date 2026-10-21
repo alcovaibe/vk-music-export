@@ -23,6 +23,7 @@ internal enum class DeviceAuthPhase(val label: String) {
     ENTER_CODE("ВК запросил код подключения. Введи код со страницы VK ID здесь, в приложении."),
     VALIDATING_CODE("Отправляем код подключения ВК…"),
     AWAITING_APPROVAL("Код принят. Ожидаем завершения заявки ВК…"),
+    EXCHANGING("ВК подтвердил вход. Завершаем обмен токена…"),
     VERIFYING("Вход подтверждён. Проверяем доступ к музыке…"),
     CONNECTED("Музыкальный доступ подтверждён и сохранён на устройстве."),
     FAILED("Подключение не завершено.")
@@ -33,6 +34,7 @@ internal enum class DeviceAuthIssue(val label: String) {
     RESPONSE("Не удалось обработать ответ ВК. Скопируй диагностический лог этой попытки."),
     PARTIAL("ВК выдал неполную сессию. Этот способ входа пока не поддерживается; доступ не сохранён."),
     UNSUPPORTED_TOKEN("ВК выдал другой тип токена. Его обмен пока не поддерживается; доступ не сохранён."),
+    TOKEN_EXCHANGE("ВК подтвердил вход, но завершить обмен токена не удалось. Доступ не сохранён; скопируй лог попытки."),
     BROWSER("Не удалось открыть Google Chrome. Включи его и повтори."),
     NETWORK("Не удалось связаться с ВК. Проверь сеть и VPN."),
     TLS("Не удалось проверить защищённое соединение с ВК."),
@@ -57,6 +59,9 @@ internal sealed interface DeviceCheck {
     class Approved(val access: MusicAccess): DeviceCheck {
         override fun toString() = "Approved([redacted])"
     }
+    class ExchangeRequired(val token: String): DeviceCheck {
+        override fun toString() = "ExchangeRequired([redacted])"
+    }
     data object Expired: DeviceCheck
     data object Declined: DeviceCheck
     data object VerificationRequired: DeviceCheck
@@ -78,6 +83,8 @@ internal interface DeviceAuthApi {
     suspend fun begin(deviceName: String): DeviceSession
     suspend fun poll(session: DeviceSession): DeviceCheck
     suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation
+    suspend fun exchange(session: DeviceSession,result: DeviceCheck.ExchangeRequired): MusicAccess =
+        throw DeviceAuthFailure(DeviceAuthIssue.UNSUPPORTED_TOKEN)
 }
 
 /** Experimental VK WEB device pairing, not the official Android client's identity or secret. */
@@ -168,8 +175,14 @@ internal object DeviceAuthProtocol {
             2L -> {
                 if(flag(o,"need_password") || flag(o,"is_partial"))throw DeviceAuthFailure(DeviceAuthIssue.PARTIAL)
                 val token=(o["access_token"] as? JsonPrimitive)?.takeIf{it.isString}?.content
-                if(token==null && o["super_app_token"]!=null && o["super_app_token"]!==JsonNull)
-                    throw DeviceAuthFailure(DeviceAuthIssue.UNSUPPORTED_TOKEN)
+                if(token==null && o["super_app_token"]!=null && o["super_app_token"]!==JsonNull) {
+                    // A VK ID pairing credential is not an API access token. It must
+                    // finish the web exchange before the separate music probe.
+                    check(o["access_token"]==null || o["access_token"]===JsonNull)
+                    val pending=text(o,"super_app_token")
+                    check(pending.length>=32 && opaque(pending))
+                    return@parse DeviceCheck.ExchangeRequired(pending)
+                }
                 check(token!=null && NativeProtocol.validAccess(token,NativeProtocol.DEFAULT_AGENT))
                 DeviceCheck.Approved(MusicAccess(token!!,NativeProtocol.DEFAULT_AGENT))
             }
@@ -268,6 +281,8 @@ internal class VkDeviceAuthClient(private val client: OkHttpClient=NetworkClient
         observe("native_auth_validation_result",mapOf("status" to status))
         return DeviceAuthProtocol.validation(response)
     }
+    override suspend fun exchange(session: DeviceSession,result: DeviceCheck.ExchangeRequired): MusicAccess =
+        VkWebTokenExchange(client,now,observe).exchange(session,result)
 }
 
 /** No polling while Chrome/app is backgrounded. Expiration also covers waiting for the user's gesture. */
@@ -291,6 +306,13 @@ internal suspend fun awaitDeviceAccess(api: DeviceAuthApi,session: DeviceSession
                         foreground.first{it}
                         checkDeadline()
                         return@withTimeout r.access
+                    }
+                    is DeviceCheck.ExchangeRequired -> {
+                        foreground.first{it};checkDeadline()
+                        onPhase(DeviceAuthPhase.EXCHANGING)
+                        val access=api.exchange(session,r)
+                        foreground.first{it};checkDeadline()
+                        return@withTimeout access
                     }
                     DeviceCheck.Expired -> throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)
                     DeviceCheck.Declined -> throw DeviceAuthFailure(DeviceAuthIssue.DECLINED)
