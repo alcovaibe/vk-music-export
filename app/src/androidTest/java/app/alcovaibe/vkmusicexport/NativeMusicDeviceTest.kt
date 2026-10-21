@@ -1,12 +1,10 @@
 package app.alcovaibe.vkmusicexport
 
-import android.content.Intent
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
@@ -21,34 +19,16 @@ import android.content.ContextWrapper
 
 @RunWith(AndroidJUnit4::class)
 class NativeAudioDeviceTest {
-    @Test fun atomicAudioIndexRetainsFiveRunsRecoversInterruptedWorkAndDetectsTamperedFiles() {
+    @Test fun operationJournalRecoversInterruptedOwnerAndIgnoresStaleCompletion() {
         val target=InstrumentationRegistry.getInstrumentation().targetContext
-        val base=File(target.cacheDir,"native-storage-test").apply{deleteRecursively();mkdirs()}
-        val context=object: ContextWrapper(target) {
-            override fun getFilesDir()=File(base,"files").apply{mkdirs()}
-            override fun getNoBackupFilesDir()=File(base,"no-backup").apply{mkdirs()}
-            override fun getCacheDir()=File(base,"cache").apply{mkdirs()}
-        }
+        val base=File(target.cacheDir,"native-operation-test").apply{deleteRecursively();mkdirs()}
+        val context=object: ContextWrapper(target){override fun getNoBackupFilesDir()=base}
         try {
-            val store=NativeFiles(context);assertFalse(store.recover())
-            val track=NativeTrack("12_34","Storage fixture","CI",2)
-            var first: SavedAudio?=null
-            repeat(6){n->
-                val output=File(store.temporary,"working-$n").apply{writeBytes(ByteArray(2048){n.toByte()})}
-                val row=store.commit(TransferResult(output,ProcessedAudio("mp3","audio/mpeg",2000)),track){}
-                if(n==0)first=row
-                assertEquals(row,NativeFiles(context).read().first())
-            }
-            assertEquals(5,store.read().size);assertFalse(store.file(first!!).exists())
-            store.begin("old-operation");store.begin("new-operation");store.finish("old-operation","completed")
-            File(store.temporary,"unfinished.media").writeText("PARTIAL")
-            val reconstructed=NativeFiles(context)
-            assertTrue(reconstructed.recover());assertEquals(0,reconstructed.temporary.listFiles()!!.size)
-            assertEquals(5,reconstructed.read().size)
-            val row=reconstructed.read().first();assertTrue(reconstructed.verified(row){}.isFile)
-            reconstructed.file(row).appendText("TAMPER")
-            assertEquals(MusicError.INCOMPLETE,assertThrows(MusicFailure::class.java){reconstructed.verified(row){}}.code)
-            assertFalse(NativeFiles(context).recover())
+            val journal=NativeOperationJournal(context);assertFalse(journal.recover())
+            journal.begin("old-operation");journal.begin("new-operation");journal.finish("old-operation","completed")
+            assertTrue(NativeOperationJournal(context).recover());assertFalse(journal.recover())
+            journal.begin("completed-operation");journal.finish("completed-operation","completed")
+            assertFalse(NativeOperationJournal(context).recover())
         }finally{base.deleteRecursively()}
     }
     @Test fun actualMedia3ExtractionOfMp3AndAacFromDirectAndTransportStreamsProducesDecodableAudio()=runBlocking {
@@ -88,7 +68,7 @@ class NativeAudioDeviceTest {
             assertTrue("Decoder must reach end of stream",endedOutput);assertTrue("Actual PCM must be produced",pcm>10000)
         }finally{runCatching{decoder?.stop()};decoder?.release();extractor.release()}
     }
-    @Test fun independentKeystoreEnvelopeTamperDetectionAndAudioProviderScope() {
+    @Test fun independentKeystoreEnvelopeTamperDetectionAndRetiredProviderRemoval() {
         val context=InstrumentationRegistry.getInstrumentation().targetContext;val vault=MusicAccessStore(context)
         val token="vk1.a."+"SYNTHETIC_SECRET_".repeat(8)
         try {
@@ -99,20 +79,17 @@ class NativeAudioDeviceTest {
             assertThrows(Exception::class.java){vault.read()}
             vault.save(MusicAccess(token,"Synthetic Client/1"));assertFalse(Diagnostics.export().contains(token))
         }finally{vault.delete()}
-        val audio=File(context.filesDir,"native-audio/audio-00000000-0000-0000-0000-000000000000.mp3").apply{parentFile!!.mkdirs();writeText("SYNTHETIC_PROVIDER_DATA")}
-        try {
-            val uri=FileProvider.getUriForFile(context,"${context.packageName}.audio",audio)
-            assertEquals("content",uri.scheme)
-            assertArrayEquals(audio.readBytes(),context.contentResolver.openInputStream(uri)!!.use{it.readBytes()})
-            assertThrows(IllegalArgumentException::class.java){FileProvider.getUriForFile(context,"${context.packageName}.audio",File(context.noBackupFilesDir,"native-music-access.bin"))}
-        }finally{audio.delete()}
+        val flags=android.content.pm.PackageManager.ComponentInfoFlags.of(0)
+        assertNull(context.packageManager.resolveContentProvider("${context.packageName}.audio",flags))
+        assertNotNull(context.packageManager.resolveContentProvider("${context.packageName}.diagnostics",flags))
+        assertNotNull(context.packageManager.resolveContentProvider("${context.packageName}.updates",flags))
     }
 }
 
 @RunWith(AndroidJUnit4::class)
 class NativeMusicUiDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun nativePanelExplicitlyDescribesSampleAndRejectsWrongServiceCredentialWithoutWritingIt() {
+    @Test fun nativePanelRetainsProtectedAccessAndRejectsWrongServiceCredentialWithoutWritingIt() {
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
         ui.onNodeWithContentDescription("Настройки").performClick()
         ui.onNodeWithText("Прямой доступ ВК · эксперимент").performClick()

@@ -1,28 +1,21 @@
 package app.alcovaibe.vkmusicexport
 
 import app.alcovaibe.vkmusicexport.diagnostics.*
-import android.app.Activity
-import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import android.view.WindowInsetsController
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -39,18 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.alcovaibe.vkmusicexport.data.*
-import app.alcovaibe.vkmusicexport.export.Exporter
-import app.alcovaibe.vkmusicexport.export.ExportFormat
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.time.LocalDate
 
 private val Ink = Color(0xFF202337)
 private val Accent = Color(0xFF5B4DE8)
@@ -103,105 +89,75 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
     ), content = content)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
-    val context = LocalContext.current
     val snapshot by model.snapshot.collectAsState()
     val ready by model.ready.collectAsState()
     val busy by model.busy.collectAsState()
     val message by model.message.collectAsState()
-    val pending by model.pendingImport.collectAsState()
-    var collectorGuide by remember { mutableStateOf(false) }
+    val pending by model.pendingCollection.collectAsState()
     var settingsScreen by rememberSaveable{mutableStateOf<String?>(null)}
+    var nativeReturnTo by rememberSaveable{mutableStateOf<String?>(null)}
     val updateState by updates.state.collectAsState()
-    val importFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::stageImport) }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var confirm by remember { mutableStateOf<String?>(null) }
-    var chromeUnavailable by remember { mutableStateOf(false) }
-    val openVk = {
-        Diagnostics.button("open_chrome")
-        chromeUnavailable = !app.alcovaibe.vkmusicexport.vk.ChromeBrowser.open(context)
-    }
-    BackHandler(settingsScreen==null && (selected != null || tab != 0)) {
-        if (selected != null) selected = null else tab = 0
-    }
-    if(settingsScreen==null) Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 24.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(12.dp), color = Accent, modifier = Modifier.size(38.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(23.dp)) }
+    var selected by rememberSaveable{mutableStateOf<String?>(null)}
+    var query by rememberSaveable{mutableStateOf("")}
+    var confirmClear by remember{mutableStateOf(false)}
+    BackHandler(settingsScreen==null&&selected!=null){selected=null}
+    if(settingsScreen==null)Scaffold(
+        containerColor=MaterialTheme.colorScheme.background,
+        topBar={
+            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=24.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
+                Surface(shape=RoundedCornerShape(12.dp),color=Accent,modifier=Modifier.size(38.dp)) {
+                    Box(contentAlignment=Alignment.Center){Icon(musicIcon(),null,tint=Color.White,modifier=Modifier.size(23.dp))}
                 }
                 Spacer(Modifier.width(10.dp))
-                Text("VK Music Export", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                IconButton(onClick = { Diagnostics.button("settings"); settingsScreen = "settings" }) { Icon(Icons.Default.MoreVert, "Настройки") }
-            }
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                listOf("Коллекция", "Экспорт").forEachIndexed { index, label ->
-                    NavigationBarItem(selected = tab == index, onClick = { Diagnostics.button(if(index == 0) "collection_tab" else "export_tab"); tab = index; selected = null },
-                        icon = { Icon(if (index == 0) Icons.Default.Home else Icons.Default.Share, null) }, label = { Text(label) },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surfaceVariant))
-                }
+                Text("VK Music Export",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                IconButton(onClick={Diagnostics.button("settings");settingsScreen="settings"}){Icon(Icons.Default.MoreVert,"Настройки")}
             }
         }
-    ) { padding ->
+    ){padding->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if(updateState.release!=null) TextButton(onClick={Diagnostics.button("updates_available");settingsScreen="updates"}) {
-                Text(if(updateState.apk!=null)"Установить обновление" else "Доступно обновление приложения")
+            if(updateState.release!=null)TextButton(onClick={Diagnostics.button("updates_available");settingsScreen="updates"}) {
+                Text(if(updateState.apk!=null)"Установить обновление"else"Доступно обновление приложения")
             }
-            message?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp), color=MaterialTheme.colorScheme.onSurfaceVariant) }
-            if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (tab == 0) CollectionScreen(snapshot, selected, query, ready,
-                onSelect = { selected = it }, onQuery = { query = it }, onOpen = openVk, onCollect={Diagnostics.button("collector_guide");collectorGuide=true}, onImport={Diagnostics.button("choose_import");importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))}, canImport=ready && !busy && pending==null)
-            else ExportScreen(snapshot, ready && !busy)
+            message?.let{Text(it,Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+            CollectionScreen(snapshot,selected,query,ready,onSelect={selected=it},onQuery={query=it},onMusic={
+                Diagnostics.button("open_native_music");nativeReturnTo=null;settingsScreen="native"
+            })
         }
     }
-    if(collectorGuide) CollectorGuide(onDismiss={Diagnostics.button("close_collector_guide");collectorGuide=false},onImport={Diagnostics.button("choose_import");collectorGuide=false;importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))},onMusic={Diagnostics.button("collector_open_music");chromeUnavailable=!app.alcovaibe.vkmusicexport.vk.ChromeBrowser.openMusic(context)})
-    pending?.let { plan ->
-        val previous=plan.source?.let{incoming->snapshot.sources.firstOrNull{it.id==incoming.id}}
-        val nativeSample=plan.reason.startsWith("NATIVE_ACCESS_")
-        AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text(if(nativeSample)"Сохранение выборки ВК" else "Импорт из Chrome")},text={
+    pending?.let{source->
+        val previous=snapshot.sources.firstOrNull{it.id==source.id}
+        AlertDialog(onDismissRequest={if(!busy)model.cancelCollectionChange()},title={Text("Сохранение страницы ВК")},text={
             Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text("Треков: ${plan.tracks}. Плейлистов в каталоге: ${plan.playlists.size}.")
-                if(nativeSample)Text("Сохраняется показанная страница. Частичный список помечен явно; совпадение количества не доказывает неизменность библиотеки ВК.")
-                plan.source?.let {Text("Список: ${it.title} · ${it.status.label}")}
-                if(previous!=null)Text("Импорт заменит этот список: сохранено ${previous.entries.size}, в файле ${plan.tracks} треков. Остальные списки сохранятся.")
-                else Text("Список будет добавлен в коллекцию. Каталог плейлистов не заменяет уже собранные треки.")
-                if(!nativeSample)Text("Обнаруженный плейлист может ещё не содержать треков. Его нужно собрать отдельно в Chrome.")
+                Text("Список: ${source.title} · ${source.status.label}")
+                Text("Позиций на странице: ${source.entries.size}. Всего по данным ВК: ${source.expectedCount?:"?"}.")
+                Text("Сохраняется показанная страница. Совпадение количества не доказывает неизменность библиотеки ВК.")
+                if(previous!=null)Text("Будет заменён этот список: сохранено ${previous.entries.size}, станет ${source.entries.size} позиций. Остальные списки сохранятся.")
+                else Text("Список будет добавлен в коллекцию. Остальные списки сохранятся.")
             }
-        },confirmButton={TextButton(enabled=!busy,onClick=model::confirmImport){Text(if(previous!=null)"Заменить список" else "Импортировать")}},
-            dismissButton={TextButton(enabled=!busy,onClick=model::cancelImport){Text("Отмена")}})
+        },confirmButton={TextButton(enabled=!busy,onClick=model::confirmCollectionChange){Text(if(previous!=null)"Заменить список"else"Сохранить")}},
+            dismissButton={TextButton(enabled=!busy,onClick=model::cancelCollectionChange){Text("Отмена")}})
     }
-    if (chromeUnavailable) AlertDialog(onDismissRequest={chromeUnavailable=false},
-        title={Text("Chrome недоступен")},
-        text={Text("Установи или включи Google Chrome и повтори открытие ВК. Встроенного браузера в приложении больше нет.")},
-        confirmButton={TextButton(onClick={chromeUnavailable=false}){Text("Понятно")}})
-    if(settingsScreen=="settings") SettingsScreen(
+    if(settingsScreen=="settings")SettingsScreen(
         canClear=ready&&!busy&&pending==null,
         onBack={Diagnostics.button("settings_back");settingsScreen=null},
-        onBrowser=openVk,
-        onNative={Diagnostics.button("native_music_panel");settingsScreen="native"},
+        onNative={Diagnostics.button("native_music_panel");nativeReturnTo="settings";settingsScreen="native"},
         onUpdates={Diagnostics.button("updates");settingsScreen="updates"},
-        onClear={Diagnostics.button("request_clear");confirm="clear"})
+        onClear={Diagnostics.button("request_clear");confirmClear=true})
     app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,settingsScreen=="updates"){settingsScreen="settings"}
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,settingsScreen=="native",
-        onDismiss={settingsScreen="settings"},onSample={model.stageNativeSample(it);settingsScreen=null})
-    if (confirm == "clear") AlertDialog(onDismissRequest = { confirm = null },
-        title = { Text("Очистить коллекцию?") },
-        text = { Text("Списки будут удалены из приложения. Экспортированные файлы останутся.") },
-        dismissButton = { TextButton(onClick = { Diagnostics.button("cancel_confirmation"); confirm = null }) { Text("Отмена") } },
-        confirmButton = { TextButton(onClick = { Diagnostics.button("confirm_clear"); model.clearCollection(); confirm = null }) { Text("Подтвердить") } })
+        onDismiss={settingsScreen=nativeReturnTo},onSample={model.stageNativePage(it);settingsScreen=null})
+    if(confirmClear)AlertDialog(onDismissRequest={confirmClear=false},title={Text("Очистить коллекцию?")},
+        text={Text("Сохранённые списки будут удалены из приложения. Музыка в Music/VK Music Export и очередь загрузки сохранятся.")},
+        dismissButton={TextButton(onClick={Diagnostics.button("cancel_confirmation");confirmClear=false}){Text("Отмена")}},
+        confirmButton={TextButton(onClick={Diagnostics.button("confirm_clear");model.clearCollection();confirmClear=false}){Text("Подтвердить")}})
 }
 
 @Composable
 private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, query: String, ready: Boolean,
-                             onSelect: (String?) -> Unit, onQuery: (String) -> Unit, onOpen: () -> Unit, onCollect: () -> Unit, onImport: () -> Unit, canImport: Boolean) {
+                             onSelect: (String?) -> Unit, onQuery: (String) -> Unit, onMusic: () -> Unit) {
     val source = snapshot.sources.find { it.id == selected }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -217,28 +173,18 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
             }
         }
         item {
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick=onCollect,modifier=Modifier.weight(1f)){Text("Сбор из Chrome")}
-                FilledTonalButton(enabled=canImport,onClick=onImport,modifier=Modifier.weight(1f)){Text("Импорт JSON")}
+            Button(onClick=onMusic,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp),shape=RoundedCornerShape(16.dp)) {
+                Icon(musicIcon(),null,Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Text("Открыть мою музыку")
             }
         }
         if (!ready) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         else if (snapshot.sources.isEmpty()) {
             item { WelcomeArtwork() }
             item {
-                Text("ВКонтакте.\nВ настоящем Chrome.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
+                Text("Музыка и плейлисты ВК", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                 Spacer(Modifier.height(10.dp))
-                Text("Открой музыку в Chrome, запусти закладку-сборщик и импортируй сохранённый JSON.",
+                Text("Открой музыкальный раздел, подключи ВК и сохраняй треки в Music/VK Music Export. Страницы с названиями можно сохранить здесь, в коллекции.",
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            item {
-                Button(onClick = onOpen, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(16.dp)) {
-                    Icon(Icons.Default.AccountCircle, null, Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp)); Text("Открыть ВК в Chrome", fontWeight = FontWeight.SemiBold)
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Вход остаётся в Chrome. Приложение пока не проверяет авторизацию.", Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else if (selected == null) {
             item {
@@ -247,19 +193,13 @@ private fun CollectionScreen(snapshot: CollectionSnapshot, selected: String?, qu
                     StatTile(snapshot.playlistCount, counted(snapshot.playlistCount, "плейлист", "плейлиста", "плейлистов").substringAfter(" "), Modifier.weight(1f))
                 }
             }
-            item {
-                FilledTonalButton(onClick = onOpen, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
-                    Icon(Icons.Default.AccountCircle, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp)); Text("Открыть ВК в Chrome")
-                }
-            }
             item { SourceRow("Все треки", "${snapshot.uniqueTracks().size} · общий список", -1, onClick = { onSelect("all") }) }
             item { SectionLabel("МОЯ МУЗЫКА И ПЛЕЙЛИСТЫ") }
             items(snapshot.sources, key = { it.id }) { sourceItem ->
                 SourceRow(sourceItem.title, "${tracks(sourceItem.entries.size)} · ${sourceItem.status.label}", snapshot.sources.indexOf(sourceItem),
                     onClick = { onSelect(sourceItem.id) })
             }
-            item { InfoNote("Для обновления списка собери его в Chrome и импортируй JSON. Каталог плейлистов не подтверждает полноту сбора.") }
+            item { InfoNote("Сохранённые страницы обновляются кнопкой «Сохранить эту страницу в коллекцию» в музыкальном разделе. Коллекция и очередь скачивания хранятся отдельно.") }
         } else {
             item { OutlinedTextField(query, onQuery, Modifier.fillMaxWidth(), placeholder = { Text("Трек или исполнитель") },
                 leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true, shape = RoundedCornerShape(16.dp)) }
@@ -300,7 +240,7 @@ private fun WelcomeArtwork() {
                 Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(38.dp))
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("TXT", "CSV", "JSON").forEach { label ->
+                    listOf("MP3", "M4A").forEach { label ->
                         Surface(color = Color(0xFF414457), shape = RoundedCornerShape(6.dp)) {
                             Text(label, Modifier.padding(horizontal = 8.dp, vertical = 5.dp), color = Color.White,
                                 style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
@@ -344,73 +284,5 @@ private fun SourceRow(title: String, subtitle: String, index: Int, onClick: () -
             }
             Icon(Icons.Default.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
         }
-    }
-}
-
-@Composable
-private fun ExportScreen(snapshot: CollectionSnapshot, ready: Boolean) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var formatName by rememberSaveable { mutableStateOf(ExportFormat.ZIP.name) }
-    var exporting by remember { mutableStateOf(false) }
-    var result by rememberSaveable { mutableStateOf("") }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { activityResult ->
-        val uri = activityResult.data?.data
-        if (activityResult.resultCode == Activity.RESULT_OK && uri != null) {
-            val chosenFormat = ExportFormat.valueOf(formatName)
-            val frozenSnapshot = snapshot
-            scope.launch {
-                exporting = true
-                try {
-                    withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri, "wt")?.use { Exporter.write(frozenSnapshot, chosenFormat, it) } ?: error("Cannot open output")
-                    }
-                    result = "Файл сохранён"
-                } catch (_: Exception) { result = "Не удалось сохранить файл. Повтори экспорт." }
-                finally { exporting = false }
-            }
-        }
-    }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            Text("Забрать с собой", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
-            Spacer(Modifier.height(8.dp))
-            Text(if (snapshot.sources.isEmpty()) "Коллекция пока пуста. Во вкладке «Коллекция» открой «Сбор из Chrome» и импортируй JSON сборщика."
-                else "${tracks(snapshot.uniqueTracks().size)} · ${counted(snapshot.sources.size, "список", "списка", "списков")}. Выбери удобный формат.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item { SectionLabel("ФОРМАТ ФАЙЛА") }
-        items(ExportFormat.entries.sortedBy { if (it == ExportFormat.ZIP) 0 else it.ordinal + 1 }) { format ->
-            val checked = formatName == format.name
-            Surface(onClick = { if (!exporting) { Diagnostics.button("choose_export_format"); formatName = format.name } }, shape = RoundedCornerShape(18.dp),
-                color = if (checked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
-                border = if (checked) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .45f)) else null) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(if (format == ExportFormat.ZIP) "ZIP · Всё сразу" else format.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(5.dp))
-                        Text(when (format) {
-                            ExportFormat.TXT -> "Исполнитель — название, строка за строкой"
-                            ExportFormat.CSV -> "Таблица с плейлистами и порядком треков"
-                            ExportFormat.JSON -> "Структура коллекции для других приложений"
-                            ExportFormat.ZIP -> "Все форматы и каждый плейлист отдельно"
-                        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    RadioButton(selected = checked, onClick = null)
-                }
-            }
-        }
-        item {
-            Button(enabled = ready && snapshot.sources.isNotEmpty() && !exporting, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(16.dp), onClick = {
-                Diagnostics.button("export_music")
-                val format = ExportFormat.valueOf(formatName)
-                launcher.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = format.mime
-                    putExtra(Intent.EXTRA_TITLE, "vk-music-${LocalDate.now()}.${format.extension}")
-                })
-            }) { Icon(Icons.Default.Share, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text(if (exporting) "Сохраняем…" else "Сохранить ${formatName}") }
-            Spacer(Modifier.height(12.dp)); InfoNote("Полнота сбора указана в отчёте внутри ZIP и JSON.")
-        }
-        if (result.isNotBlank()) item { Text(result, color = MaterialTheme.colorScheme.primary) }
     }
 }

@@ -34,12 +34,11 @@ internal fun SettingsPage(title: String,onBack: ()->Unit,tag: String="settings_p
 }
 
 @Composable
-internal fun SettingsScreen(canClear: Boolean,onBack: ()->Unit,onBrowser: ()->Unit,onNative: ()->Unit,
+internal fun SettingsScreen(canClear: Boolean,onBack: ()->Unit,onNative: ()->Unit,
     onUpdates: ()->Unit,onClear: ()->Unit) {
     SettingsPage("Настройки",onBack,"settings_screen") {
         Text("ВКонтакте",style=MaterialTheme.typography.titleMedium)
         TextButton(onClick=onNative){Text("Прямой доступ ВК · эксперимент")}
-        TextButton(onClick=onBrowser){Text("Открыть ВК в Chrome")}
         HorizontalDivider()
         Text("Диагностика",style=MaterialTheme.typography.titleMedium)
         DiagnosticControls()

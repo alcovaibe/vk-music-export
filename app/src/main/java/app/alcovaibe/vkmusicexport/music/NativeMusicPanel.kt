@@ -9,10 +9,8 @@ import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,18 +26,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.alcovaibe.vkmusicexport.SettingsPage
 import app.alcovaibe.vkmusicexport.SecureSettingsContent
-import androidx.core.content.FileProvider
 import app.alcovaibe.vkmusicexport.data.MusicSource
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
-import app.alcovaibe.vkmusicexport.export.Exporter
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-class AudioFileProvider: FileProvider()
 
 @Composable
 internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,onSample:(MusicSource)->Unit) {
@@ -52,14 +46,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var notifications by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
     var configure by rememberSaveable {mutableStateOf(false)}
-    var selectedFile by remember {mutableStateOf<SavedAudio?>(null)}
     var openError by remember {mutableStateOf(false)}
-    val saveMp3=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mpeg")){uri->
-        selectedFile?.let{row->if(uri!=null)model.saveFile(row,uri)};selectedFile=null
-    }
-    val saveM4a=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mp4")){uri->
-        selectedFile?.let{row->if(uri!=null)model.saveFile(row,uri)};selectedFile=null
-    }
     if(configure) {
         NativeAccessScreen(onBack={configure=false},onSave={token,agent->model.configure(token,agent);configure=false})
         return
@@ -132,21 +119,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 state.message?.let{Text(it)}
                 state.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
-                if(state.error!=null)state.downloadStep?.let{step->
-                    Text("Этап: ${step.label}. Диагностический код: DOWNLOAD_${step.name}_${state.error!!.name}",color=MaterialTheme.colorScheme.error)
-                }
                 if(state.busy) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    val p=state.progress
                     Text(if(state.stopping)"Завершаем предыдущую операцию…"
                     else if(state.waitingForSlot)"Ожидаем завершения предыдущей операции…"
-                    else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК" else when(p?.stage) {
-                        "segments"->"Получено сегментов: ${p.segment}/${p.segments} · ${p.bytes/1024} КБ"
-                        "verifying"->"Проверка формата и длительности"
-                        "manifest"->"Чтение списка сегментов HLS"
-                        "receiving"->"Получение потока · ${p.bytes/1024} КБ"
-                        else->state.preparing?:"Проверка музыкального доступа"
-                    })
+                    else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК"
+                    else state.preparing?:"Проверка музыкального доступа")
                     if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
                     TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
                 }
@@ -197,34 +175,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         }
                     }
                 }
-                if(state.saved.isNotEmpty()) {
-                    HorizontalDivider();Text("Файлы из предыдущей версии",style=MaterialTheme.typography.titleMedium)
-                    Text("Прежние файлы остались в приложении. Их можно сохранить вручную. Новые загрузки идут прямо в Music/VK Music Export.",style=MaterialTheme.typography.bodySmall)
-                    state.saved.forEach { row ->
-                        Text("${row.track.artist} — ${row.track.title} · ${row.extension.uppercase()} · ${row.bytes/1024} КБ")
-                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            TextButton(enabled=!state.busy,onClick={
-                                Diagnostics.button("native_music_open_audio")
-                                scope.launch {
-                                    try {
-                                        val file=model.verifiedFile(row)
-                                        val uri=FileProvider.getUriForFile(context,"${context.packageName}.audio",file)
-                                        context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,row.mime)
-                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply{clipData=ClipData.newRawUri("Audio",uri)})
-                                    }catch(_: Exception){openError=true}
-                                }
-                            }){Text("Открыть")}
-                            TextButton(enabled=!state.busy,onClick={
-                                Diagnostics.button("native_music_choose_audio_export");selectedFile=row
-                                val name=Exporter.safeName("${row.track.artist} — ${row.track.title}")+".${row.extension}"
-                                if(row.extension=="mp3")saveMp3.launch(name)else saveM4a.launch(name)
-                            }){Text("Сохранить файл…")}
-                        }
-                    }
-                }
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
-    if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Попробуй сохранить файл.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
+    if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
 }
 
 @Composable

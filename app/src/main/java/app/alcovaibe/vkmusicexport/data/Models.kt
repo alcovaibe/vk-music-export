@@ -49,25 +49,3 @@ data class CollectionSnapshot(
     val entriesCount: Int get() = sources.sumOf { it.entries.size }
     val playlistCount: Int get() = sources.count { it.id.startsWith("playlist:") }
 }
-
-@Serializable
-data class PageTrack(val key: String, val title: String, val artist: String, val vkId: String? = null)
-
-@Serializable
-data class PlaylistLink(val id: String, val title: String, val url: String)
-
-@Serializable
-data class PageSample(
-    val error: String? = null,
-    val userId: Long? = null,
-    val sourceId: String? = null,
-    val sourceTitle: String? = null,
-    val expectedCount: Int? = null,
-    val scoped: Boolean = false,
-    val playlistsScoped: Boolean = false,
-    val atBottom: Boolean = false,
-    val tracks: List<PageTrack> = emptyList(),
-    val playlists: List<PlaylistLink> = emptyList(),
-    val unparsedRows: Int = 0,
-    val ambiguousPositions: Boolean = false
-)

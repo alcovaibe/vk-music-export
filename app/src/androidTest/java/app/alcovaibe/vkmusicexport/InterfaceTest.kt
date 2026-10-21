@@ -60,84 +60,47 @@ class InterfaceTest {
         }
     }
 
-    @Test fun chromeDispatchPreservesCollectionAndNativeExport() {
-        val model = ViewModelProvider(ui.activity)[MusicViewModel::class.java]
-        ui.waitUntil(10_000) { model.ready.value }
-        ui.onNodeWithText("Открыть ВК в Chrome").performScrollTo().assertIsDisplayed()
+    @Test fun nativeMusicEntryAndCollectionSurviveRecreationWithoutRetiredScreens() {
+        val model=ViewModelProvider(ui.activity)[MusicViewModel::class.java]
+        ui.waitUntil(10_000){model.ready.value}
+        ui.onNodeWithText("Открыть мою музыку").performScrollTo().assertIsDisplayed()
+        for(label in listOf("Открыть ВК в Chrome","Сбор из Chrome","Импорт JSON","Экспорт"))ui.onNodeWithText(label).assertDoesNotExist()
         capture("01-collection")
-        ui.onNodeWithText("Экспорт").performClick()
-        ui.onNodeWithText("Забрать с собой").assertIsDisplayed()
-        capture("02-export")
-        ui.onNodeWithText("Коллекция").performClick()
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        val track = Track("123_1", "Демо-трек", "Демо-исполнитель")
-        val demo = CollectionSnapshot(sources = listOf(
-            MusicSource("my-music", "Моя музыка", "https://vk.ru/audio", listOf(Entry("0", track, 1),Entry("1",track,2))),
-            MusicSource("playlist:123:1", "Для дороги", "https://vk.ru/audio", listOf(Entry("0", track, 1)), status = ScanStatus.SCANNING)
-        ))
-        runBlocking { CollectionStore(context).save(demo) }
+        ui.onNodeWithText("Открыть мою музыку").performClick()
+        ui.onNodeWithTag("native_music_screen").assertExists()
+        ui.onNodeWithText("Файлы из предыдущей версии").assertDoesNotExist()
+        capture("02-native-music")
+        ui.onNodeWithContentDescription("Назад").performClick()
+        ui.onNodeWithText("Моя коллекция").assertExists()
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val track=Track("123_1","Демо-трек","Демо-исполнитель")
+        val demo=CollectionSnapshot(sources=listOf(
+            MusicSource("my-music","Моя музыка","https://vk.ru/audio",listOf(Entry("0",track,1),Entry("1",track,2))),
+            MusicSource("playlist:123:1","Для дороги","https://vk.ru/audio",listOf(Entry("0",track,1)),status=ScanStatus.SCANNING)))
+        runBlocking{CollectionStore(context).save(demo)}
         val before=context.getFileStreamPath("collection.json").readBytes()
-        ui.runOnUiThread { ui.activity.viewModelStore.clear() }
+        ui.runOnUiThread{ui.activity.viewModelStore.clear()}
         ui.activityRule.scenario.recreate()
-        ui.waitUntil(10_000) { ViewModelProvider(ui.activity)[MusicViewModel::class.java].ready.value }
+        ui.waitUntil(10_000){ViewModelProvider(ui.activity)[MusicViewModel::class.java].ready.value}
         ui.onNodeWithText("Для дороги").performScrollTo().assertIsDisplayed()
+        assertArrayEquals(before,context.getFileStreamPath("collection.json").readBytes())
         capture("03-library-fixture")
-        androidx.test.espresso.intent.Intents.init()
-        try {
-            val chrome=org.hamcrest.Matchers.allOf(
-                androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_VIEW),
-                androidx.test.espresso.intent.matcher.IntentMatchers.hasPackage("com.android.chrome"),
-                androidx.test.espresso.intent.matcher.IntentMatchers.hasData("https://vk.ru/"))
-            // Intercept dispatch: this tests our real native button/intent, not Chrome or VK login.
-            androidx.test.espresso.intent.Intents.intending(chrome).respondWith(android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED,null))
-            ui.onNodeWithText("Открыть ВК в Chrome").performScrollTo().performClick()
-            awaitTestWindowFocus(ui.activity)
-            androidx.test.espresso.intent.Intents.intended(chrome)
-            assertArrayEquals(before,context.getFileStreamPath("collection.json").readBytes())
-            ui.onNodeWithText("ВК подключён",substring=true).assertDoesNotExist()
-            ui.onNodeWithText("Собрать всё").assertDoesNotExist()
-            fun noEmbeddedBrowser(view: android.view.View) {
-                assertFalse("Embedded browser must not be created",view.javaClass.name.startsWith("android.webkit."))
-                if(view is android.view.ViewGroup) repeat(view.childCount){noEmbeddedBrowser(view.getChildAt(it))}
-            }
-            ui.runOnUiThread {noEmbeddedBrowser(ui.activity.window.decorView)}
-            val file=File(context.cacheDir,"diagnostic-export/music-export-test.json").apply {parentFile!!.mkdirs()}
-            val uri=androidx.core.content.FileProvider.getUriForFile(context,"${context.packageName}.diagnostics",file)
-            androidx.test.espresso.intent.Intents.intending(androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(android.content.Intent.ACTION_CREATE_DOCUMENT))
-                .respondWith(android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,android.content.Intent().setData(uri)))
-            ui.onNodeWithText("Экспорт").performClick()
-            ui.onNodeWithText("JSON").performScrollTo().performClick()
-            ui.onNodeWithText("Сохранить JSON").performScrollTo().performClick()
-            ui.waitUntil(10_000) {runCatching {kotlinx.serialization.json.Json.decodeFromString<CollectionSnapshot>(file.readText()).entriesCount==3}.getOrDefault(false)}
-            val exported=kotlinx.serialization.json.Json.decodeFromString<CollectionSnapshot>(file.readText())
-            assertEquals(demo.sources.map { if(it.status==ScanStatus.SCANNING) it.copy(status=ScanStatus.INTERRUPTED,reason="PROCESS_STOPPED") else it },exported.sources)
-            assertArrayEquals(before,context.getFileStreamPath("collection.json").readBytes())
-        } finally { androidx.test.espresso.intent.Intents.release() }
-        ui.onNodeWithText("Коллекция").performClick()
-        ui.runOnUiThread {
-            (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)
+        fun noEmbeddedBrowser(view: android.view.View) {
+            assertFalse(view.javaClass.name.startsWith("android.webkit."))
+            if(view is android.view.ViewGroup)repeat(view.childCount){noEmbeddedBrowser(view.getChildAt(it))}
         }
-        ui.waitUntil(10_000) { ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES &&
-            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS) == 0 }
+        ui.runOnUiThread{noEmbeddedBrowser(ui.activity.window.decorView)}
+        ui.onNodeWithContentDescription("Настройки").performClick()
+        ui.onNodeWithText("Открыть ВК в Chrome").assertDoesNotExist()
+        ui.onNodeWithText("Прямой доступ ВК · эксперимент").assertExists()
+        ui.onNodeWithText("Обновления приложения").performScrollTo().assertExists()
+        ui.onNodeWithContentDescription("Назад").performClick()
+        ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
+        ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&
+            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)==0}
         ui.onNodeWithText("Для дороги").performScrollTo().assertIsDisplayed()
         capture("04-dark-library-fixture")
-        ui.runOnUiThread {
-            (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
-        }
-        runBlocking { CollectionStore(context).save(CollectionSnapshot()) }
-    }
-    @Test fun unavailableChromeIsReportedWithoutAnotherBrowser() {
-        var attempts=0
-        val wrapper=object: android.content.ContextWrapper(ui.activity) {
-            override fun startActivity(intent: android.content.Intent) {
-                attempts++
-                assertEquals("com.android.chrome",intent.`package`)
-                assertEquals("https://vk.ru/",intent.dataString)
-                throw android.content.ActivityNotFoundException("Synthetic unavailable Chrome")
-            }
-        }
-        ui.runOnUiThread { assertFalse(app.alcovaibe.vkmusicexport.vk.ChromeBrowser.open(wrapper)) }
-        assertEquals(1,attempts)
+        ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)}
+        runBlocking{CollectionStore(context).save(CollectionSnapshot())}
     }
 }
