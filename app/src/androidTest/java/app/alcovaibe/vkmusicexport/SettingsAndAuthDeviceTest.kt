@@ -42,6 +42,7 @@ class NativeBrowserAuthDeviceTest {
     @Test fun retainedAuthLauncherTargetsChromeAndDoesNotFallBackToAnotherBrowser() {
         val instrumentation=InstrumentationRegistry.getInstrumentation();var attempts=0
         val context=object: android.content.ContextWrapper(instrumentation.targetContext) {
+            override fun startActivity(intent: android.content.Intent,options: android.os.Bundle?)=startActivity(intent)
             override fun startActivity(intent: android.content.Intent) {
                 attempts++;assertEquals("com.android.chrome",intent.`package`)
                 assertEquals("https://qr.vk.ru/s?q=SYNTHETIC",intent.dataString)
