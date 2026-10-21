@@ -5,6 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import okhttp3.*
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import java.util.Base64
 import java.util.UUID
 import javax.net.ssl.SSLException
@@ -48,6 +51,14 @@ internal object WebExchangeProtocol {
         val url=DeviceAuthProtocol.browserUrl(raw)
         if(!allowed(url) || url.fragment!=null)throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         return url
+    }
+    fun body(reply: BoundedResponse): String = when(reply.charset?.lowercase()) {
+        null,"utf-8" -> strictUtf8(reply.bytes)
+        "windows-1251" -> try {
+            Charset.forName("windows-1251").newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(reply.bytes)).toString()
+        }catch(_: Exception){throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)}
+        else -> throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
     }
     private fun text(o: JsonObject,key: String): String {
         val value=(o[key] as? JsonPrimitive)?.takeIf{it.isString}?.content
@@ -112,7 +123,7 @@ internal object WebExchangeProtocol {
     }
 }
 
-/** Same web pairing identity; no Android client secret, token in URL, or persistent cookie jar. */
+/** Web pairing only. Credentials use POST; callback URLs and the native cookie jar stay in memory. */
 internal class VkWebTokenExchange(private val baseClient: OkHttpClient,
     private val now: ()->Long,private val observe:(String,Map<String,Any?>)->Unit) {
     private fun deadline(session: DeviceSession){if(now()>=session.expiresAt)throw DeviceAuthFailure(DeviceAuthIssue.EXPIRED)}
@@ -147,7 +158,7 @@ internal class VkWebTokenExchange(private val baseClient: OkHttpClient,
             deadline(session);healthy()
             if(reply.status==429)throw DeviceAuthFailure(DeviceAuthIssue.RATE_LIMIT)
             if(reply.status!=200)throw DeviceAuthFailure(DeviceAuthIssue.HTTP)
-            withContext(Dispatchers.Default){WebExchangeProtocol.response(strictUtf8(reply.bytes)){shape->
+            withContext(Dispatchers.Default){WebExchangeProtocol.response(WebExchangeProtocol.body(reply)){shape->
                 observe("native_auth_response_shape",mapOf("stage" to stage)+shape)
             }}
         }

@@ -11,6 +11,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
+import java.nio.charset.Charset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DeviceTokenExchangeTest {
@@ -19,12 +20,14 @@ class DeviceTokenExchangeTest {
     private val finalToken="vk1.a."+"FINAL_API_CREDENTIAL_SECRET_".repeat(4)
     private val callback="https://login.vk.com/?act=finish&ticket=CALLBACK_SECRET"
     private fun session()=DeviceSession("ANONYMOUS_SECRET","PAIR_SECRET","https://qr.vk.ru/s?q=URL_SECRET",10000)
-    private fun response(r: Request,body: String,code: Int=200,location: String?=null)=
+    private fun response(r: Request,body: String,code: Int=200,location: String?=null,charset: String="UTF-8")=
         Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(code).message("fixture")
-            .apply{location?.let{header("Location",it)}}.body(body.toResponseBody("application/json".toMediaType())).build()
+            .apply{location?.let{header("Location",it)}}
+            .body(body.toByteArray(Charset.forName(charset)).toResponseBody("application/json; charset=$charset".toMediaType())).build()
     private fun loginData(token: String,next: String?=null)=buildJsonObject {
         put("type","okay");putJsonObject("data") {
             put("response_type","auth_token");put("access_token",token);next?.let{put("next_step_url",it)}
+            putJsonObject("user"){put("first_name","Приватное имя");put("phone","+79991234567")}
         }
     }.toString()
     private fun webData(token: String)=buildJsonObject {
@@ -43,7 +46,7 @@ class DeviceTokenExchangeTest {
                 r.url.encodedPath=="/method/auth.checkAuthCode" -> response(r,buildJsonObject {
                     putJsonObject("response"){put("status",2);put("super_app_token",superToken);put("is_partial",false)}
                 }.toString())
-                r.url.queryParameter("act")=="connect_code_auth" -> response(r,loginData(intermediate,callback))
+                r.url.queryParameter("act")=="connect_code_auth" -> response(r,loginData(intermediate,callback),charset="windows-1251")
                 r.url.queryParameter("act")=="finish" -> response(r,"PRIVATE_HTML",302,"/?act=complete&ticket=CALLBACK_SECRET")
                 r.url.queryParameter("act")=="complete" -> response(r,"PRIVATE_HTML")
                 r.url.queryParameter("act")=="web_token" -> response(r,webData(finalToken))
