@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.Locale
 
 internal data class ExportFailure(val task: AudioExportTask,val error: MusicError)
 internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,val done: Int=0,val pending: Int=0,
@@ -16,7 +17,7 @@ internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,v
 }
 
 /** SQLite checkpoints each item. Only canonical track/folder metadata and local media URIs; no VK secrets. IO only. */
-internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,1) {
+internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,2) {
     private val json=Json{encodeDefaults=true}
     init{setWriteAheadLoggingEnabled(true)}
     override fun onConfigure(db: SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
@@ -26,13 +27,38 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         db.execSQL("CREATE TABLE files(task_key TEXT PRIMARY KEY, track_id TEXT NOT NULL, payload TEXT NOT NULL)")
         db.execSQL("CREATE INDEX file_tracks ON files(track_id)")
         db.execSQL("CREATE TABLE meta(name TEXT PRIMARY KEY,value TEXT NOT NULL)")
+        createDirectories(db)
     }
-    override fun onUpgrade(db: SQLiteDatabase,oldVersion: Int,newVersion: Int)=error("Unsupported export schema")
+    private fun createDirectories(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE directories(identity TEXT PRIMARY KEY,relative_path TEXT NOT NULL,comparison_key TEXT NOT NULL UNIQUE)")
+    }
+    override fun onUpgrade(db: SQLiteDatabase,oldVersion: Int,newVersion: Int) {
+        check(oldVersion==1&&newVersion==2){"Unsupported export schema"}
+        createDirectories(db) // Tasks, files, prepared checkpoints and queue state are unchanged.
+    }
     private fun put(name: String,value: String){writableDatabase.execSQL("INSERT OR REPLACE INTO meta(name,value) VALUES(?,?)",arrayOf(name,value))}
     private fun get(name: String)=readableDatabase.rawQuery("SELECT value FROM meta WHERE name=?",arrayOf(name)).use{if(it.moveToFirst())it.getString(0)else null}
     private inline fun <T> transaction(block:()->T): T {
         val db=writableDatabase;db.beginTransaction()
         try{val result=block();db.setTransactionSuccessful();return result}finally{db.endTransaction()}
+    }
+    /** Source identity stays private; equal visible titles get stable, short folder suffixes. */
+    @Synchronized fun directory(task: AudioExportTask): String=transaction {
+        val identity=json.encodeToString(task.folders)
+        val existing=readableDatabase.rawQuery("SELECT relative_path FROM directories WHERE identity=?",arrayOf(identity)).use{
+            if(it.moveToFirst())it.getString(0)else null
+        }
+        if(existing!=null)existing else {
+            var duplicate=1
+            var relative=ExportLayout.relative(task)
+            while(readableDatabase.rawQuery("SELECT 1 FROM directories WHERE comparison_key=?",arrayOf(relative.lowercase(Locale.ROOT))).use{it.moveToFirst()}) {
+                duplicate++;musicCheck(duplicate<=1_000_000,MusicError.STORAGE)
+                relative=ExportLayout.relative(task,duplicate)
+            }
+            writableDatabase.execSQL("INSERT INTO directories(identity,relative_path,comparison_key) VALUES(?,?,?)",
+                arrayOf(identity,relative,relative.lowercase(Locale.ROOT)))
+            relative
+        }
     }
     @Synchronized fun replace(tasks: List<AudioExportTask>,sourceIssues: Int=0)=transaction {
         musicCheck(!snapshot().unfinished,MusicError.BUSY)

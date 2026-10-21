@@ -48,15 +48,31 @@ internal class SharedAudioStore(private val context: Context) {
             arrayOf(context.packageName,ExportLayout.ROOT+"%"),null)?.use{c->buildList{while(c.moveToNext())add(ContentUris.withAppendedId(collection,c.getLong(0)).toString())}}?:emptyList()
         rows.forEach(::removePending)
     }
-    suspend fun publish(task: AudioExportTask,result: TransferResult,prepared:(PublishedAudio)->Unit): PublishedAudio =
-        publish(task,result.media,result.file.length(),null,{FileInputStream(result.file)},prepared)
-    suspend fun copy(task: AudioExportTask,record: PublishedAudio,prepared:(PublishedAudio)->Unit): PublishedAudio =
-        publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,{open(record)},prepared)
-    private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,input:()->InputStream,
+    suspend fun publish(task: AudioExportTask,result: TransferResult,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
+        publish(task,result.media,result.file.length(),null,relative,{FileInputStream(result.file)},prepared)
+    suspend fun copy(task: AudioExportTask,record: PublishedAudio,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
+        publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,relative,{open(record)},prepared)
+    private suspend fun availableName(task: AudioExportTask,extension: String,relative: String): String {
+        var duplicate=1
+        while(true) {
+            currentCoroutineContext().ensureActive()
+            val name=ExportLayout.name(task,extension,duplicate)
+            val exists=resolver.query(collection,arrayOf(MediaStore.MediaColumns._ID),
+                "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME}=?",
+                arrayOf(relative,name,context.packageName),null)?.use{it.moveToFirst()}?:throw MusicFailure(MusicError.STORAGE)
+            if(!exists)return name
+            duplicate++;musicCheck(duplicate<=1_000_000,MusicError.STORAGE)
+        }
+    }
+    private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,relative: String,input:()->InputStream,
         prepared:(PublishedAudio)->Unit): PublishedAudio {
         val c=currentCoroutineContext();c.ensureActive()
         musicCheck(size in 1..AudioTransfer.MAX_BYTES&&media.durationMs>0,MusicError.INCOMPLETE)
-        val relative=ExportLayout.relative(task);val name=ExportLayout.name(task,media.extension)
+        musicCheck(relative.startsWith(ExportLayout.ROOT)&&relative.endsWith("/")&&
+            relative.removePrefix(ExportLayout.ROOT).dropLast(1).split('/').let{parts->
+                parts.size in 1..3&&parts.all{it==ExportLayout.component(it,180)}
+            },MusicError.STORAGE)
+        val name=availableName(task,media.extension,relative)
         val target=resolver.insert(collection,ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME,name);put(MediaStore.MediaColumns.MIME_TYPE,media.mime)
             put(MediaStore.MediaColumns.RELATIVE_PATH,relative);put(MediaStore.MediaColumns.IS_PENDING,1)
@@ -75,8 +91,10 @@ internal class SharedAudioStore(private val context: Context) {
             }}
             val hash=hex(digest.digest());musicCheck(bytes==size&&(expectedHash==null||expectedHash==hash),MusicError.INCOMPLETE)
             c.ensureActive()
-            val actualName=resolver.query(target,arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),null,null,null)?.use{if(it.moveToFirst())it.getString(0)else null}?:name
-            val row=PublishedAudio(task.key,task.track,target.toString(),actualName,relative,media.extension,media.mime,media.durationMs,bytes,hash)
+            val actual=resolver.query(target,arrayOf(MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.RELATIVE_PATH),null,null,null)?.use{
+                if(it.moveToFirst())it.getString(0) to it.getString(1)else null
+            }?:throw MusicFailure(MusicError.STORAGE)
+            val row=PublishedAudio(task.key,task.track,target.toString(),actual.first,actual.second,media.extension,media.mime,media.durationMs,bytes,hash)
             // Checkpoint before publishing: recovery can adopt a finished file after a process kill.
             prepared(row);c.ensureActive()
             musicCheck(resolver.update(target,ContentValues().apply{put(MediaStore.MediaColumns.IS_PENDING,0)},null,null)==1,MusicError.STORAGE)
