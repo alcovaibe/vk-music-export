@@ -1,7 +1,0 @@
-{
-  "name": "vk-music-export-build-tools",
-  "private": true,
-  "devDependencies": {
-    "terser": "5.44.1"
-  }
-}

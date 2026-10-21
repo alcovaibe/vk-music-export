@@ -66,6 +66,33 @@ adb shell am start -W -n "$package/.MainActivity"
 assert_visible before
 adb shell am force-stop "$package"
 assert_collection
+# Seed retired files only after the old APK has stopped. The new APK must remove these exact paths.
+adb shell "mkdir -p $appdata/files/native-audio $appdata/cache/native-audio-transfer /sdcard/Music/'VK Music Export'"
+adb shell "echo OLD_PRIVATE_AUDIO > $appdata/files/native-audio/retired.mp3; echo '[]' > $appdata/files/native-audio-index.json; echo OLD_PARTIAL > $appdata/cache/native-audio-transfer/retired.media; echo CURRENT_PUBLIC_AUDIO > /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3"
+public_expected=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
+# A paused queue uses the exact v1 schema of published 0.9.0. It must survive install/restart without a network request.
+python3 - <<'PYQUEUE'
+import hashlib, json, sqlite3
+from pathlib import Path
+path=Path('upgrade-results/queue-fixture.db')
+db=sqlite3.connect(path)
+db.executescript("""
+PRAGMA user_version=1;
+CREATE TABLE tasks(ordinal INTEGER PRIMARY KEY AUTOINCREMENT,task_key TEXT UNIQUE NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,error TEXT,prepared TEXT);
+CREATE TABLE files(task_key TEXT PRIMARY KEY,track_id TEXT NOT NULL,payload TEXT NOT NULL);
+CREATE TABLE meta(name TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE INDEX task_states ON tasks(state,ordinal);
+CREATE INDEX file_tracks ON files(track_id);
+""")
+key=hashlib.sha256(('Моя музыка'+'\0'+'12_99991'+'\0'+'1').encode()).hexdigest()
+task={'key':key,'track':{'id':'12_99991','title':'UpgradeQueueFixture','artist':'CI','duration':1,'restricted':False,'album':None},'folders':['Моя музыка'],'position':1}
+payload=json.dumps(task,ensure_ascii=False,separators=(',',':'))
+db.execute('INSERT INTO tasks(task_key,payload,state) VALUES(?,?,?)',(key,payload,'PENDING'))
+db.executemany('INSERT INTO meta VALUES(?,?)',[('status','PAUSED'),('source_issues','0'),('error','')]);db.commit();db.close()
+Path('upgrade-results/queue-expected.json').write_text(payload)
+PYQUEUE
+adb push upgrade-results/queue-fixture.db /data/local/tmp/queue-fixture.db
+adb shell "rm -f $appdata/no_backup/audio-export.db-wal $appdata/no_backup/audio-export.db-shm; cp /data/local/tmp/queue-fixture.db $appdata/no_backup/audio-export.db; chown -R $uid:$uid $appdata/files/native-audio $appdata/cache/native-audio-transfer $appdata/files/native-audio-index.json $appdata/no_backup/audio-export.db; restorecon -RF $appdata"
 # This is the operation owners perform: replace the installed APK, never uninstall or clear data.
 adb install -r upgrade-input/current.apk
 assert_collection
@@ -81,8 +108,31 @@ PY
 adb shell am start -W -n "$package/.MainActivity"
 assert_visible after
 assert_collection
+# Wait for the one-time IO migration, then verify the public audio and paused queue are intact.
+for attempt in $(seq 1 10); do
+  if adb shell test -f "$appdata/no_backup/legacy-audio-cleanup-v1"; then break; fi
+  sleep 1
+done
+adb shell test -f "$appdata/no_backup/legacy-audio-cleanup-v1"
+adb shell test ! -e "$appdata/files/native-audio"
+adb shell test ! -e "$appdata/files/native-audio-index.json"
+adb shell test ! -e "$appdata/cache/native-audio-transfer"
+public_actual=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
+[[ "$public_actual" == "$public_expected" ]]
 # A real process restart must retain the previous process journal. No account/network needed.
 adb shell am force-stop "$package"
+adb pull "$appdata/no_backup/audio-export.db" upgrade-results/queue-after.db >/dev/null
+if adb shell test -f "$appdata/no_backup/audio-export.db-wal"; then adb pull "$appdata/no_backup/audio-export.db-wal" upgrade-results/queue-after.db-wal >/dev/null; fi
+python3 - <<'PYQUEUECHECK'
+import sqlite3
+from pathlib import Path
+with sqlite3.connect('upgrade-results/queue-after.db') as db:
+    rows=db.execute('SELECT payload,state FROM tasks').fetchall()
+    assert rows==[(Path('upgrade-results/queue-expected.json').read_text(),'PENDING')], 'Queue changed during cleanup'
+    assert db.execute("SELECT value FROM meta WHERE name='status'").fetchone()[0]=='PAUSED'
+Path('upgrade-results/legacy-cleanup.txt').write_text('PASS: only retired private audio removed; public Music and paused queue retained.\n')
+print('PASS: only retired private audio removed; public Music and paused queue retained.')
+PYQUEUECHECK
 adb shell am start -W -n "$package/.MainActivity"
 assert_visible restarted
 adb pull "$appdata/no_backup/diagnostics" upgrade-results/diagnostics >/dev/null

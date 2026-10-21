@@ -30,12 +30,6 @@ internal enum class MusicError(val label: String) {
 internal enum class MusicFailureKind { DNS, CONNECT, SOCKET, TIMEOUT, TLS, PROTOCOL, EOF, IO, MEDIA_PARSE, OTHER }
 internal class MusicFailure(val code: MusicError,val remoteCode: Int? = null,val kind: MusicFailureKind? = null) : Exception(code.name)
 internal fun musicCheck(ok: Boolean, error: MusicError = MusicError.RESPONSE) { if (!ok) throw MusicFailure(error) }
-internal enum class DownloadStep(val label: String) {
-    ACCESS("чтение сохранённого доступа"), RESOLVE_MEDIA("получение ссылки ВК"), RECEIVING("получение потока"),
-    MANIFEST("чтение списка HLS"), SEGMENTS("получение сегментов HLS"), VERIFYING("проверка аудио на устройстве"),
-    SAVING("сохранение проверенного файла"), INDEX("чтение списка сохранённых файлов")
-}
-
 /** Not a data class: accidental toString must not reveal a credential. */
 internal class MusicAccess(val token: String, val agent: String) {
     override fun toString() = "MusicAccess([redacted])"

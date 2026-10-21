@@ -1,8 +1,6 @@
 package app.alcovaibe.vkmusicexport.music
 
 import android.app.Application
-import android.net.Uri
-import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.alcovaibe.vkmusicexport.data.MusicSource
@@ -19,7 +17,6 @@ private object NativeMusicGate {val mutex=Mutex()}
 internal data class NativeMusicState(val initialized: Boolean=false,val configured: Boolean=false,val busy: Boolean=false,
     val stage: String="",val error: MusicError?=null,val message: String?=null,val probe: NativeProbe?=null,
     val catalog: NativeCatalog?=null,val catalogError: MusicError?=null,val page: NativePage?=null,val selected: NativePlaylist?=null,
-    val progress: AudioProgress?=null,val saved: List<SavedAudio> = emptyList(),val downloadStep: DownloadStep?=null,
     val authPhase: DeviceAuthPhase?=null,val authIssue: DeviceAuthIssue?=null,
     val authCodeIssue: DeviceCodeIssue?=null,val authCodePending: Boolean=false,
     val stopping: Boolean=false,val waitingForSlot: Boolean=false,val pageOffset: Int=0,val catalogOffset: Int=0,
@@ -30,7 +27,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
-    private val files=NativeFiles(application)
+    private val operations=NativeOperationJournal(application)
     private val _state=MutableStateFlow(NativeMusicState());val state=_state.asStateFlow()
     private var work: Job?=null
     private val authForeground=MutableStateFlow(false)
@@ -41,16 +38,21 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     @Volatile private var generation=0
     init {
         viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val removed=LegacyAudioCleanup(application).run()
+                if(removed>0)Diagnostics.event("legacy_audio_cleanup",mapOf("removed_files" to removed))
+            }catch(e: CancellationException){throw e}
+             catch(_: Exception){Diagnostics.event("legacy_audio_cleanup_failed",mapOf("code" to "STORAGE"))}
             try{AudioExportRuntime.initialize(application)}catch(_: Exception){_state.update{it.copy(error=MusicError.STORAGE)}}
         }
         viewModelScope.launch {
             try {
                 val loaded=withContext(Dispatchers.IO){
-                    val interrupted=if(NativeMusicGate.mutex.tryLock())try{files.recover()}finally{NativeMusicGate.mutex.unlock()}else false
-                    Triple(vault.read()!=null,files.read(),interrupted)
+                    val interrupted=if(NativeMusicGate.mutex.tryLock())try{operations.recover()}finally{NativeMusicGate.mutex.unlock()}else false
+                    Pair(vault.read()!=null,interrupted)
                 }
-                _state.value=NativeMusicState(initialized=true,configured=loaded.first,saved=loaded.second,
-                    message=if(loaded.third)"Предыдущая операция прервана. Готовые файлы сохранены; проверку можно повторить." else null)
+                _state.value=NativeMusicState(initialized=true,configured=loaded.first,
+                    message=if(loaded.second)"Предыдущая операция прервана. Готовые файлы сохранены; проверку можно повторить." else null)
             }catch(_: Exception){_state.value=NativeMusicState(initialized=true,error=MusicError.STORAGE)}
         }
     }
@@ -61,7 +63,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
         val g=++generation;val id=UUID.randomUUID().toString()
         operationOwner=g
-        _state.update{it.copy(busy=true,stage=stage,error=null,message=null,progress=null,downloadStep=null,authIssue=null,
+        _state.update{it.copy(busy=true,stage=stage,error=null,message=null,authIssue=null,
             authCodeIssue=null,authCodePending=false,stopping=false,preparing=null,waitingForSlot=NativeMusicGate.mutex.isLocked,
             authPhase=if(stage=="browser_auth")DeviceAuthPhase.PREPARING else null)}
         Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "start"))
@@ -74,12 +76,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 NativeMusicGate.mutex.withLock {
                     active(g);_state.update{it.copy(waitingForSlot=false)}
                     try {
-                        withContext(Dispatchers.IO){files.begin(id)}
+                        withContext(Dispatchers.IO){operations.begin(id)}
                         block(g);active(g);outcome="completed"
                         Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "completed"))
                     }catch(e: CancellationException){outcome="interrupted";throw e}
                     finally {
-                        withContext(NonCancellable+Dispatchers.IO){runCatching{files.finish(id,outcome)}}
+                        withContext(NonCancellable+Dispatchers.IO){runCatching{operations.finish(id,outcome)}}
                     }
                 }
             }catch(e: CancellationException){outcome="interrupted";throw e}
@@ -100,7 +102,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 if(operationOwner==g){
                     operationOwner=null;work=null
                     authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
-                    _state.update{it.copy(busy=false,stage="",progress=null,stopping=false,waitingForSlot=false,
+                    _state.update{it.copy(busy=false,stage="",stopping=false,waitingForSlot=false,
                         authCodePending=false,authCodeIssue=null,preparing=null,
                         message=if(it.stopping)"Операция остановлена. Готовые файлы сохранены." else it.message)}
                 }
@@ -180,7 +182,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(!NativeProtocol.validAccess(token,agent)){_state.update{it.copy(error=MusicError.INVALID_ACCESS)};return}
         run("configure") {g->
             withContext(Dispatchers.IO){vault.save(MusicAccess(token,agent))};active(g)
-            _state.value=NativeMusicState(initialized=true,configured=true,busy=true,stage="configure",saved=_state.value.saved)
+            _state.value=NativeMusicState(initialized=true,configured=true,busy=true,stage="configure")
             probe(g)
         }
     }
@@ -308,7 +310,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(detector=="native_stop_button")Diagnostics.button("native_music_cancel")
         Diagnostics.event("native_music_cancel",mapOf("detector" to detector))
         generation++;authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
-        _state.update{it.copy(stopping=true,progress=null,authPhase=null,authIssue=null,authCodeIssue=null,
+        _state.update{it.copy(stopping=true,authPhase=null,authIssue=null,authCodeIssue=null,
             authCodePending=false,message="Завершаем остановку операции…")}
         work?.cancel()
     }
@@ -317,26 +319,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         Diagnostics.button("native_music_forget_access")
         run("forget") {g->
             withContext(Dispatchers.IO){vault.delete()};active(g)
-            _state.value=NativeMusicState(initialized=true,busy=true,stage="forget",saved=_state.value.saved,message="Доступ ВК удалён с устройства.")
+            _state.value=NativeMusicState(initialized=true,busy=true,stage="forget",message="Доступ ВК удалён с устройства.")
         }
     }
-    fun saveFile(row: SavedAudio,uri: Uri) {
-        Diagnostics.button("native_music_export_audio")
-        run("export_audio") {g->
-            val context=currentCoroutineContext()
-            withContext(Dispatchers.IO) {
-                val resolver=getApplication<Application>().contentResolver
-                var complete=false
-                try {
-                    val f=files.verified(row){context.ensureActive()}
-                    resolver.openOutputStream(uri,"wt")?.use{out->
-                        f.inputStream().use{input->val buffer=ByteArray(32768);while(true){context.ensureActive();val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)}}
-                    }?:throw MusicFailure(MusicError.STORAGE)
-                    context.ensureActive();complete=true
-                }finally{if(!complete)runCatching{DocumentsContract.deleteDocument(resolver,uri)}}
-            };active(g);_state.update{it.copy(message="Аудиофайл сохранён в выбранное место.")}
-        }
-    }
-    suspend fun verifiedFile(row: SavedAudio)=withContext(Dispatchers.IO){val c=currentCoroutineContext();files.verified(row){c.ensureActive()}}
     override fun onCleared(){work?.cancel();super.onCleared()}
 }

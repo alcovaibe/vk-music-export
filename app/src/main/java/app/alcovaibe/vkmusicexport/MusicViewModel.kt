@@ -1,7 +1,6 @@
 package app.alcovaibe.vkmusicexport
 
 import android.app.Application
-import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.AndroidViewModel
@@ -12,7 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** Collection ownership stays native. Chrome auth state is deliberately unknown to this app. */
+/** Saved metadata is independent of authorization, the audio queue and diagnostic JSON. */
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val store = CollectionStore(application)
     private val _snapshot = MutableStateFlow(CollectionSnapshot())
@@ -20,7 +19,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val ready = MutableStateFlow(false)
     val busy = MutableStateFlow(false)
     val message = MutableStateFlow<String?>(null)
-    val pendingImport = MutableStateFlow<ImportPlan?>(null)
+    val pendingCollection = MutableStateFlow<MusicSource?>(null)
     init {
         viewModelScope.launch {
             try {
@@ -39,49 +38,31 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun stageImport(uri: Uri) {
-        if(!ready.value || busy.value || pendingImport.value!=null)return
-        busy.value=true
-        Diagnostics.event("chrome_import_started")
-        viewModelScope.launch {
-            try {
-                val plan=withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver.openInputStream(uri)?.use(ChromeImport::read) ?: throw ImportFailure("OPEN_FAILED")
-                }
-                pendingImport.value=plan
-                Diagnostics.event("chrome_import_preview",mapOf("entries" to plan.tracks,"playlists" to plan.playlists.size,"reason" to plan.reason))
-            }catch(e: Exception) {
-                val code=(e as? ImportFailure)?.code ?: "OPEN_FAILED"
-                message.value=if(code=="FILE_TOO_LARGE")"Файл больше 10 МБ. Импорт не выполнен." else "Не удалось прочитать файл сборщика. Коллекция сохранена."
-                Diagnostics.event("chrome_import_failed",mapOf("code" to code))
-            }finally {busy.value=false}
-        }
+    fun cancelCollectionChange() {Diagnostics.button("cancel_collection_change");pendingCollection.value=null}
+    fun stageNativePage(source: MusicSource) {
+        if(!ready.value||busy.value||pendingCollection.value!=null)return
+        pendingCollection.value=source
+        Diagnostics.event("native_page_preview",mapOf("entries" to source.entries.size,"count_matched" to (source.status==ScanStatus.COUNT_MATCHED)))
     }
-    fun cancelImport() {Diagnostics.button("cancel_import");pendingImport.value=null}
-    fun stageNativeSample(source: MusicSource) {
-        if(!ready.value||busy.value||pendingImport.value!=null)return
-        pendingImport.value=ImportPlan(source,emptyList(),source.reason,source.entries.size)
-        Diagnostics.event("native_sample_preview",mapOf("entries" to source.entries.size,"count_matched" to (source.status==app.alcovaibe.vkmusicexport.data.ScanStatus.COUNT_MATCHED)))
-    }
-    fun confirmImport() {
-        val plan=pendingImport.value ?: return
+    fun confirmCollectionChange() {
+        val source=pendingCollection.value?:return
         if(busy.value)return
         busy.value=true
-        Diagnostics.button("confirm_import")
+        Diagnostics.button("confirm_collection_change")
         viewModelScope.launch {
             try {
-                val next=withContext(Dispatchers.Default){ChromeImport.merge(_snapshot.value,plan)}
-                store.save(next);_snapshot.value=next;pendingImport.value=null
-                message.value="Импортировано: ${plan.tracks} треков, ${plan.playlists.size} плейлистов в каталоге."
-                Diagnostics.event(if(plan.reason.startsWith("NATIVE_ACCESS_"))"native_sample_saved" else "chrome_import_saved",mapOf("entries" to plan.tracks,"catalog" to plan.playlists.size))
-            }catch (_: Exception) {
-                message.value="Не удалось сохранить импорт. Прежняя коллекция сохранена."
-                Diagnostics.event("chrome_import_save_failed")
-            }finally {busy.value=false}
+                val next=withContext(Dispatchers.Default){CollectionMerge.replaceSource(_snapshot.value,source)}
+                store.save(next);_snapshot.value=next;pendingCollection.value=null
+                message.value="В коллекции сохранено позиций: ${source.entries.size}."
+                Diagnostics.event("native_page_saved",mapOf("entries" to source.entries.size))
+            }catch(_: Exception) {
+                message.value="Не удалось сохранить список. Прежняя коллекция сохранена."
+                Diagnostics.event("native_page_save_failed")
+            }finally{busy.value=false}
         }
     }
     fun clearCollection() {
-        if (!ready.value || busy.value || pendingImport.value!=null) return
+        if (!ready.value || busy.value || pendingCollection.value!=null) return
         Diagnostics.action("clearCollection")
         busy.value=true
         viewModelScope.launch {
