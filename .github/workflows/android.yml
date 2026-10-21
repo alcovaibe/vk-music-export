@@ -21,15 +21,22 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-      - name: Release automation regression tests
-        run: python3 -m unittest discover -s tools -p 'test_release_tools.py'
+        run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: CI and release automation regression tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
       - name: Test, lint and assemble
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
+      - name: Verify release lint and R8 without signing secrets
+        # Main verifies R8 in the signed release job after both emulator checks.
+        if: github.ref != 'refs/heads/main'
+        run: ./gradlew lintRelease assembleRelease --stacktrace
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -47,9 +54,22 @@ jobs:
             app/build/test-results/
           retention-days: 7
 
-  interface:
+  interface-tests:
+    name: interface (API ${{ matrix.api-level }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: 36
+            sdk-level: '36'
+            target: default
+            ram-size: 2048M
+          - api-level: 37
+            sdk-level: '37.0'
+            target: google_apis
+            ram-size: 4096M
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -58,35 +78,60 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Reserve emulator disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          df -h /home/runner
       - name: Compile interface APKs before booting the emulator
-        run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
+        run: ./gradlew assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+      - name: Release compiler memory before booting the emulator
+        run: |
+          ./gradlew --stop
+          free -m
       - name: Verify interface on Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: ${{ matrix.sdk-level }}
+          target: ${{ matrix.target }}
           arch: x86_64
           profile: pixel_6
+          ram-size: ${{ matrix.ram-size }}
+          disk-size: 8G
+          pre-emulator-launch-script: grep -E '^target=android-${{ matrix.api-level }}([.]0)?$' "$ANDROID_AVD_HOME/test.ini"
           disable-animations: true
-          script: bash tools/interface-check.sh
+          script: bash tools/interface-check.sh ${{ matrix.api-level }}
       - name: Upload interface screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Android-interface
+          name: Android-interface-API-${{ matrix.api-level }}
           path: |
             interface-screenshots/
+            interface-diagnostics/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           retention-days: 7
+
+  # Keep the stable check name used by release provenance validation.
+  # This succeeds only after both Android 16 and Android 17 tests succeed.
+  interface:
+    needs: interface-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm both API levels passed
+        run: echo 'Interface checks passed on API 36 and API 37.'
 
   release:
     # Signing secrets are never exposed to PR code or non-main branches.
@@ -104,10 +149,13 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
       - uses: gradle/actions/setup-gradle@v4
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Allocate increasing Android versionCode
         # Keep this workflow path and offset stable. Runs may have gaps; never reuse lower codes.
         run: echo "APP_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
@@ -115,7 +163,7 @@ jobs:
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
         run: python3 tools/prepare-signing.py
-      - name: Build release and verify against installed 0.9.1
+      - name: Build release and verify against installed 0.9.2
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

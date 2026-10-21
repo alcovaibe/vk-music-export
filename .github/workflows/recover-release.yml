@@ -34,9 +34,12 @@ jobs:
           java-version: '21'
       - uses: android-actions/setup-android@v3
         with:
+          cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - uses: actions/download-artifact@v4
         with:
           name: VK-Music-Export-release

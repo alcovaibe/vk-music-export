@@ -1,6 +1,8 @@
-# VK Music Export · 0.9.2
+# VK Music Export · 0.9.3
 
 Приватное Android-приложение для личной музыки ВК. Android 16/API 36 и выше.
+
+В 0.9.3 зависимости собраны в `gradle/libs.versions.toml` и обновлены вместе с Kotlin, AGP и Gradle. Проект компилируется с SDK 37; `minSdk` и `targetSdk` остаются 36. CI проверяет debug и release/R8, а также запускает тесты на эмуляторах API 36 и API 37. Проверка требует реально выполненных 27 инструментальных тестов без ошибок и пропусков; одного успешного завершения Gradle недостаточно. Код сценариев авторизации и скачивания не изменён.
 
 На главном экране **«Открыть мою музыку»**. Подключение ВК проходит в настоящем Chrome Custom Tab с обычным профилем; пароль вводится на странице ВК. Код подключения текущей заявки вводится на отдельном защищённом экране. Новый доступ сохраняется после users.get/audio.get в AES-GCM/AndroidKeyStore.
 
@@ -21,4 +23,4 @@
 - [Текущие ограничения](docs/LIMITATIONS.md)
 - [Исследование инструментов ВК](docs/RESEARCH-2026-10-20.md)
 
-Проверки в существующем GitHub Actions: JVM, lint, Android 16 UI/Keystore/Media3/MediaStore/SQLite/UIDT, подписанное обновление поверх предыдущего опубликованного APK и сохранность данных. Signing secrets доступны только main-релизу. Пакет `app.alcovaibe.vkmusicexport` и постоянный сертификат сохранены.
+Проверки в существующем GitHub Actions: JVM, debug/release lint и R8, Android 16 и 17 UI/Keystore/Media3/MediaStore/SQLite/UIDT, подписанное обновление поверх опубликованной 0.9.2 (1072) на Android 16 и сохранность данных. Signing secrets доступны только main-релизу. Пакет `app.alcovaibe.vkmusicexport` и постоянный сертификат сохранены.
