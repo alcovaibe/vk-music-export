@@ -27,8 +27,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
-      - name: Release automation regression tests
-        run: python3 -m unittest discover -s tools -p 'test_release_tools.py'
+      - name: CI and release automation regression tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
       - name: Test, lint and assemble
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
       - name: Verify release lint and R8 without signing secrets
@@ -84,6 +84,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Reserve emulator disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          df -h /home/runner
       - name: Compile interface APKs before booting the emulator
         run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
       - name: Verify interface on Android
@@ -94,6 +98,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           ram-size: ${{ matrix.ram-size }}
+          disk-size: 8G
           disable-animations: true
           script: bash tools/interface-check.sh ${{ matrix.api-level }}
       - name: Upload interface screenshots and reports

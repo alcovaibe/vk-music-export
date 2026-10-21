@@ -8,13 +8,20 @@ if [[ "$actual_api" != "$expected_api" ]]; then
   exit 2
 fi
 echo "Verified emulator API: $actual_api."
+adb shell df -h /data
 adb shell wm size 720x1600
 adb shell wm density 294
 # AVD's launcher can time out while Gradle competes for CPU during the first build.
 # Stop that unrelated background launcher before starting the app under test.
 adb shell am force-stop com.android.launcher3
+# Do not let an old report satisfy this run if instrumentation never starts.
+rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
 ./gradlew connectedDebugAndroidTest --stacktrace
 result=$?
+if [[ "$result" == 0 ]]; then
+  python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected
+  result=$?
+fi
 if [[ "$result" != 0 ]]; then
   # A fresh disposable AVD can show a framework ANR above the app. Keep the
   # process/window evidence instead of treating missing focus as an app result.
