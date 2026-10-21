@@ -66,11 +66,13 @@ adb shell am start -W -n "$package/.MainActivity"
 assert_visible before
 adb shell am force-stop "$package"
 assert_collection
+# Simulate an interrupted legacy cleanup in this disposable fixture; never alter a physical device.
+adb shell rm -f "$appdata/no_backup/legacy-audio-cleanup-v1"
 # Seed retired files only after the old APK has stopped. The new APK must remove these exact paths.
 adb shell "mkdir -p $appdata/files/native-audio $appdata/cache/native-audio-transfer /sdcard/Music/'VK Music Export'"
 adb shell "echo OLD_PRIVATE_AUDIO > $appdata/files/native-audio/retired.mp3; echo '[]' > $appdata/files/native-audio-index.json; echo OLD_PARTIAL > $appdata/cache/native-audio-transfer/retired.media; echo CURRENT_PUBLIC_AUDIO > /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3"
 public_expected=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
-# A paused queue uses the exact v1 schema of published 0.9.0. It must survive install/restart without a network request.
+# A paused queue uses the exact v1 schema of published 0.9.1. It must survive install/restart without a network request.
 python3 - <<'PYQUEUE'
 import hashlib, json, sqlite3
 from pathlib import Path
@@ -128,8 +130,10 @@ import sqlite3
 from pathlib import Path
 with sqlite3.connect('upgrade-results/queue-after.db') as db:
     rows=db.execute('SELECT payload,state FROM tasks').fetchall()
-    assert rows==[(Path('upgrade-results/queue-expected.json').read_text(),'PENDING')], 'Queue changed during cleanup'
+    assert rows==[(Path('upgrade-results/queue-expected.json').read_text(),'PENDING')], 'Queue changed during schema upgrade'
     assert db.execute("SELECT value FROM meta WHERE name='status'").fetchone()[0]=='PAUSED'
+    assert db.execute('PRAGMA user_version').fetchone()[0]==2, 'Queue schema migration did not complete'
+    assert db.execute("SELECT COUNT(*) FROM directories").fetchone()[0]==0
 Path('upgrade-results/legacy-cleanup.txt').write_text('PASS: only retired private audio removed; public Music and paused queue retained.\n')
 print('PASS: only retired private audio removed; public Music and paused queue retained.')
 PYQUEUECHECK

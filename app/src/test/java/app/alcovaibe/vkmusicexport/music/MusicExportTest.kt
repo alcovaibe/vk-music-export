@@ -50,7 +50,7 @@ class MusicExportTest {
         val page=NativePage(listOf(t,t),2)
         val list=NativePlaylist(-12,34,"../ Сборник / ?",2,"PRIVATE_ACCESS_KEY",null,null,null)
         val tasks=ExportLayout.playlist(page,list)
-        assertNotEquals(tasks[0].key,tasks[1].key);assertNotEquals(ExportLayout.name(tasks[0],"mp3"),ExportLayout.name(tasks[1],"mp3"))
+        assertNotEquals(tasks[0].key,tasks[1].key);assertEquals(ExportLayout.name(tasks[0],"mp3"),ExportLayout.name(tasks[1],"mp3"))
         for(task in tasks) {
             assertTrue(ExportLayout.relative(task).startsWith("Music/VK Music Export/Плейлисты/"))
             assertFalse(ExportLayout.relative(task).contains("../"));assertTrue(ExportLayout.name(task,"mp3").toByteArray().size<255)
@@ -58,6 +58,22 @@ class MusicExportTest {
         }
         val albums=ExportLayout.library(NativePage(listOf(track(0).copy(album=MusicAlbum("album:42","Альбом"))),1))
         assertEquals(2,albums.size);assertTrue(ExportLayout.relative(albums[1]).contains("/Альбомы/"))
+    }
+    @Test fun visibleNamesOmitOnlyGeneratedNumbersWhileOldQueueIdentityAndRealTitleNumbersRemain() {
+        val t=track(0).copy(title="1984 [2026]",artist="Artist 123")
+        val list=NativePlaylist(607277757,535,"Солнечный день [2020]",1,null,null,null,null)
+        val task=ExportLayout.playlist(NativePage(listOf(t),1),list).single()
+        assertEquals("Artist 123 — 1984 [2026].mp3",ExportLayout.name(task,"mp3"))
+        assertEquals("Artist 123 — 1984 [2026] (2).m4a",ExportLayout.name(task,"m4a",2))
+        assertEquals("Music/VK Music Export/Плейлисты/Солнечный день [2020]/",ExportLayout.relative(task))
+        assertEquals("Music/VK Music Export/Плейлисты/Солнечный день [2020] (2)/",ExportLayout.relative(task,2))
+        val legacy="""{"key":"${task.key}","track":${Json.encodeToString(t)},"folders":["Плейлисты","Солнечный день [2020] [607277757_535]"],"position":1}"""
+        assertEquals(task,Json.decodeFromString<AudioExportTask>(legacy))
+        assertEquals(task.key,ExportLayout.task(t,listOf("Плейлисты","Солнечный день [2020] [607277757_535]"),1).key)
+        for(id in listOf("album:42","-12_42")) {
+            val album=ExportLayout.library(NativePage(listOf(t.copy(album=MusicAlbum(id,"Альбом [123]"))),1)).last()
+            assertEquals("Music/VK Music Export/Альбомы/Альбом [123]/",ExportLayout.relative(album))
+        }
     }
     @Test fun actualClientRequestsHundredPositionsAndExplicitOffsetWithoutLoggingAccessOrMetadata()=runBlocking {
         val requests=mutableListOf<Request>();val events=mutableListOf<String>();val token="vk1.a."+"SECRET".repeat(12)

@@ -27,12 +27,25 @@ internal object ExportLayout {
         val key=MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
         return AudioExportTask(key,track,folders,position)
     }
-    fun name(task: AudioExportTask,extension: String): String {
+    fun name(task: AudioExportTask,extension: String,duplicate: Int=1): String {
         musicCheck(extension in setOf("mp3","m4a"),MusicError.FORMAT)
-        val id=component(task.track.id,48)
-        return "${task.position.toString().padStart(5,'0')} - ${component(task.track.artist+" — "+task.track.title,140)} [$id].$extension"
+        musicCheck(duplicate>0,MusicError.STORAGE)
+        val suffix=if(duplicate==1)"" else " ($duplicate)"
+        return "${component(task.track.artist+" — "+task.track.title,180)}$suffix.$extension"
     }
-    fun relative(task: AudioExportTask)=ROOT+task.folders.joinToString("/")+"/"
+    // Keep the old task identity, including its source ID, for saved-file reuse and old queues.
+    // Only remove our final generated suffix; brackets/numbers in the original title remain.
+    fun displayFolders(task: AudioExportTask): List<String> = task.folders.mapIndexed{i,folder->
+        if(i==1&&task.folders.size==2&&task.folders.first() in setOf("Альбомы","Плейлисты"))
+            component(folder.replace(Regex(" \\[(?:-?\\d+_\\d+|album\\d+)\\]$"),""),180)
+        else folder
+    }
+    fun relative(task: AudioExportTask,duplicate: Int=1): String {
+        musicCheck(duplicate>0,MusicError.STORAGE)
+        val folders=displayFolders(task).toMutableList()
+        if(duplicate>1)folders[folders.lastIndex]="${component(folders.last(),150)} ($duplicate)"
+        return ROOT+folders.joinToString("/")+"/"
+    }
     fun library(page: NativePage,albums: Boolean=true): List<AudioExportTask> {
         val tasks=mutableListOf<AudioExportTask>();val albumPositions=mutableMapOf<String,Int>()
         page.tracks.forEachIndexed{i,track->

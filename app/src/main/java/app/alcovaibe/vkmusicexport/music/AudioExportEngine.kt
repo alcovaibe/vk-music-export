@@ -38,7 +38,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     var published: PublishedAudio?=null
                     for(copy in store.copies(task.track)) {
                         if(!shared.valid(copy))continue
-                        published=shared.copy(task,copy){store.prepared(task,it)}
+                        published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
                         observe("audio_queue_item",mapOf("outcome" to "local_copy"));break
                     }
                     if(published==null) {
@@ -62,7 +62,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                 }
                             }
                             val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
-                            published=shared.publish(task,file){store.prepared(task,it)}
+                            published=shared.publish(task,file,store.directory(task)){store.prepared(task,it)}
                         }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
                     }
                     currentCoroutineContext().ensureActive()
