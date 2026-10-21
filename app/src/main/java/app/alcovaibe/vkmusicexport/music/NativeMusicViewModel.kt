@@ -22,7 +22,8 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
     val progress: AudioProgress?=null,val saved: List<SavedAudio> = emptyList(),val downloadStep: DownloadStep?=null,
     val authPhase: DeviceAuthPhase?=null,val authIssue: DeviceAuthIssue?=null,
     val authCodeIssue: DeviceCodeIssue?=null,val authCodePending: Boolean=false,
-    val stopping: Boolean=false,val waitingForSlot: Boolean=false)
+    val stopping: Boolean=false,val waitingForSlot: Boolean=false,val pageOffset: Int=0,val catalogOffset: Int=0,
+    val preparing: String?=null)
 
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
@@ -30,7 +31,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val files=NativeFiles(application)
-    private val transfer=AudioTransfer()
     private val _state=MutableStateFlow(NativeMusicState());val state=_state.asStateFlow()
     private var work: Job?=null
     private val authForeground=MutableStateFlow(false)
@@ -40,6 +40,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var operationOwner: Int?=null
     @Volatile private var generation=0
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            try{AudioExportRuntime.initialize(application)}catch(_: Exception){_state.update{it.copy(error=MusicError.STORAGE)}}
+        }
         viewModelScope.launch {
             try {
                 val loaded=withContext(Dispatchers.IO){
@@ -59,7 +62,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         val g=++generation;val id=UUID.randomUUID().toString()
         operationOwner=g
         _state.update{it.copy(busy=true,stage=stage,error=null,message=null,progress=null,downloadStep=null,authIssue=null,
-            authCodeIssue=null,authCodePending=false,stopping=false,waitingForSlot=NativeMusicGate.mutex.isLocked,
+            authCodeIssue=null,authCodePending=false,stopping=false,preparing=null,waitingForSlot=NativeMusicGate.mutex.isLocked,
             authPhase=if(stage=="browser_auth")DeviceAuthPhase.PREPARING else null)}
         Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "start"))
         if(stage=="browser_auth")Diagnostics.event("native_auth_phase",mapOf("phase" to DeviceAuthPhase.PREPARING.name))
@@ -98,7 +101,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     operationOwner=null;work=null
                     authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
                     _state.update{it.copy(busy=false,stage="",progress=null,stopping=false,waitingForSlot=false,
-                        authCodePending=false,authCodeIssue=null,
+                        authCodePending=false,authCodeIssue=null,preparing=null,
                         message=if(it.stopping)"Операция остановлена. Готовые файлы сохранены." else it.message)}
                 }
             }
@@ -189,11 +192,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private suspend fun acceptProbe(g: Int,access: MusicAccess,probe: NativeProbe) {
         active(g)
-        _state.update{it.copy(probe=probe,page=probe.library,selected=null,catalog=null,catalogError=null)}
-        Diagnostics.event("native_music_sample",mapOf("stage" to "library","entries" to probe.library.tracks.size,"expected_count" to probe.library.count,"sample_limit" to 10,"complete" to false))
+        _state.update{it.copy(probe=probe,page=probe.library,pageOffset=0,catalogOffset=0,selected=null,catalog=null,catalogError=null)}
+        Diagnostics.event("native_music_sample",mapOf("stage" to "library","entries" to probe.library.tracks.size,"expected_count" to probe.library.count,"page_limit" to NativeProtocol.LIMIT,"complete" to false))
         try {
             val catalog=api.catalog(access,probe.owner);active(g)
-            _state.update{it.copy(catalog=catalog,message="Музыкальный доступ ответил. Показаны первые 10 позиций и первые 10 подборок; это проверочная выборка.")}
+            _state.update{it.copy(catalog=catalog,message="Музыкальный доступ работает. Списки показаны постранично; скачивание читает все позиции выбранного источника.")}
             Diagnostics.event("native_music_sample",mapOf("stage" to "catalog","entries" to catalog.lists.size,"expected_count" to catalog.count,"complete" to false))
         }catch(e: CancellationException){throw e}
          catch(e: Exception){active(g);val error=(e as? MusicFailure)?.code?:MusicError.RESPONSE;_state.update{it.copy(catalogError=error)}}
@@ -201,56 +204,96 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun select(list: NativePlaylist?) {
         Diagnostics.button(if(list==null)"native_music_library" else "native_music_playlist")
         val probe=_state.value.probe?:return
-        if(list==null){if(!_state.value.busy)_state.update{it.copy(page=probe.library,selected=null)};return}
+        if(list==null){if(!_state.value.busy)_state.update{it.copy(page=probe.library,pageOffset=0,selected=null)};return}
         run("playlist") {g->
-            val page=api.playlist(access(),list);active(g);_state.update{it.copy(page=page,selected=list)}
+            val page=api.playlist(access(),list);active(g);_state.update{it.copy(page=page,pageOffset=0,selected=list)}
             Diagnostics.event("native_music_sample",mapOf("stage" to "playlist","entries" to page.tracks.size,"expected_count" to page.count,"complete" to false))
         }
     }
     fun sample(): MusicSource? {
         val s=_state.value;if(s.busy)return null
-        return s.page?.let{NativeProtocol.sampleSource(it,s.probe?.owner?:return null,s.selected)}
+        return s.page?.let{NativeProtocol.sampleSource(it,s.probe?.owner?:return null,s.selected,complete=s.pageOffset==0&&it.tracks.size==it.count,offset=s.pageOffset)}
+    }
+    fun page(direction: Int) {
+        val s=_state.value;val page=s.page?:return;val owner=s.probe?.owner?:return
+        val offset=if(direction<0)(s.pageOffset-NativeProtocol.LIMIT).coerceAtLeast(0) else s.pageOffset+page.tracks.size
+        if(offset>=page.count||offset==s.pageOffset)return
+        Diagnostics.button("native_music_page")
+        run("page") {g->
+            val a=access();val next=s.selected?.let{api.playlistPage(a,it,offset)}?:api.libraryPage(a,owner,offset)
+            active(g);musicCheck(next.tracks.isNotEmpty()||next.count==0,MusicError.INCOMPLETE)
+            _state.update{it.copy(page=next,pageOffset=offset)}
+        }
+    }
+    fun catalogPage(direction: Int) {
+        val s=_state.value;val catalog=s.catalog?:return;val owner=s.probe?.owner?:return
+        val offset=if(direction<0)(s.catalogOffset-NativeProtocol.LIMIT).coerceAtLeast(0) else s.catalogOffset+catalog.lists.size
+        if(offset>=catalog.count||offset==s.catalogOffset)return
+        Diagnostics.button("native_music_catalog_page")
+        run("catalog_page") {g->val next=api.catalogPage(access(),owner,offset);active(g)
+            musicCheck(next.lists.isNotEmpty()||next.count==0,MusicError.INCOMPLETE)
+            _state.update{it.copy(catalog=next,catalogOffset=offset)}
+        }
+    }
+    /** Preparing metadata stays in the visible Activity; audio is handed to a persisted UIDT queue. */
+    fun prepare(allCatalog: Boolean=false,kind: PlaylistKind?=null) {
+        val s=_state.value;val owner=s.probe?.owner?:return
+        Diagnostics.button(if(allCatalog)"audio_queue_prepare_all" else "audio_queue_prepare_source")
+        run("prepare") {g->
+            withContext(Dispatchers.IO) {
+                AudioExportRuntime.initialize(getApplication())
+                musicCheck(!AudioExportRuntime.state.value.unfinished&&!AudioExportRuntime.active.get(),MusicError.BUSY)
+                val a=access();val tasks=mutableListOf<AudioExportTask>();var issues=0
+                suspend fun read(list: NativePlaylist?): NativePage = MusicPagination.tracks({offset->
+                    active(g);if(list==null)api.libraryPage(a,owner,offset)else api.playlistPage(a,list,offset)
+                }){n,total->_state.update{it.copy(preparing="Получено позиций: $n/$total")}}
+                if(allCatalog||s.selected==null) {
+                    tasks.addAll(ExportLayout.library(read(null)))
+                }else {
+                    val list=s.selected;tasks.addAll(ExportLayout.playlist(read(list),list,kind?:list.kind))
+                }
+                if(allCatalog) {
+                    val catalog=MusicPagination.catalog({offset->active(g);api.catalogPage(a,owner,offset)}){n,total->
+                        _state.update{it.copy(preparing="Получено подборок: $n/$total")}
+                    }
+                    issues+=(catalog.count-catalog.lists.size).coerceAtLeast(0)
+                    for((i,list) in catalog.lists.withIndex()) {
+                        active(g);_state.update{it.copy(preparing="Чтение подборки ${i+1}/${catalog.lists.size}")}
+                        try{tasks.addAll(ExportLayout.playlist(read(list),list))}
+                        catch(e: MusicFailure) {
+                            if(e.code !in setOf(MusicError.DENIED,MusicError.UNAVAILABLE,MusicError.METHOD,MusicError.INCOMPLETE,MusicError.LIBRARY_CHANGED))throw e
+                            issues++;Diagnostics.event("audio_queue_source_skipped",mapOf("code" to e.code.name))
+                        }
+                    }
+                }
+                active(g);AudioExportRuntime.replace(getApplication(),tasks,issues)
+                active(g);AudioExportRuntime.start(getApplication())
+                _state.update{it.copy(message="Очередь готова. Файлы сохраняются в Music/VK Music Export. Можно свернуть приложение."+
+                    if(issues>0)" Не удалось прочитать источников: $issues. См. итог очереди." else "")}
+            }
+        }
     }
     fun download(track: NativeTrack) {
         Diagnostics.button("native_music_download_one")
-        run("download") {g->
-            val downloadId=UUID.randomUUID().toString()
-            var step: DownloadStep?=null
-            fun mark(value: DownloadStep) {
-                if(step==value)return
-                step=value
-                if(g==generation)_state.update{it.copy(downloadStep=value)}
-                Diagnostics.event("native_audio_download_stage",mapOf("download_id" to downloadId,"stage" to value.name))
-            }
-            var result: TransferResult?=null
-            try {
-                mark(DownloadStep.ACCESS);val access=access();active(g)
-                mark(DownloadStep.RESOLVE_MEDIA);val url=api.media(access,track);active(g)
-                var lastProgress=0L;var lastStage=""
-                result=transfer.download(url,track,files.temporary){p->
-                    mark(when(p.stage){"manifest"->DownloadStep.MANIFEST;"segments"->DownloadStep.SEGMENTS;"verifying"->DownloadStep.VERIFYING;else->DownloadStep.RECEIVING})
-                    val now=System.nanoTime()
-                    if(g==generation&&(p.stage!=lastStage||now-lastProgress>=200_000_000||p.segments>0&&p.segment==p.segments)) {
-                        lastProgress=now;lastStage=p.stage;_state.update{it.copy(progress=p)}
-                    }
-                }
-                active(g);val context=currentCoroutineContext()
-                mark(DownloadStep.SAVING)
-                val row=withContext(Dispatchers.IO){files.commit(result!!,track){context.ensureActive();if(g!=generation)throw CancellationException()}}
-                result=null;active(g)
-                mark(DownloadStep.INDEX)
-                val saved=withContext(Dispatchers.IO){files.read()};active(g)
-                _state.update{it.copy(saved=saved,message="Файл проверен и сохранён в приложении: ${row.extension.uppercase()}. Его можно открыть или сохранить в выбранную папку.")}
-                Diagnostics.event("native_audio_saved",mapOf("download_id" to downloadId,"format" to row.extension,"bytes" to row.bytes,"duration_ms" to row.durationMs,"detector" to "media3_encoded_audio_samples_and_duration"))
-            }catch(e: CancellationException){
-                Diagnostics.event("native_audio_download_cancelled",mapOf("download_id" to downloadId,"stage" to step?.name));throw e
-            }catch(e: Exception){
-                val failure=e as? MusicFailure
-                Diagnostics.event("native_audio_download_failure",mapOf("download_id" to downloadId,"stage" to step?.name,
-                    "code" to (failure?.code?:MusicError.STORAGE).name,"vk_code" to failure?.remoteCode,"kind" to failure?.kind?.name))
-                throw e
-            }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
-        }
+        val s=_state.value
+        run("queue_one") {g->withContext(Dispatchers.IO){
+            val position=(s.page?.tracks?.indexOf(track)?:0).coerceAtLeast(0)+s.pageOffset+1
+            val tasks=if(s.selected==null)listOf(ExportLayout.task(track,listOf("Моя музыка"),position))
+                else ExportLayout.playlist(NativePage(listOf(track),1),s.selected).map{ExportLayout.task(it.track,it.folders,position)}
+            active(g);AudioExportRuntime.replace(getApplication(),tasks);active(g);AudioExportRuntime.start(getApplication())
+        }}
+    }
+    fun resumeQueue(retry: Boolean=false) {
+        Diagnostics.button(if(retry)"audio_queue_retry" else "audio_queue_resume")
+        run("queue_resume"){g->withContext(Dispatchers.IO){active(g);AudioExportRuntime.start(getApplication(),retry)}}
+    }
+    fun pauseQueue() {
+        Diagnostics.button("audio_queue_pause")
+        viewModelScope.launch(Dispatchers.IO){try{AudioExportRuntime.pause(getApplication())}catch(_: Exception){_state.update{it.copy(error=MusicError.STORAGE)}}}
+    }
+    fun clearQueue() {
+        Diagnostics.button("audio_queue_clear")
+        run("queue_clear"){g->withContext(Dispatchers.IO){active(g);AudioExportRuntime.clear(getApplication())}}
     }
     fun cancel()=stop("native_stop_button")
     fun stopForWindow()=stop("native_window_closed")
