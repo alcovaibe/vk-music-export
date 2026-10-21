@@ -14,7 +14,8 @@ internal enum class MusicError(val label: String) {
     VALIDATION("ВК запросил подтверждение входа. Заверши его в своём клиенте ВК."),
     RATE_LIMIT("ВК ограничил запросы. Подожди и повтори позже."),
     METHOD("Этот музыкальный метод недоступен для данного доступа ВК."),
-    HTTP("Сервер вернул ошибку HTTP."), NETWORK("Не удалось выполнить запрос. Проверь подключение и VPN."),
+    HTTP("Сервер вернул ошибку HTTP."), NETWORK("Не удалось получить данные по сети. Сохрани диагностический JSON этой попытки."),
+    TIMEOUT("Операция превысила допустимое время. Готовый файл не создан."),
     TLS("Не удалось проверить защищённое соединение."), TOO_LARGE("Ответ или аудиофайл превышает предел прототипа."),
     RESPONSE("ВК вернул неизвестный формат данных. Скопируй диагностический лог."),
     INVALID_ACCESS("Нужен только токен ВК длиной 32–4096 символов и корректный User-Agent, без адреса страницы."),
@@ -25,8 +26,14 @@ internal enum class MusicError(val label: String) {
     FORMAT("Формат аудио пока не поддерживается. Готовый файл не создан."),
     STORAGE("Не удалось сохранить данные на устройстве."), BUSY("Другая музыкальная операция ещё выполняется.")
 }
-internal class MusicFailure(val code: MusicError,val remoteCode: Int? = null) : Exception(code.name)
+internal enum class MusicFailureKind { DNS, CONNECT, SOCKET, TIMEOUT, TLS, PROTOCOL, EOF, IO, MEDIA_PARSE, OTHER }
+internal class MusicFailure(val code: MusicError,val remoteCode: Int? = null,val kind: MusicFailureKind? = null) : Exception(code.name)
 internal fun musicCheck(ok: Boolean, error: MusicError = MusicError.RESPONSE) { if (!ok) throw MusicFailure(error) }
+internal enum class DownloadStep(val label: String) {
+    ACCESS("чтение сохранённого доступа"), RESOLVE_MEDIA("получение ссылки ВК"), RECEIVING("получение потока"),
+    MANIFEST("чтение списка HLS"), SEGMENTS("получение сегментов HLS"), VERIFYING("проверка аудио на устройстве"),
+    SAVING("сохранение проверенного файла"), INDEX("чтение списка сохранённых файлов")
+}
 
 /** Not a data class: accidental toString must not reveal a credential. */
 internal class MusicAccess(val token: String, val agent: String) {

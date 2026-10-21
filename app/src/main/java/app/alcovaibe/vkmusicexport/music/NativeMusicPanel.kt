@@ -88,6 +88,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 state.message?.let{Text(it)}
                 state.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
+                if(state.error!=null)state.downloadStep?.let{step->
+                    Text("Этап: ${step.label}. Диагностический код: DOWNLOAD_${step.name}_${state.error!!.name}",color=MaterialTheme.colorScheme.error)
+                }
                 if(state.busy) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     val p=state.progress
@@ -96,6 +99,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК" else when(p?.stage) {
                         "segments"->"Получено сегментов: ${p.segment}/${p.segments} · ${p.bytes/1024} КБ"
                         "verifying"->"Проверка формата и длительности"
+                        "manifest"->"Чтение списка сегментов HLS"
                         "receiving"->"Получение потока · ${p.bytes/1024} КБ"
                         else->"Проверка музыкального доступа"
                     })
