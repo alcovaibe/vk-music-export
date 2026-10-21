@@ -60,7 +60,7 @@ class DeviceAuthTest {
             "http://qr.vk.ru/s?q=SECRET","https://qr.vk.ru:8443/s?q=SECRET","https://secret@qr.vk.ru/s?q=SECRET"))
             failure(DeviceAuthIssue.RESPONSE){DeviceAuthProtocol.browserUrl(bad)}
     }
-    @Test fun serverApprovalDoesNotAcceptPartialPasswordOrUnsupportedTokenResults() {
+    @Test fun serverApprovalRejectsPartialSessionsAndKeepsSuperAppSeparateFromApiAccess() {
         for(status in listOf(0,1,200))assertEquals(status==1,(DeviceAuthProtocol.poll(json("{\"status\":"+status+"}")) as DeviceCheck.Pending).opened)
         assertEquals(DeviceCheck.Expired,DeviceAuthProtocol.poll(json("""{"status":4}""")))
         assertEquals(DeviceCheck.Declined,DeviceAuthProtocol.poll(json("""{"status":3}""")))
@@ -70,7 +70,12 @@ class DeviceAuthTest {
         assertEquals(token,approved.access.token);assertFalse(approved.toString().contains(token))
         failure(DeviceAuthIssue.PARTIAL){DeviceAuthProtocol.poll(json(raw.replace("\"need_password\":0","\"need_password\":1")))}
         failure(DeviceAuthIssue.PARTIAL){DeviceAuthProtocol.poll(json(raw.replace("\"is_partial\":false","\"is_partial\":true")))}
-        failure(DeviceAuthIssue.UNSUPPORTED_TOKEN){DeviceAuthProtocol.poll(json("""{"status":2,"super_app_token":"SECRET_SUPER_TOKEN"}"""))}
+        val superToken="SUPER_APP_SECRET_FIXTURE_".repeat(4)
+        val exchange=DeviceAuthProtocol.poll(buildJsonObject{put("status",2);put("super_app_token",superToken)}) as DeviceCheck.ExchangeRequired
+        assertEquals(superToken,exchange.token);assertFalse(exchange.toString().contains(superToken))
+        for(bad in listOf("true","42","\"short\"","{}"))failure(DeviceAuthIssue.RESPONSE){
+            DeviceAuthProtocol.poll(json("{\"status\":2,\"super_app_token\":"+bad+"}"))
+        }
         for(bad in listOf("""{"status":"2"}""","""{"status":6}""","""{"status":2}""",
             raw.replace("\"is_partial\":false","\"is_partial\":\"false\""),
             raw.replace(token,"github_pat_"+"X".repeat(60))))

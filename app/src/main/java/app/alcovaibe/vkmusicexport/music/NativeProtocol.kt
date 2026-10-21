@@ -65,7 +65,7 @@ internal object NativeProtocol {
         else -> MusicError.RESPONSE
     }
     private inline fun <T> parse(block: ()->T): T = try {block()}catch(e: MusicFailure){throw e}catch(_: Exception){throw MusicFailure(MusicError.RESPONSE)}
-    fun envelope(raw: String): JsonElement = parse {
+    fun boundedObject(raw: String): JsonObject = parse {
         // Bound recursion before the JSON parser. Never retain the raw response.
         var depth = 0; var quoted = false; var escaped = false
         for (c in raw) {
@@ -74,7 +74,10 @@ internal object NativeProtocol {
             else if (c == '{' || c == '[') { depth++; musicCheck(depth <= 32) }
             else if (c == '}' || c == ']') depth--
         }
-        val root = try { Json.parseToJsonElement(raw).jsonObject } catch (_: Exception) { throw MusicFailure(MusicError.RESPONSE) }
+        try { Json.parseToJsonElement(raw).jsonObject } catch (_: Exception) { throw MusicFailure(MusicError.RESPONSE) }
+    }
+    fun envelope(raw: String): JsonElement = parse {
+        val root = boundedObject(raw)
         root["error"]?.let { e ->
             val code=(e as? JsonObject)?.get("error_code")?.jsonPrimitive?.intOrNull?:-1
             throw MusicFailure(error(code),code)

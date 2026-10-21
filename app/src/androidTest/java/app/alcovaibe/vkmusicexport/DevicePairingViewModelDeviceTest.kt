@@ -23,13 +23,14 @@ class DevicePairingViewModelDeviceTest {
     private val hash="PAIRING_FIXTURE_SECRET"
     private fun session()=DeviceSession(anon,hash,"https://qr.vk.ru/s?q=SYNTHETIC_ONE_TIME_SECRET",SystemClock.elapsedRealtime()+25000)
 
-    @Test fun codeRetryKeepsSameRequestAndReplacesCredentialOnlyAfterMusicSucceeds()=exercise(false)
-    @Test fun acceptedCodeAndDeniedMusicKeepPreviousEncryptedCredential()=exercise(true)
+    @Test fun codeRetryAndSuperAppExchangeReplaceCredentialOnlyAfterMusicSucceeds()=exercise(false)
+    @Test fun exchangedSuperAppTokenAndDeniedMusicKeepPreviousEncryptedCredential()=exercise(true)
 
     private fun exercise(denied: Boolean) {
         val vault=MusicAccessStore(app);val store=ViewModelStore()
-        val requests=AtomicInteger();val validations=AtomicInteger();val musicRequests=AtomicInteger()
+        val requests=AtomicInteger();val validations=AtomicInteger();val musicRequests=AtomicInteger();val exchanges=AtomicInteger()
         val releaseMusic=CompletableDeferred<Unit>();val releaseValidation=CompletableDeferred<Unit>()
+        val releaseExchange=CompletableDeferred<Unit>()
         lateinit var model: NativeMusicViewModel
         var modelCreated=false
         val s=session()
@@ -37,13 +38,17 @@ class DevicePairingViewModelDeviceTest {
             override suspend fun begin(deviceName: String): DeviceSession{requests.incrementAndGet();return s}
             override suspend fun poll(session: DeviceSession): DeviceCheck {
                 assertSame(s,session)
-                return if(validations.get()<2)DeviceCheck.VerificationRequired else DeviceCheck.Approved(MusicAccess(fresh,NativeProtocol.DEFAULT_AGENT))
+                return if(validations.get()<2)DeviceCheck.VerificationRequired else DeviceCheck.ExchangeRequired("SUPER_APP_SECRET_FIXTURE_".repeat(4))
             }
             override suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation {
                 assertSame(s,session)
                 val n=validations.incrementAndGet();assertEquals(if(n==1)"111111" else "183947",code.value)
                 if(n==2)releaseValidation.await()
                 return if(n==1)DeviceValidation.INCORRECT else DeviceValidation.ACCEPTED
+            }
+            override suspend fun exchange(session: DeviceSession,result: DeviceCheck.ExchangeRequired): MusicAccess {
+                assertSame(s,session);exchanges.incrementAndGet();releaseExchange.await()
+                return MusicAccess(fresh,NativeProtocol.DEFAULT_AGENT)
             }
         }
         val api=object: FixtureMusicApi() {
@@ -71,6 +76,12 @@ class DevicePairingViewModelDeviceTest {
             await{validations.get()==2&&model.state.value.authCodePending}
             instrumentation.runOnMainSync{model.submitAuthCode("222222")}
             assertEquals(2,validations.get());releaseValidation.complete(Unit)
+            await{model.state.value.authPhase==DeviceAuthPhase.EXCHANGING&&exchanges.get()==1}
+            assertEquals(old,vault.read()!!.token)
+            instrumentation.runOnMainSync{model.stopInBackground()}
+            releaseExchange.complete(Unit);runBlocking{delay(30)}
+            assertEquals(0,musicRequests.get());assertTrue(model.state.value.busy);assertEquals(old,vault.read()!!.token)
+            instrumentation.runOnMainSync{model.setForeground(true)}
             await{model.state.value.authPhase==DeviceAuthPhase.VERIFYING&&musicRequests.get()==1}
             assertEquals(old,vault.read()!!.token)
             instrumentation.runOnMainSync{model.stopInBackground()}
@@ -80,16 +91,16 @@ class DevicePairingViewModelDeviceTest {
                 instrumentation.runOnMainSync{model.setForeground(true)}
             }
             await{!model.state.value.busy}
-            assertEquals(1,requests.get());assertEquals(2,validations.get());assertEquals(1,musicRequests.get())
+            assertEquals(1,requests.get());assertEquals(2,validations.get());assertEquals(1,exchanges.get());assertEquals(1,musicRequests.get())
             if(denied) {
                 assertEquals(DeviceAuthIssue.MUSIC_CHECK,model.state.value.authIssue);assertEquals(old,vault.read()!!.token)
             }else {
                 assertEquals(DeviceAuthPhase.CONNECTED,model.state.value.authPhase);assertEquals(fresh,vault.read()!!.token)
             }
             val log=Diagnostics.export()
-            for(secret in listOf(old,fresh,anon,hash,"111111","183947","222222","SYNTHETIC_ONE_TIME_SECRET"))assertFalse(log.contains(secret))
+            for(secret in listOf(old,fresh,anon,hash,"SUPER_APP_SECRET_FIXTURE","111111","183947","222222","SYNTHETIC_ONE_TIME_SECRET"))assertFalse(log.contains(secret))
         }finally {
-            releaseValidation.complete(Unit);releaseMusic.complete(Unit);instrumentation.runOnMainSync{store.clear()}
+            releaseValidation.complete(Unit);releaseExchange.complete(Unit);releaseMusic.complete(Unit);instrumentation.runOnMainSync{store.clear()}
             if(modelCreated)await{!model.state.value.busy}
             vault.delete()
         }
