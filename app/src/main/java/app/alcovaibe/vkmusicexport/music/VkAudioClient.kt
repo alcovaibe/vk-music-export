@@ -9,12 +9,32 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal interface MusicApi {
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
     suspend fun media(access: MusicAccess, track: NativeTrack): String
+    suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
+        musicCheck(offset==0,MusicError.INCOMPLETE);return library(access).library
+    }
+    suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
+        musicCheck(offset==0,MusicError.INCOMPLETE);return catalog(access,owner)
+    }
+    suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
+        musicCheck(offset==0,MusicError.INCOMPLETE);return playlist(access,list)
+    }
+}
+
+private object MusicApiPacer {
+    private val mutex=Mutex();private var last=0L
+    suspend fun awaitSlot()=mutex.withLock {
+        val now=System.nanoTime();val wait=350_000_000L-(now-last)
+        if(wait>0)delay((wait+999_999)/1_000_000)
+        last=System.nanoTime()
+    }
 }
 
 internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.api(),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) : MusicApi {
@@ -28,6 +48,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists"->"catalog";else->"resolve_media"}
         observe("native_music_request",mapOf("stage" to step,"phase" to "start","transport" to "native_https_api"))
         return try {
+            MusicApiPacer.awaitSlot()
             val response = client.newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
@@ -45,13 +66,22 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     }
     override suspend fun library(access: MusicAccess): NativeProbe {
         val owner = NativeProtocol.owner(request(access,"users.get"))
-        val page = NativeProtocol.page(request(access,"audio.get",mapOf("owner_id" to owner.toString(),"count" to "10","offset" to "0")))
+        val page = libraryPage(access,owner,0)
         return NativeProbe(owner,page)
     }
-    override suspend fun catalog(access: MusicAccess, owner: Long) = NativeProtocol.catalog(
-        request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"count" to "10","offset" to "0")))
-    override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage {
-        val params = mutableMapOf("owner_id" to list.owner.toString(),"playlist_id" to list.id.toString(),"count" to "10","offset" to "0")
+    override suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
+        musicCheck(offset in 0..1_000_000)
+        return NativeProtocol.page(request(access,"audio.get",mapOf("owner_id" to owner.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+    }
+    override suspend fun catalog(access: MusicAccess, owner: Long)=catalogPage(access,owner,0)
+    override suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
+        musicCheck(offset in 0..1_000_000)
+        return NativeProtocol.catalog(request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+    }
+    override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
+    override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
+        musicCheck(offset in 0..1_000_000)
+        val params = mutableMapOf("owner_id" to list.owner.toString(),"playlist_id" to list.id.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())
         list.accessKey?.let {params["access_key"]=it}
         return NativeProtocol.page(request(access,"audio.get",params))
     }

@@ -165,11 +165,11 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     if(collectorGuide) CollectorGuide(onDismiss={Diagnostics.button("close_collector_guide");collectorGuide=false},onImport={Diagnostics.button("choose_import");collectorGuide=false;importFile.launch(arrayOf("application/json","text/plain","application/octet-stream"))},onMusic={Diagnostics.button("collector_open_music");chromeUnavailable=!app.alcovaibe.vkmusicexport.vk.ChromeBrowser.openMusic(context)})
     pending?.let { plan ->
         val previous=plan.source?.let{incoming->snapshot.sources.firstOrNull{it.id==incoming.id}}
-        val nativeSample=plan.reason=="NATIVE_ACCESS_SAMPLE_FIRST_10"
+        val nativeSample=plan.reason.startsWith("NATIVE_ACCESS_")
         AlertDialog(onDismissRequest={if(!busy)model.cancelImport()},title={Text(if(nativeSample)"Сохранение выборки ВК" else "Импорт из Chrome")},text={
             Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text("Треков: ${plan.tracks}. Плейлистов в каталоге: ${plan.playlists.size}.")
-                if(nativeSample)Text("Это только первые 10 позиций. Выборка останется помеченной как частичная, даже если количество совпало.")
+                if(nativeSample)Text("Сохраняется показанная страница. Частичный список помечен явно; совпадение количества не доказывает неизменность библиотеки ВК.")
                 plan.source?.let {Text("Список: ${it.title} · ${it.status.label}")}
                 if(previous!=null)Text("Импорт заменит этот список: сохранено ${previous.entries.size}, в файле ${plan.tracks} треков. Остальные списки сохранятся.")
                 else Text("Список будет добавлен в коллекцию. Каталог плейлистов не заменяет уже собранные треки.")

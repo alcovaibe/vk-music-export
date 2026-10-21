@@ -16,6 +16,7 @@ internal enum class MusicError(val label: String) {
     METHOD("Этот музыкальный метод недоступен для данного доступа ВК."),
     HTTP("Сервер вернул ошибку HTTP."), NETWORK("Не удалось получить данные по сети. Сохрани диагностический JSON этой попытки."),
     TIMEOUT("Операция превысила допустимое время. Готовый файл не создан."),
+    LIBRARY_CHANGED("Список ВК изменился во время чтения. Обнови его и повтори."),
     TLS("Не удалось проверить защищённое соединение."), TOO_LARGE("Ответ или аудиофайл превышает предел прототипа."),
     RESPONSE("ВК вернул неизвестный формат данных. Скопируй диагностический лог."),
     INVALID_ACCESS("Нужен только токен ВК длиной 32–4096 символов и корректный User-Agent, без адреса страницы."),
@@ -44,17 +45,19 @@ internal class MusicAccess(val token: String, val agent: String) {
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
     val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null)
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
-    val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?) {
+    val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
+    val kind: PlaylistKind=PlaylistKind.UNKNOWN) {
     val key get() = "playlist:$owner:$id"
     override fun toString() = "NativePlaylist([metadata omitted])"
 }
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
 internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int)
 internal data class NativeProbe(val owner: Long, val library: NativePage)
+internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Плейлисты") }
 
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
-    const val LIMIT = 10
+    const val LIMIT = 100
     val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById")
     private val idPattern = Regex("-?[1-9][0-9]{0,18}_[1-9][0-9]{0,18}")
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
@@ -141,7 +144,11 @@ internal object NativeProtocol {
             val original = p["original"] as? JsonObject
             NativePlaylist(owner,id,text(p,"title"),count(p),accessKey,
                 original?.let { long(it,"owner_id") }, original?.let { long(it,"playlist_id") },
-                (p["type"] as? JsonPrimitive)?.intOrNull)
+                (p["type"] as? JsonPrimitive)?.intOrNull,
+                when((p["type"] as? JsonPrimitive)?.takeIf{it.isString}?.content) {
+                    "album"->PlaylistKind.ALBUM;"playlist"->PlaylistKind.PLAYLIST
+                    else->if((p["album_type"] as? JsonPrimitive)?.content in setOf("album","single","ep"))PlaylistKind.ALBUM else PlaylistKind.UNKNOWN
+                })
         }
         musicCheck(lists.map { it.key }.distinct().size == lists.size)
         return NativeCatalog(lists,total)
@@ -154,13 +161,14 @@ internal object NativeProtocol {
             ?: throw MusicFailure(MusicError.UNAVAILABLE)
         return MediaAddress.require(url).toString()
     }
-    fun sampleSource(page: NativePage, owner: Long, playlist: NativePlaylist?): MusicSource = MusicSource(
+    fun sampleSource(page: NativePage, owner: Long, playlist: NativePlaylist?,complete: Boolean=false,offset: Int=0): MusicSource = MusicSource(
         id = playlist?.key ?: "my-music", title = playlist?.title ?: "Моя музыка",
         url = if (playlist == null) "https://vk.ru/audios$owner" else "https://vk.ru/music/playlist/${playlist.owner}_${playlist.id}",
         entries = page.tracks.mapIndexed { i,t ->
             musicCheck(idPattern.matches(t.id))
-            Entry("pos:$i", Track(t.id,t.title,t.artist,t.duration,t.album?.let{AlbumMetadata(it.id,it.title)},t.restricted),i+1)
-        }, expectedCount = page.count, status = ScanStatus.PARTIAL, reason = "NATIVE_ACCESS_SAMPLE_FIRST_10"
+            Entry("pos:${i+offset}", Track(t.id,t.title,t.artist,t.duration,t.album?.let{AlbumMetadata(it.id,it.title)},t.restricted),i+offset+1)
+        }, expectedCount = page.count, status = if(complete&&page.tracks.size==page.count)ScanStatus.COUNT_MATCHED else ScanStatus.PARTIAL,
+        reason = if(complete&&page.tracks.size==page.count)"NATIVE_ACCESS_ALL_POSITIONS" else "NATIVE_ACCESS_PARTIAL"
     )
 }
 
