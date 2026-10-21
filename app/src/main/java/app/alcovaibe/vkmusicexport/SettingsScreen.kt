@@ -34,19 +34,14 @@ internal fun SettingsPage(title: String,onBack: ()->Unit,tag: String="settings_p
 }
 
 @Composable
-internal fun SettingsScreen(canClear: Boolean,onBack: ()->Unit,onNative: ()->Unit,
+internal fun SettingsScreen(canClear: Boolean,onBack: ()->Unit,
     onUpdates: ()->Unit,onClear: ()->Unit) {
     SettingsPage("Настройки",onBack,"settings_screen") {
-        Text("ВКонтакте",style=MaterialTheme.typography.titleMedium)
-        TextButton(onClick=onNative){Text("Прямой доступ ВК · эксперимент")}
-        HorizontalDivider()
         Text("Диагностика",style=MaterialTheme.typography.titleMedium)
         DiagnosticControls()
         HorizontalDivider()
         TextButton(onClick=onUpdates){Text("Обновления приложения")}
         TextButton(enabled=canClear,onClick=onClear){Text("Очистить коллекцию",color=MaterialTheme.colorScheme.error)}
-        Text("VK Music Export · "+BuildConfig.VERSION_NAME+" ("+BuildConfig.VERSION_CODE+")",
-            style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

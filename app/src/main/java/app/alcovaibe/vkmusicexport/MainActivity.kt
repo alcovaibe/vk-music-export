@@ -97,7 +97,6 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     val message by model.message.collectAsState()
     val pending by model.pendingCollection.collectAsState()
     var settingsScreen by rememberSaveable{mutableStateOf<String?>(null)}
-    var nativeReturnTo by rememberSaveable{mutableStateOf<String?>(null)}
     val updateState by updates.state.collectAsState()
     var selected by rememberSaveable{mutableStateOf<String?>(null)}
     var query by rememberSaveable{mutableStateOf("")}
@@ -105,6 +104,11 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     BackHandler(settingsScreen==null&&selected!=null){selected=null}
     if(settingsScreen==null)Scaffold(
         containerColor=MaterialTheme.colorScheme.background,
+        bottomBar={
+            Text("v ${BuildConfig.VERSION_NAME}",
+                modifier=Modifier.fillMaxWidth().navigationBarsPadding().padding(start=12.dp,top=8.dp,bottom=8.dp),
+                style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        },
         topBar={
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=24.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
                 Surface(shape=RoundedCornerShape(12.dp),color=Accent,modifier=Modifier.size(38.dp)) {
@@ -123,7 +127,7 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
             message?.let{Text(it,Modifier.fillMaxWidth().padding(horizontal=24.dp,vertical=8.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)}
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             CollectionScreen(snapshot,selected,query,ready,onSelect={selected=it},onQuery={query=it},onMusic={
-                Diagnostics.button("open_native_music");nativeReturnTo=null;settingsScreen="native"
+                Diagnostics.button("open_native_music");settingsScreen="native"
             })
         }
     }
@@ -143,12 +147,11 @@ private fun MusicApp(model: MusicViewModel,updates: app.alcovaibe.vkmusicexport.
     if(settingsScreen=="settings")SettingsScreen(
         canClear=ready&&!busy&&pending==null,
         onBack={Diagnostics.button("settings_back");settingsScreen=null},
-        onNative={Diagnostics.button("native_music_panel");nativeReturnTo="settings";settingsScreen="native"},
         onUpdates={Diagnostics.button("updates");settingsScreen="updates"},
         onClear={Diagnostics.button("request_clear");confirmClear=true})
     app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,settingsScreen=="updates"){settingsScreen="settings"}
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,settingsScreen=="native",
-        onDismiss={settingsScreen=nativeReturnTo},onSample={model.stageNativePage(it);settingsScreen=null})
+        onDismiss={settingsScreen=null},onSample={model.stageNativePage(it);settingsScreen=null})
     if(confirmClear)AlertDialog(onDismissRequest={confirmClear=false},title={Text("Очистить коллекцию?")},
         text={Text("Сохранённые списки будут удалены из приложения. Музыка в Music/VK Music Export и очередь загрузки сохранятся.")},
         dismissButton={TextButton(onClick={Diagnostics.button("cancel_confirmation");confirmClear=false}){Text("Отмена")}},
