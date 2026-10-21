@@ -5,10 +5,10 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.JsonElement
 import okhttp3.*
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLException
 
 internal interface MusicApi {
     suspend fun library(access: MusicAccess): NativeProbe
@@ -35,9 +35,13 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             musicCheck(response.status==200,MusicError.HTTP)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes))}
         } catch(e: CancellationException){throw e}
-          catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode));throw e}
-          catch(_: SSLException){throw MusicFailure(MusicError.TLS)}
-          catch(_: Exception){throw MusicFailure(MusicError.NETWORK)}
+          catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
+          catch(e: Exception){
+              currentCoroutineContext().ensureActive()
+              val failure=if(e is IOException)networkFailure(e) else MusicFailure(MusicError.RESPONSE,kind=MusicFailureKind.OTHER)
+              observe("native_music_failure",mapOf("stage" to step,"code" to failure.code.name,"kind" to failure.kind?.name))
+              throw failure
+          }
     }
     override suspend fun library(access: MusicAccess): NativeProbe {
         val owner = NativeProtocol.owner(request(access,"users.get"))

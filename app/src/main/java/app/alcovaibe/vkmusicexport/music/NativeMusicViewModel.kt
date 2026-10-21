@@ -19,7 +19,7 @@ private object NativeMusicGate {val mutex=Mutex()}
 internal data class NativeMusicState(val initialized: Boolean=false,val configured: Boolean=false,val busy: Boolean=false,
     val stage: String="",val error: MusicError?=null,val message: String?=null,val probe: NativeProbe?=null,
     val catalog: NativeCatalog?=null,val catalogError: MusicError?=null,val page: NativePage?=null,val selected: NativePlaylist?=null,
-    val progress: AudioProgress?=null,val saved: List<SavedAudio> = emptyList(),
+    val progress: AudioProgress?=null,val saved: List<SavedAudio> = emptyList(),val downloadStep: DownloadStep?=null,
     val authPhase: DeviceAuthPhase?=null,val authIssue: DeviceAuthIssue?=null,
     val authCodeIssue: DeviceCodeIssue?=null,val authCodePending: Boolean=false,
     val stopping: Boolean=false,val waitingForSlot: Boolean=false)
@@ -52,10 +52,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     private fun run(stage: String,block: suspend (Int)->Unit) {
-        if(!_state.value.initialized||_state.value.busy)return
+        if(!_state.value.initialized||_state.value.busy){
+            Diagnostics.event("native_music_operation_ignored",mapOf("stage" to stage,"reason" to if(_state.value.busy)"busy" else "initializing"))
+            return
+        }
         val g=++generation;val id=UUID.randomUUID().toString()
         operationOwner=g
-        _state.update{it.copy(busy=true,stage=stage,error=null,message=null,progress=null,authIssue=null,
+        _state.update{it.copy(busy=true,stage=stage,error=null,message=null,progress=null,downloadStep=null,authIssue=null,
             authCodeIssue=null,authCodePending=false,stopping=false,waitingForSlot=NativeMusicGate.mutex.isLocked,
             authPhase=if(stage=="browser_auth")DeviceAuthPhase.PREPARING else null)}
         Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "start"))
@@ -211,22 +214,41 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun download(track: NativeTrack) {
         Diagnostics.button("native_music_download_one")
         run("download") {g->
-            val url=api.media(access(),track);active(g)
+            val downloadId=UUID.randomUUID().toString()
+            var step: DownloadStep?=null
+            fun mark(value: DownloadStep) {
+                if(step==value)return
+                step=value
+                if(g==generation)_state.update{it.copy(downloadStep=value)}
+                Diagnostics.event("native_audio_download_stage",mapOf("download_id" to downloadId,"stage" to value.name))
+            }
             var result: TransferResult?=null
             try {
+                mark(DownloadStep.ACCESS);val access=access();active(g)
+                mark(DownloadStep.RESOLVE_MEDIA);val url=api.media(access,track);active(g)
                 var lastProgress=0L;var lastStage=""
                 result=transfer.download(url,track,files.temporary){p->
+                    mark(when(p.stage){"manifest"->DownloadStep.MANIFEST;"segments"->DownloadStep.SEGMENTS;"verifying"->DownloadStep.VERIFYING;else->DownloadStep.RECEIVING})
                     val now=System.nanoTime()
                     if(g==generation&&(p.stage!=lastStage||now-lastProgress>=200_000_000||p.segments>0&&p.segment==p.segments)) {
                         lastProgress=now;lastStage=p.stage;_state.update{it.copy(progress=p)}
                     }
                 }
                 active(g);val context=currentCoroutineContext()
+                mark(DownloadStep.SAVING)
                 val row=withContext(Dispatchers.IO){files.commit(result!!,track){context.ensureActive();if(g!=generation)throw CancellationException()}}
                 result=null;active(g)
+                mark(DownloadStep.INDEX)
                 val saved=withContext(Dispatchers.IO){files.read()};active(g)
                 _state.update{it.copy(saved=saved,message="Файл проверен и сохранён в приложении: ${row.extension.uppercase()}. Его можно открыть или сохранить в выбранную папку.")}
-                Diagnostics.event("native_audio_saved",mapOf("format" to row.extension,"bytes" to row.bytes,"duration_ms" to row.durationMs,"detector" to "media3_encoded_audio_samples_and_duration"))
+                Diagnostics.event("native_audio_saved",mapOf("download_id" to downloadId,"format" to row.extension,"bytes" to row.bytes,"duration_ms" to row.durationMs,"detector" to "media3_encoded_audio_samples_and_duration"))
+            }catch(e: CancellationException){
+                Diagnostics.event("native_audio_download_cancelled",mapOf("download_id" to downloadId,"stage" to step?.name));throw e
+            }catch(e: Exception){
+                val failure=e as? MusicFailure
+                Diagnostics.event("native_audio_download_failure",mapOf("download_id" to downloadId,"stage" to step?.name,
+                    "code" to (failure?.code?:MusicError.STORAGE).name,"vk_code" to failure?.remoteCode,"kind" to failure?.kind?.name))
+                throw e
             }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
         }
     }
