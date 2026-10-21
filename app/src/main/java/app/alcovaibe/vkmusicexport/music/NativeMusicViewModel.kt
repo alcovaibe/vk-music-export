@@ -273,11 +273,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         }
     }
-    fun download(track: NativeTrack) {
+    fun download(track: NativeTrack,position: Int) {
         Diagnostics.button("native_music_download_one")
         val s=_state.value
         run("queue_one") {g->withContext(Dispatchers.IO){
-            val position=(s.page?.tracks?.indexOf(track)?:0).coerceAtLeast(0)+s.pageOffset+1
+            musicCheck(position>0,MusicError.RESPONSE)
             val tasks=if(s.selected==null)listOf(ExportLayout.task(track,listOf("Моя музыка"),position))
                 else ExportLayout.playlist(NativePage(listOf(track),1),s.selected).map{ExportLayout.task(it.track,it.folders,position)}
             active(g);AudioExportRuntime.replace(getApplication(),tasks);active(g);AudioExportRuntime.start(getApplication())

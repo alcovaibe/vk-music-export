@@ -73,6 +73,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Моя музыка, Плейлисты и Альбомы создаются при первом сохранении. Готовые файлы не удаляются приложением по количеству или возрасту.")
                 Text("Один трек может сохраняться в нескольких папках: это отдельные копии и дополнительное место. В папки альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
                 if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
+                if(queue.total==0)queue.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
                 if(queue.total>0) {
                     Text("Очередь: ${queue.done}/${queue.total} файлов · пропущено ${queue.failed}",style=MaterialTheme.typography.titleMedium)
                     Text(when(queue.status){"RUNNING"->"Скачивание продолжается, приложение можно свернуть";"QUEUED"->"Ожидание сети и запуска системой";"FINISHED"->"Готово";"FINISHED_WITH_ERRORS"->"Готово с пропусками";else->"Приостановлено"})
@@ -191,7 +192,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                 Text(track.artist)
                                 track.album?.let{Text("Альбом: ${it.title}",style=MaterialTheme.typography.bodySmall)}
                                 if(track.restricted||track.duration==0)Text("ВК отметил ограничение или не вернул длительность")
-                                TextButton(enabled=canPrepare&&!track.restricted&&track.duration>0,onClick={model.download(track)}){Text("Скачать этот трек")}
+                                TextButton(enabled=canPrepare&&!track.restricted&&track.duration>0,onClick={model.download(track,state.pageOffset+i+1)}){Text("Скачать этот трек")}
                             }
                         }
                     }

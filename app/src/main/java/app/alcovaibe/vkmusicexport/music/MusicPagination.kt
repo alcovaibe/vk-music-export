@@ -5,7 +5,7 @@ import kotlinx.coroutines.ensureActive
 
 /** Offset advances by returned positions, including duplicate tracks; never guess a complete list. */
 internal object MusicPagination {
-    suspend fun tracks(fetch: suspend(Int)->NativePage,progress:(Int,Int)->Unit={}): NativePage {
+    suspend fun tracks(fetch: suspend(Int)->NativePage,progress:(Int,Int)->Unit={_,_->}): NativePage {
         val tracks=mutableListOf<NativeTrack>();val pages=hashSetOf<List<String>>()
         var expected: Int?=null
         do {
@@ -19,7 +19,7 @@ internal object MusicPagination {
         }while(tracks.size<expected!!)
         return NativePage(tracks,expected?:0)
     }
-    suspend fun catalog(fetch: suspend(Int)->NativeCatalog,progress:(Int,Int)->Unit={}): NativeCatalog {
+    suspend fun catalog(fetch: suspend(Int)->NativeCatalog,progress:(Int,Int)->Unit={_,_->}): NativeCatalog {
         val lists=linkedMapOf<String,NativePlaylist>();var offset=0;var expected: Int?=null
         val pages=hashSetOf<List<String>>()
         do {
