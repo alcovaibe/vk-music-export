@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Preserve screenshots even when the instrumentation check fails.
 set -uo pipefail
+expected_api=${1:?Expected Android API level is required}
+actual_api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+if [[ "$actual_api" != "$expected_api" ]]; then
+  echo "Wrong emulator API: expected $expected_api, observed $actual_api." >&2
+  exit 2
+fi
+echo "Verified emulator API: $actual_api."
 adb shell wm size 720x1600
 adb shell wm density 294
 # AVD's launcher can time out while Gradle competes for CPU during the first build.
