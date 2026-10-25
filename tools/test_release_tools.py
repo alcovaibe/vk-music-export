@@ -86,14 +86,14 @@ class UpgradeDeviceGuardTest(unittest.TestCase):
             (directory/'upgrade-results').mkdir();(directory/'tools').mkdir()
             (directory/'tools/emulator-dialog.py').write_text((TOOLS/'emulator-dialog.py').read_text())
             # A stale successful snapshot must not mask failure of the first dump.
-            (directory/'upgrade-results/before.xml').write_text('<hierarchy><node text="UpgradeCheckFixture"/></hierarchy>')
+            (directory/'upgrade-results/before.xml').write_text('<hierarchy><node text="Открыть мою музыку"/></hierarchy>')
             adb=directory/'adb'
             adb.write_text('''#!/bin/bash
 case "$*" in
  "shell rm -f /sdcard/upgrade-window.xml") rm -f remote.xml;;
  "shell uiautomator dump /sdcard/upgrade-window.xml")
    n=$(cat attempts 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > attempts
-   if [[ "$n" == 1 ]]; then echo 'ERROR: null root node' >&2; else echo '<hierarchy><node text="UpgradeCheckFixture"/></hierarchy>' > remote.xml; fi;;
+   if [[ "$n" == 1 ]]; then echo 'ERROR: null root node' >&2; else echo '<hierarchy><node text="Открыть мою музыку"/></hierarchy>' > remote.xml; fi;;
  "pull /sdcard/upgrade-window.xml upgrade-results/before.xml") cp remote.xml upgrade-results/before.xml;;
  *) exit 3;;
 esac

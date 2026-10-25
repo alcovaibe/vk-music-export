@@ -35,7 +35,8 @@ assert_collection() {
   test "$actual" = "$expected"
 }
 assert_visible() {
-  # Give Compose startup time, but fail if the saved source never appears.
+  # Old APK renders its saved source; the new APK must open the music home.
+  local expected_text="${2:-Открыть мою музыку}"
   for attempt in $(seq 1 10); do
     # A fresh AVD can temporarily return a null accessibility root. Never read a stale dump.
     adb shell rm -f /sdcard/upgrade-window.xml
@@ -55,15 +56,15 @@ assert_visible() {
       adb shell input tap "$x" "$y"
       continue
     fi
-    if grep -q 'UpgradeCheckFixture' "upgrade-results/$1.xml"; then return; fi
+    if grep -q "$expected_text" "upgrade-results/$1.xml"; then return; fi
     sleep 2
   done
-  echo 'Saved collection was not rendered by the release APK.'
+  echo 'Expected release screen was not rendered.'
   adb logcat -d -b crash > upgrade-results/crash.txt
   return 1
 }
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible before
+assert_visible before UpgradeCheckFixture
 adb shell am force-stop "$package"
 assert_collection
 # Simulate an interrupted legacy cleanup in this disposable fixture; never alter a physical device.
@@ -157,5 +158,5 @@ assert sum(p.stat().st_size for p in Path('upgrade-results/diagnostics').rglob('
 Path('upgrade-results/diagnostic-restart.txt').write_text('PASS: journal retained across actual force-stop/restart.\n')
 PYDIAG
 adb exec-out screencap -p > upgrade-results/updated-release.png
-printf 'PASS: signed release -> higher-version signed release; collection intact and displayed.\n' | tee upgrade-results/result.txt
+printf 'PASS: signed release -> higher-version signed release; music home displayed; legacy data, public music and queue intact.\n' | tee upgrade-results/result.txt
 cp upgrade-results/result.txt release-output/upgrade-check.txt

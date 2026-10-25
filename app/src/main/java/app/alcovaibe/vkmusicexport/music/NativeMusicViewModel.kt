@@ -3,7 +3,6 @@ package app.alcovaibe.vkmusicexport.music
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import app.alcovaibe.vkmusicexport.data.MusicSource
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -211,10 +210,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val page=api.playlist(access(),list);active(g);_state.update{it.copy(page=page,pageOffset=0,selected=list)}
             Diagnostics.event("native_music_sample",mapOf("stage" to "playlist","entries" to page.tracks.size,"expected_count" to page.count,"complete" to false))
         }
-    }
-    fun sample(): MusicSource? {
-        val s=_state.value;if(s.busy)return null
-        return s.page?.let{NativeProtocol.sampleSource(it,s.probe?.owner?:return null,s.selected,complete=s.pageOffset==0&&it.tracks.size==it.count,offset=s.pageOffset)}
     }
     fun page(direction: Int) {
         val s=_state.value;val page=s.page?:return;val owner=s.probe?.owner?:return

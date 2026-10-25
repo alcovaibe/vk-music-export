@@ -26,9 +26,9 @@ else:
 
 Android 16+ (API 36). Публичные обновления без GitHub-токена: проверка JSON-канала при открытии не чаще раза в сутки, ручная проверка и скачивание по кнопке. Проверяются размер, SHA-256, пакет, версия, минимальный Android и прежняя подпись APK. Установку подтверждает Android.
 
-Версия отображается внизу слева главного экрана. Из настроек удалены дублирующий переход в музыку и прежняя строка версии.
+Удалена локальная коллекция страниц: её экран, сохранение страницы, очистка и обслуживающий код. Главный экран открывает музыкальный раздел. Авторизация, очередь и скачивание используют прежние компоненты; старый collection.json не читается и не изменяется.
 
-Проверки CI: JVM, lint, release/R8 и инструментальные тесты на API 36/37. Подписанное обновление проверяется на Android 16 поверх опубликованной 0.9.3 (1080), с сохранением коллекции, публичной музыки и очереди. Реальный вход в ВК и загрузка всей библиотеки владельца CI не подтверждаются.
+Проверки CI: JVM, lint, release/R8 и инструментальные тесты на API 36/37. Подписанное обновление проверяется на Android 16 поверх опубликованной 0.9.4 (1085), с проверкой нового главного экрана и сохранением старого файла коллекции, публичной музыки и очереди. Реальный вход в ВК и загрузка всей библиотеки владельца CI не подтверждаются.
 
 Исходный коммит APK: `{source_sha}`.
 Коммит релиза и проверки: `{release_commit}`.
@@ -48,7 +48,7 @@ Android 16+ (API 36). Публичные обновления без GitHub-то
                     '--notes-file', str(notes), '--latest=' + str(make_latest).lower()], check=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
     summary.write(f"## Signed release\n\nhttps://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/tag/{tag}\n\n"
-                  'Release upgrade and collection preservation: **passed**.\n')
+                  'Release upgrade, music home and existing data preservation: **passed**.\n')
 
 # Update the discovery channel only after the release is publicly available and verified.
 publish_channel(info, Path('release-output') / info['apk'])

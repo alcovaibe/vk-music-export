@@ -22,14 +22,14 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(AndroidJUnit4::class)
 class SettingsNavigationDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun settingsAreASeparateRestorableScreenAndBackReturnsToCollection() {
+    @Test fun settingsAreASeparateRestorableScreenAndBackReturnsToHome() {
         ui.onNodeWithContentDescription("Настройки").performClick()
         ui.onNodeWithTag("settings_screen").assertExists()
         ui.onAllNodes(isDialog()).assertCountEquals(0)
         ui.activityRule.scenario.recreate()
         ui.onNodeWithTag("settings_screen").assertExists()
         ui.onNodeWithContentDescription("Назад").performClick()
-        ui.onNodeWithText("Моя коллекция").assertExists()
+        ui.onNodeWithText("Музыка ВК").assertExists()
         ui.onNodeWithTag("settings_screen").assertDoesNotExist()
     }
 }

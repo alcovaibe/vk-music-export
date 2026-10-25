@@ -34,14 +34,12 @@ internal fun SettingsPage(title: String,onBack: ()->Unit,tag: String="settings_p
 }
 
 @Composable
-internal fun SettingsScreen(canClear: Boolean,onBack: ()->Unit,
-    onUpdates: ()->Unit,onClear: ()->Unit) {
+internal fun SettingsScreen(onBack: ()->Unit,onUpdates: ()->Unit) {
     SettingsPage("Настройки",onBack,"settings_screen") {
         Text("Диагностика",style=MaterialTheme.typography.titleMedium)
         DiagnosticControls()
         HorizontalDivider()
         TextButton(onClick=onUpdates){Text("Обновления приложения")}
-        TextButton(enabled=canClear,onClick=onClear){Text("Очистить коллекцию",color=MaterialTheme.colorScheme.error)}
     }
 }
 

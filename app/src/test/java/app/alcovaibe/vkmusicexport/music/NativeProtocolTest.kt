@@ -1,6 +1,5 @@
 package app.alcovaibe.vkmusicexport.music
 
-import app.alcovaibe.vkmusicexport.data.ScanStatus
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import okhttp3.*
@@ -13,11 +12,9 @@ class NativeProtocolTest {
     private val track="""{"owner_id":12,"id":34,"title":"Название","artist":"Исполнитель","duration":2}"""
     private fun json(s: String)=Json.parseToJsonElement(s)
     private fun failure(code: MusicError,block:()->Unit){assertEquals(code,assertThrows(MusicFailure::class.java,block).code)}
-    @Test fun samplesPreserveDuplicatePositionsUnavailableAndNeverClaimFullCollection() {
+    @Test fun pagesPreserveDuplicatePositionsAndUnavailableTracks() {
         val page=NativeProtocol.page(json("""{"count":2,"items":[$track,$track]}"""))
-        val source=NativeProtocol.sampleSource(page,12,null)
-        assertEquals(2,source.entries.size);assertEquals(listOf(1,2),source.entries.map{it.position})
-        assertEquals(ScanStatus.PARTIAL,source.status)
+        assertEquals(2,page.tracks.size);assertEquals(page.tracks[0],page.tracks[1])
         val unavailable=track.dropLast(1)+",\"is_restricted\":true}"
         assertTrue(NativeProtocol.page(json("""{"count":1,"items":[$unavailable]}""")).tracks.single().restricted)
     }
@@ -40,8 +37,6 @@ class NativeProtocolTest {
         val catalog=NativeProtocol.catalog(json("""{"count":1,"items":[{"owner_id":-12,"id":34,"title":"Сохранённое","count":2,"access_key":"SECRET","type":1,"original":{"owner_id":56,"playlist_id":78}}]}"""))
         val list=catalog.lists.single();assertEquals("playlist:-12:34",list.key);assertEquals(56L,list.originalOwner)
         assertFalse(list.toString().contains("SECRET"))
-        val source=NativeProtocol.sampleSource(NativePage(emptyList(),2),12,list)
-        assertFalse(source.toString().contains("SECRET"));assertFalse(source.url.contains('?'))
     }
     @Test fun cdnBoundaryRejectsSchemesCredentialsPortsFragmentsAndLookalikes() {
         for(raw in listOf("http://a.userapi.com/f","https://userapi.com.evil.test/f","https://userapi.com@evil.test/f",

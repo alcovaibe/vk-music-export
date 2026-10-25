@@ -26,7 +26,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.alcovaibe.vkmusicexport.SettingsPage
 import app.alcovaibe.vkmusicexport.SecureSettingsContent
-import app.alcovaibe.vkmusicexport.data.MusicSource
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -36,7 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,onSample:(MusicSource)->Unit) {
+internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit) {
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val state by model.state.collectAsState()
@@ -160,9 +159,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         TextButton(enabled=!state.busy&&state.pageOffset>0,onClick={model.page(-1)}){Text("Предыдущие треки")}
                         TextButton(enabled=!state.busy&&page.tracks.isNotEmpty()&&state.pageOffset+page.tracks.size<page.count,onClick={model.page(1)}){Text("Следующие треки")}
                     }
-                    OutlinedButton(enabled=!state.busy,onClick={
-                        Diagnostics.button("native_music_preview_sample");model.sample()?.let{onSample(it)}
-                    }){Text("Сохранить эту страницу в коллекцию…")}
                     page.tracks.forEachIndexed { i,track ->
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
