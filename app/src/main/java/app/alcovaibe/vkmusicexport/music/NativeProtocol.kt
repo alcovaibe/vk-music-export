@@ -1,6 +1,5 @@
 package app.alcovaibe.vkmusicexport.music
 
-import app.alcovaibe.vkmusicexport.data.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl
@@ -53,7 +52,6 @@ internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
     val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById")
-    private val idPattern = Regex("-?[1-9][0-9]{0,18}_[1-9][0-9]{0,18}")
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
         token.all { it.isLetterOrDigit() && it.code < 128 || it in "_.-" } &&
@@ -155,15 +153,7 @@ internal object NativeProtocol {
             ?: throw MusicFailure(MusicError.UNAVAILABLE)
         return MediaAddress.require(url).toString()
     }
-    fun sampleSource(page: NativePage, owner: Long, playlist: NativePlaylist?,complete: Boolean=false,offset: Int=0): MusicSource = MusicSource(
-        id = playlist?.key ?: "my-music", title = playlist?.title ?: "Моя музыка",
-        url = if (playlist == null) "https://vk.ru/audios$owner" else "https://vk.ru/music/playlist/${playlist.owner}_${playlist.id}",
-        entries = page.tracks.mapIndexed { i,t ->
-            musicCheck(idPattern.matches(t.id))
-            Entry("pos:${i+offset}", Track(t.id,t.title,t.artist,t.duration,t.album?.let{AlbumMetadata(it.id,it.title)},t.restricted),i+offset+1)
-        }, expectedCount = page.count, status = if(complete&&page.tracks.size==page.count)ScanStatus.COUNT_MATCHED else ScanStatus.PARTIAL,
-        reason = if(complete&&page.tracks.size==page.count)"NATIVE_ACCESS_ALL_POSITIONS" else "NATIVE_ACCESS_PARTIAL"
-    )
+
 }
 
 /** A CDN request never inherits API authorization, cookies, referrer or the client's custom UA. */

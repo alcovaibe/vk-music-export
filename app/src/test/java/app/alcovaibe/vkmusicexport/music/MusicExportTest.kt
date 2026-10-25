@@ -1,6 +1,5 @@
 package app.alcovaibe.vkmusicexport.music
 
-import app.alcovaibe.vkmusicexport.data.ScanStatus
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -18,9 +17,6 @@ class MusicExportTest {
         val page=MusicPagination.tracks({offset->offsets.add(offset);NativePage(input.drop(offset).take(73),input.size)})
         assertEquals(input,page.tracks);assertEquals(4449,page.count)
         assertEquals(listOf(0,73,146),offsets.take(3));assertTrue(offsets.size>10)
-        assertEquals(ScanStatus.COUNT_MATCHED,NativeProtocol.sampleSource(page,12,null,true).status)
-        val sample=NativeProtocol.sampleSource(NativePage(input.take(100),4449),12,null,offset=200)
-        assertEquals(ScanStatus.PARTIAL,sample.status);assertEquals(201,sample.entries.first().position)
     }
     @Test fun changingCountPrematureEndRepeatedPageAndCancellationCannotPretendSuccess()=runBlocking {
         suspend fun fails(expected: MusicError,fetch:suspend(Int)->NativePage) {
