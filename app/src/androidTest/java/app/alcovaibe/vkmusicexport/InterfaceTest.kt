@@ -63,6 +63,7 @@ class InterfaceTest {
     @Test fun nativeMusicEntryAndCollectionSurviveRecreationWithoutRetiredScreens() {
         val model=ViewModelProvider(ui.activity)[MusicViewModel::class.java]
         ui.waitUntil(10_000){model.ready.value}
+        ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
         ui.onNodeWithText("Открыть мою музыку").performScrollTo().assertIsDisplayed()
         for(label in listOf("Открыть ВК в Chrome","Сбор из Chrome","Импорт JSON","Экспорт"))ui.onNodeWithText(label).assertDoesNotExist()
         capture("01-collection")
@@ -92,8 +93,12 @@ class InterfaceTest {
         ui.runOnUiThread{noEmbeddedBrowser(ui.activity.window.decorView)}
         ui.onNodeWithContentDescription("Настройки").performClick()
         ui.onNodeWithText("Открыть ВК в Chrome").assertDoesNotExist()
-        ui.onNodeWithText("Прямой доступ ВК · эксперимент").assertExists()
+        ui.onNodeWithText("ВКонтакте").assertDoesNotExist()
+        ui.onNodeWithText("Прямой доступ ВК · эксперимент").assertDoesNotExist()
+        ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").assertDoesNotExist()
+        ui.onNodeWithText("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})").assertDoesNotExist()
         ui.onNodeWithText("Обновления приложения").performScrollTo().assertExists()
+        capture("settings-without-duplicate-entry")
         ui.onNodeWithContentDescription("Назад").performClick()
         ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
         ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&

@@ -8,15 +8,15 @@ import java.security.MessageDigest
 import kotlinx.serialization.json.*
 
 internal class UpdateProblem(val code: String) : IOException(code)
-internal data class UpdateAsset(val id: Long, val size: Long, val hash: String)
+internal data class UpdateAsset(val size: Long, val hash: String)
 internal data class UpdateRelease(val name: String, val code: Int, val minSdk: Int, val apk: UpdateAsset)
-internal data class ReleaseAssets(val name: String, val code: Int, val tag: String, val apk: UpdateAsset, val info: UpdateAsset)
 
 internal object UpdateProtocol {
     const val PACKAGE = "app.alcovaibe.vkmusicexport"
-    const val API = "https://api.github.com/repos/alcovaibe/vk-music-export/releases"
+    const val MANIFEST = "https://raw.githubusercontent.com/alcovaibe/vk-music-export/main/docs/updates/android.json"
+    const val RELEASES = "https://github.com/alcovaibe/vk-music-export/releases"
+    const val MAX_MANIFEST = 16384L
     const val MAX_APK = 100L * 1024 * 1024
-    fun validToken(value: String) = Regex("github_pat_[A-Za-z0-9_]{20,240}").matches(value)
     fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it)}
     fun json(bytes: ByteArray): JsonObject = try {
         val text=Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
@@ -25,35 +25,25 @@ internal object UpdateProtocol {
     } catch (_: Exception) { throw UpdateProblem("INVALID_RESPONSE") }
     private fun JsonObject.string(key: String) = (get(key) as? JsonPrimitive)?.takeIf {it.isString}?.content ?: throw UpdateProblem("INVALID_RESPONSE")
     private fun JsonObject.number(key: String) = (get(key) as? JsonPrimitive)?.takeIf {!it.isString}?.longOrNull ?: throw UpdateProblem("INVALID_RESPONSE")
-    private fun asset(o: JsonObject, limit: Long): UpdateAsset {
-        val id=o.number("id");val size=o.number("size");val digest=o.string("digest")
-        if(id<=0 || size !in 1..limit || o.string("state")!="uploaded" || !Regex("sha256:[a-f0-9]{64}").matches(digest))throw UpdateProblem("INVALID_RESPONSE")
-        return UpdateAsset(id,size,digest.removePrefix("sha256:"))
-    }
-    fun latest(bytes: ByteArray): ReleaseAssets {
+    fun latest(bytes: ByteArray): UpdateRelease {
+        if(bytes.isEmpty() || bytes.size>MAX_MANIFEST)throw UpdateProblem("INVALID_RESPONSE")
         val o=json(bytes)
-        if(o["draft"]!=JsonPrimitive(false)||o["prerelease"]!=JsonPrimitive(false))throw UpdateProblem("INVALID_RESPONSE")
-        val tag=o.string("tag_name")
-        val match=Regex("v([0-9]{1,6}(?:\\.[0-9]{1,6}){1,3})-build\\.([1-9][0-9]{0,9})").matchEntire(tag) ?: throw UpdateProblem("INVALID_RESPONSE")
-        val code=match.groupValues[2].toLongOrNull()?.takeIf {it in 1..2_100_000_000}?.toInt() ?: throw UpdateProblem("INVALID_RESPONSE")
-        val name=match.groupValues[1]
-        val assets=(o["assets"] as? JsonArray)?.map {it as? JsonObject ?: throw UpdateProblem("INVALID_RESPONSE")} ?: throw UpdateProblem("INVALID_RESPONSE")
-        fun named(n: String,limit: Long)=asset(assets.singleOrNull{it["name"]==JsonPrimitive(n)} ?: throw UpdateProblem("INVALID_RESPONSE"),limit)
-        return ReleaseAssets(name,code,tag,named("VK-Music-Export-$name-$code.apk",MAX_APK),named("build-info.json",16384))
+        if(o.keys!=setOf("schemaVersion","platform","channel","applicationId","release") ||
+            o.number("schemaVersion")!=1L || o.string("platform")!="android" || o.string("channel")!="stable" ||
+            o.string("applicationId")!=PACKAGE)throw UpdateProblem("INVALID_RESPONSE")
+        val r=o["release"] as? JsonObject ?: throw UpdateProblem("INVALID_RESPONSE")
+        if(r.keys!=setOf("versionName","versionCode","minSdk","tag","apk","size","sha256"))throw UpdateProblem("INVALID_RESPONSE")
+        val name=r.string("versionName")
+        val code=r.number("versionCode").takeIf{it in 1..2_100_000_000}?.toInt() ?: throw UpdateProblem("INVALID_RESPONSE")
+        val sdk=r.number("minSdk").takeIf{it in 1..10000}?.toInt() ?: throw UpdateProblem("INVALID_RESPONSE")
+        val size=r.number("size");val hash=r.string("sha256")
+        if(!Regex("[0-9]{1,6}(?:\\.[0-9]{1,6}){1,3}").matches(name) ||
+            r.string("tag")!="v$name-build.$code" || r.string("apk")!="VK-Music-Export-$name-$code.apk" ||
+            size !in 1..MAX_APK || !Regex("[a-f0-9]{64}").matches(hash))throw UpdateProblem("INVALID_RESPONSE")
+        return UpdateRelease(name,code,sdk,UpdateAsset(size,hash))
     }
-    fun release(bytes: ByteArray, assets: ReleaseAssets): UpdateRelease {
-        if(bytes.size.toLong()!=assets.info.size || hash(bytes)!=assets.info.hash)throw UpdateProblem("INVALID_RESPONSE")
-        val o=json(bytes)
-        if(o.keys.any{it !in setOf("versionName","versionCode","minSdk","applicationId","commit","tag","apk","releaseCommit")} ||
-            o.string("applicationId")!=PACKAGE || o.string("versionName")!=assets.name || o.number("versionCode")!=assets.code.toLong() ||
-            o.string("tag")!=assets.tag || o.string("apk")!="VK-Music-Export-${assets.name}-${assets.code}.apk" ||
-            !Regex("[a-f0-9]{40}").matches(o.string("commit")))throw UpdateProblem("INVALID_RESPONSE")
-        o["releaseCommit"]?.let {if(it !is JsonPrimitive || !it.isString || !Regex("[a-f0-9]{40}").matches(it.content))throw UpdateProblem("INVALID_RESPONSE")}
-        val sdk=o.number("minSdk").takeIf{it in 1..10000}?.toInt() ?: throw UpdateProblem("INVALID_RESPONSE")
-        return UpdateRelease(assets.name,assets.code,sdk,assets.apk)
-    }
-    fun assetUrl(id: Long): String {require(id>0);return "$API/assets/$id"}
-    fun authorize(url: String): Boolean = url=="$API/latest" || Regex(Regex.escape(API)+"/assets/[1-9][0-9]*").matches(url)
+    fun downloadUrl(release: UpdateRelease): String =
+        "$RELEASES/download/v${release.name}-build.${release.code}/VK-Music-Export-${release.name}-${release.code}.apk"
     fun redirect(from: String, location: String): String = try {
         if(location.any{it.code<=32 || it.code>=127 || it=='\\'})throw UpdateProblem("UNSAFE_REDIRECT")
         val u=URI(from).resolve(location)

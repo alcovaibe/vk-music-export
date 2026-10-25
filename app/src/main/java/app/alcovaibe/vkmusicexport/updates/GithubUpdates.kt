@@ -18,21 +18,23 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
 
 internal interface UpdateService {
-    suspend fun latest(token: String): UpdateRelease
-    suspend fun download(token: String,release: UpdateRelease,progress: (Long,Long)->Unit): File
+    suspend fun latest(): UpdateRelease
+    suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit): File
     suspend fun verify(file: File,release: UpdateRelease)
 }
 
 internal class GithubUpdates(private val context: Context?, private val client: OkHttpClient=newClient()) : UpdateService, AutoCloseable {
     private var highest=0
+    private var cached: UpdateRelease?=null
+    private var etag: String?=null
     private val own=java.util.concurrent.ConcurrentHashMap.newKeySet<File>()
     fun purgeOrphans()=synchronized(filesLock) {
         val directory=File((context ?: return@synchronized).cacheDir,"updates")
         owned.removeIf{!it.exists()}
         directory.listFiles()?.filter{it !in owned}?.forEach{it.delete()}
     }
-    private suspend fun <T> response(url: String,token: String,accept: String,cleanup: ()->Unit={},handler: (Response)->T): T = suspendCancellableCoroutine { cont ->
-        val request=request(url,token,accept)
+    private suspend fun <T> response(url: String,accept: String,cacheTag: String?=null,cleanup: ()->Unit={},handler: (Response)->T): T = suspendCancellableCoroutine { cont ->
+        val request=request(url,accept,cacheTag)
         val call=client.newCall(request)
         if(accept=="application/json")call.timeout().timeout(15,TimeUnit.SECONDS)
         cont.invokeOnCancellation{call.cancel()}
@@ -52,23 +54,35 @@ internal class GithubUpdates(private val context: Context?, private val client: 
         if(r.code in listOf(401,403,404))throw UpdateProblem("ACCESS")
         if(r.code!=200)throw UpdateProblem("NETWORK")
     }
-    private suspend fun metadata(token: String): ByteArray = response("${UpdateProtocol.API}/latest",token,"application/json") { r ->
-        status(r)
-        if(r.body?.contentType()?.subtype!="json")throw UpdateProblem("INVALID_RESPONSE")
-        bytes(r,262144)
+    private suspend fun metadata(): UpdateRelease = response(UpdateProtocol.MANIFEST,"application/json",etag) { r ->
+        if(r.code==304) {
+            if(etag==null)throw UpdateProblem("INVALID_RESPONSE")
+            cached ?: throw UpdateProblem("INVALID_RESPONSE")
+        }else {
+            status(r)
+            val type=r.body?.contentType()
+            if(type==null || "${type.type}/${type.subtype}" !in setOf("application/json","text/plain") ||
+                type.charset(Charsets.UTF_8)!=Charsets.UTF_8)throw UpdateProblem("INVALID_RESPONSE")
+            val release=UpdateProtocol.latest(bytes(r,UpdateProtocol.MAX_MANIFEST))
+            if(release.code<highest)throw UpdateProblem("INVALID_RESPONSE")
+            cached=release
+            etag=r.header("ETag")?.takeIf{it.length in 2..160 && Regex("(?:W/)?\"[\\x21\\x23-\\x7e]*\"").matches(it)}
+            release
+        }
     }
-    private suspend fun asset(token: String,a: UpdateAsset,file: File?=null,progress: (Long,Long)->Unit={_,_->}): ByteArray {
-        var url=UpdateProtocol.assetUrl(a.id)
+    internal suspend fun transfer(release: UpdateRelease,file: File,progress: (Long,Long)->Unit={_,_->}): ByteArray {
+        val a=release.apk
+        var url=UpdateProtocol.downloadUrl(release)
         repeat(6) { attempt ->
             var redirect: String?=null
-            val data=response(url,token,"application/octet-stream",{file?.delete();Unit}) { r ->
+            val data=response(url,"application/octet-stream",cleanup={file.delete();Unit}) { r ->
                 if(r.code in listOf(301,302,303,307,308)) {
                     if(attempt==5)throw UpdateProblem("UNSAFE_REDIRECT")
                     redirect=UpdateProtocol.redirect(url,r.header("Location") ?: throw UpdateProblem("UNSAFE_REDIRECT"))
                     byteArrayOf()
                 }else {
                     status(r)
-                    if(file==null)bytes(r,a.size)else {
+                    run {
                         val body=r.body ?: throw UpdateProblem("INVALID_APK")
                         if(body.contentLength()>=0 && body.contentLength()!=a.size)throw UpdateProblem("INVALID_APK")
                         var count=0L;var emitted=0L
@@ -88,18 +102,18 @@ internal class GithubUpdates(private val context: Context?, private val client: 
         }
         throw UpdateProblem("UNSAFE_REDIRECT")
     }
-    override suspend fun latest(token: String): UpdateRelease = withContext(Dispatchers.IO) {
-        val release=withTimeout(30000){val assets=UpdateProtocol.latest(metadata(token));UpdateProtocol.release(asset(token,assets.info),assets)}
+    override suspend fun latest(): UpdateRelease = withContext(Dispatchers.IO) {
+        val release=withTimeout(30000){metadata()}
         if(release.code<highest)throw UpdateProblem("INVALID_RESPONSE")
         highest=release.code;release
     }
-    override suspend fun download(token: String,release: UpdateRelease,progress: (Long,Long)->Unit): File = withContext(Dispatchers.IO) {
+    override suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit): File = withContext(Dispatchers.IO) {
         val file=synchronized(filesLock) {
             val directory=File((context ?: throw UpdateProblem("INVALID_APK")).cacheDir,"updates").apply{mkdirs()}
             File.createTempFile("vkm-",".apk",directory).also{owned.add(it);own.add(it)}
         }
         var complete=false
-        try {asset(token,release.apk,file,progress);verify(file,release);complete=true;file}
+        try {transfer(release,file,progress);verify(file,release);complete=true;file}
         finally {if(!complete){file.delete();owned.remove(file);own.remove(file)}}
     }
     override suspend fun verify(file: File,release: UpdateRelease) = withContext(Dispatchers.IO) {
@@ -131,9 +145,9 @@ internal class GithubUpdates(private val context: Context?, private val client: 
         fun newClient()=OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
             .cookieJar(CookieJar.NO_COOKIES).authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).cache(null)
             .connectTimeout(10,TimeUnit.SECONDS).readTimeout(30,TimeUnit.SECONDS).callTimeout(10,TimeUnit.MINUTES).build()
-        fun request(url: String,token: String,accept: String): Request = Request.Builder().url(url)
-            .header("Accept",accept).header("User-Agent","VK-Music-Export-Updates/1")
-            .apply{if(UpdateProtocol.authorize(url)){require(UpdateProtocol.validToken(token));header("Authorization","Bearer $token");header("X-GitHub-Api-Version","2022-11-28");header("Cache-Control","no-cache")}}
+        fun request(url: String,accept: String,etag: String?=null): Request = Request.Builder().url(url)
+            .header("Accept",accept).header("User-Agent","VK-Music-Export-Updates/2")
+            .apply{if(url==UpdateProtocol.MANIFEST){header("Cache-Control","no-cache");etag?.let{header("If-None-Match",it)}}}
             .build()
         fun bytes(r: Response,limit: Long): ByteArray {
             val body=r.body ?: throw UpdateProblem("INVALID_RESPONSE")

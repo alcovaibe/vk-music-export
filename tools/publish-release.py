@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from update_channel import publish_channel
 
 info = json.loads(Path('release-output/build-info.json').read_text())
 tag = info['tag']
@@ -23,17 +24,15 @@ else:
     notes = Path(os.environ['RUNNER_TEMP']) / 'release-notes.md'
     notes.write_text(f'''VK Music Export {info['versionName']} · сборка {info['versionCode']}
 
-Android 16+ (API 36). Зависимости перенесены в gradle/libs.versions.toml и обновлены вместе с Kotlin, Android Gradle Plugin и Gradle. Компиляция использует SDK 37; минимальная и целевая версии SDK остаются 36.
+Android 16+ (API 36). Публичные обновления без GitHub-токена: проверка JSON-канала при открытии не чаще раза в сутки, ручная проверка и скачивание по кнопке. Проверяются размер, SHA-256, пакет, версия, минимальный Android и прежняя подпись APK. Установку подтверждает Android.
 
-GitHub Actions явно устанавливает SDK 37. Проверки интерфейса и нативных компонентов выполняются на API 36 и API 37; отдельные отчёты и скриншоты сохраняются для каждой версии. CI требует реально выполненных 27 инструментальных тестов без ошибок и пропусков и отклоняет запуск без JUnit-отчёта, даже если Gradle завершился успешно. До слияния проверяются также lintRelease и release-сборка с R8 без доступа к ключу подписи.
+Версия отображается внизу слева главного экрана. Из настроек удалены дублирующий переход в музыку и прежняя строка версии.
 
-Код сценариев авторизации Chrome, доступа ВК, скачивания, очереди, имён файлов, диагностики и обновлятора не изменён. MP3/AAC и сетевые ответы в CI — локальные/синтетические фикстуры; реальный вход в ВК и скачивание всей библиотеки владельца этой проверкой не подтверждаются.
-
-Подписанное обновление проверяется на Android 16 поверх опубликованной 0.9.2 (1072), с прежним пакетом и release-сертификатом, сохранением коллекции, публичной музыки и приостановленной очереди. Дополнительно проверяется совместимость очереди старой схемы v1.
+Проверки CI: JVM, lint, release/R8 и инструментальные тесты на API 36/37. Подписанное обновление проверяется на Android 16 поверх опубликованной 0.9.3 (1080), с сохранением коллекции, публичной музыки и очереди. Реальный вход в ВК и загрузка всей библиотеки владельца CI не подтверждаются.
 
 Исходный коммит APK: `{source_sha}`.
 Коммит релиза и проверки: `{release_commit}`.
-Файлы: APK, SHA-256, публичный сертификат подписи, сведения о сборке и результат проверки обновления.
+Файлы релиза: APK, SHA-256 и публичный сертификат подписи. build-info.json и upgrade-check.txt сохраняются в артефактах Actions.
 ''')
     # An older recovery/rerun must never move the Latest link backwards.
     latest = subprocess.run(['gh', 'release', 'view', '--json', 'tagName'], capture_output=True, text=True)
@@ -43,10 +42,13 @@ GitHub Actions явно устанавливает SDK 37. Проверки ин
         match = re.search(r'-build\.(\d+)$', latest_tag)
         assert match, 'Latest release has an unknown version code; inspect it before publishing'
         make_latest = info['versionCode'] > int(match[1])
-    assets = [str(p) for p in sorted(Path('release-output').iterdir()) if p.is_file()]
+    assets = [str(Path('release-output') / name) for name in (info['apk'], 'SHA256SUMS.txt', 'release-certificate.pem')]
     subprocess.run(['gh', 'release', 'create', tag, *assets, '--target', release_commit,
                     '--title', f"VK Music Export {info['versionName']} · {info['versionCode']}",
                     '--notes-file', str(notes), '--latest=' + str(make_latest).lower()], check=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
     summary.write(f"## Signed release\n\nhttps://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/tag/{tag}\n\n"
                   'Release upgrade and collection preservation: **passed**.\n')
+
+# Update the discovery channel only after the release is publicly available and verified.
+publish_channel(info, Path('release-output') / info['apk'])
