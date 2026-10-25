@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "platform": "android",
+  "channel": "stable",
+  "applicationId": "app.alcovaibe.vkmusicexport",
+  "release": {
+    "versionName": "0.9.3",
+    "versionCode": 1080,
+    "minSdk": 36,
+    "tag": "v0.9.3-build.1080",
+    "apk": "VK-Music-Export-0.9.3-1080.apk",
+    "size": 3642684,
+    "sha256": "baa3ab2c8e9186b88f4aac888c56d588d545b349edae4bb85ebed74f87d63f5f"
+  }
+}

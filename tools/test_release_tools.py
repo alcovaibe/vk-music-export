@@ -38,7 +38,7 @@ class PublisherTest(unittest.TestCase):
                     info = json.loads((out/'build-info.json').read_text())
                     info['releaseCommit'] = 'b'*40
                     (out/'build-info.json').write_text(json.dumps(info))
-                with patch.dict(os.environ, env, clear=True), patch('subprocess.run', side_effect=gh):
+                with patch.dict(os.environ, env, clear=True), patch('subprocess.run', side_effect=gh), patch('update_channel.publish_channel'):
                     runpy.run_path(str(TOOLS / 'publish-release.py'))
             finally:
                 os.chdir(old)
@@ -47,6 +47,7 @@ class PublisherTest(unittest.TestCase):
     def test_new_release_becomes_latest(self):
         calls = self.publish('v0.3.0-build.1023')
         self.assertIn('--latest=true', calls[-1])
+        self.assertFalse(any(x.endswith(('build-info.json', 'upgrade-check.txt')) for x in calls[-1]))
 
     def test_old_recovery_cannot_downgrade_latest(self):
         calls = self.publish('v0.3.0-build.1025')

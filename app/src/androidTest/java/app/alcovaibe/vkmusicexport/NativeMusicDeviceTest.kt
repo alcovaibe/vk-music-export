@@ -91,8 +91,7 @@ class NativeMusicUiDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
     @Test fun nativePanelRetainsProtectedAccessAndRejectsWrongServiceCredentialWithoutWritingIt() {
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
-        ui.onNodeWithContentDescription("Настройки").performClick()
-        ui.onNodeWithText("Прямой доступ ВК · эксперимент").performClick()
+        ui.onNodeWithText("Открыть мою музыку").performScrollTo().performClick()
         ui.onNodeWithText("Настроить доступ ВК").performScrollTo().performClick()
         ui.onNodeWithTag("native_vk_token").performTextInput("github_pat_"+"WRONG_SERVICE_".repeat(8))
         ui.onNodeWithText("Сохранить и проверить ВК").performScrollTo().performClick()
