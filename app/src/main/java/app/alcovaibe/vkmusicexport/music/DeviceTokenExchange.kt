@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import okhttp3.*
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
@@ -37,6 +38,7 @@ internal class PairingCookieJar: CookieJar {
         values.removeAll{it.expiresAt<=System.currentTimeMillis()}
         return if(WebExchangeProtocol.allowed(url))values.filter{it.matches(url)}else emptyList()
     }
+    @Synchronized fun snapshot(): List<String> = values.filter{it.matches("https://login.vk.com/".toHttpUrl())&&it.expiresAt>System.currentTimeMillis()}.map{it.toString()}
     @Synchronized fun clear(){values.clear();limited=false}
     override fun toString()="PairingCookieJar([redacted])"
 }
@@ -112,14 +114,15 @@ internal object WebExchangeProtocol {
         }
         return Connected(token,next)
     }
-    fun access(data: JsonObject): MusicAccess {
+    fun access(data: JsonObject,wallTimeMs: Long=System.currentTimeMillis()): MusicAccess {
         val token=text(data,"access_token")
         if(!NativeProtocol.validAccess(token,NativeProtocol.DEFAULT_AGENT))throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         val id=data["user_id"] as? JsonPrimitive
         if(id==null || id.isString || (id.longOrNull?:0)<=0)throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         val expiry=data["expires"] as? JsonPrimitive
         if(expiry!=null && (expiry.isString || (expiry.longOrNull?:-1)<0))throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
-        return MusicAccess(token,NativeProtocol.DEFAULT_AGENT)
+        val expiresAt=try{MusicCredentialCodec.expiry(data,wallTimeMs)}catch(_: MusicFailure){throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)}
+        return MusicAccess(token,NativeProtocol.DEFAULT_AGENT,expiresAtMs=expiresAt,renewalOwner=id.longOrNull)
     }
 }
 
@@ -204,7 +207,7 @@ internal class VkWebTokenExchange(private val baseClient: OkHttpClient,
                 "version" to "1","app_id" to WebExchangeProtocol.WEB_TOKEN_CLIENT,"access_token" to connected.access)))
             deadline(session)
             observe("native_auth_exchange_result",mapOf("result" to "api_token_received","music_access" to "not_proven"))
-            return access
+            return access.withSession(renewal=WebRenewal(connected.access,access.renewalOwner!!,jar.snapshot()))
         }finally {
             jar.clear()
             observe("native_auth_exchange_cleanup",mapOf("native_cookies_cleared" to true,"detector" to "exchange_finally"))

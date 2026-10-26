@@ -26,7 +26,7 @@ internal object AudioExportRuntime {
     @Synchronized private fun readiness(context: Context): Deferred<Unit> {
         ready?.let{return it}
         app=context.applicationContext;database=AudioExportStore(app)
-        engine=AudioExportEngine(database,SharedAudioStore(app),File(app.cacheDir,"audio-export-transfer"),credential={
+        engine=AudioExportEngine(database,SharedAudioStore(app),File(app.cacheDir,"audio-export-transfer"),api=VkAudioClient(sessions=MusicSessions.get(app)),credential={
             MusicAccessStore(app).read()?:throw MusicFailure(MusicError.ACCESS)
         })
         return scope.async{engine.recover();refresh()}.also{ready=it}

@@ -45,7 +45,7 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
         }
     }
     fun resume(){active=true;automaticCheck()}
-    fun pause(){active=false;checkGeneration++;checkJob?.cancel();if(mutable.value.status==UpdateStatus.CHECKING)mutable.update{it.copy(status=UpdateStatus.IDLE)}}
+    fun pause(){active=false;checkGeneration++;checkJob?.cancel();if(mutable.value.status !in transfers)mutable.update{it.copy(status=UpdateStatus.IDLE,release=null)}}
     private fun automaticCheck() {
         val s=mutable.value
         if(!active||!s.initialized||!s.automatic||s.status!=UpdateStatus.IDLE)return
@@ -128,6 +128,6 @@ internal class UpdateViewModel(app: Application): AndroidViewModel(app) {
             get()=preferences.getBoolean("automatic",true)
             set(v){preferences.edit().putBoolean("automatic",v).apply()}
     },service,BuildConfig.VERSION_CODE.toLong(),Build.VERSION.SDK_INT,record={Diagnostics.event("updater",mapOf("stage" to it))},
-        prepare={service.purgeOrphans();LegacyUpdateAccess.cleanup(app)})
+        prepare={service.purgeOrphans();LegacyUpdateAccess.cleanup(app);preferences.edit().putBoolean("automatic",true).apply()})
     override fun onCleared(){controller.close();service.close()}
 }

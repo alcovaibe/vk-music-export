@@ -72,9 +72,13 @@ class NativeAudioDeviceTest {
         val context=InstrumentationRegistry.getInstrumentation().targetContext;val vault=MusicAccessStore(context)
         val token="vk1.a."+"SYNTHETIC_SECRET_".repeat(8)
         try {
-            vault.delete();vault.save(MusicAccess(token,"Synthetic Client/1"))
+            vault.delete();vault.save(MusicAccess(token,"Synthetic Client/1",expiresAtMs=1_900_000_000_000,
+                renewal=WebRenewal("vk1.a."+"PARENT_SECRET_".repeat(8),12,listOf("native_session=COOKIE_SECRET; path=/; domain=vk.com; secure"))))
             val file=File(context.noBackupFilesDir,"native-music-access.bin")
             assertFalse(file.readBytes().toString(Charsets.UTF_8).contains(token));assertEquals(token,MusicAccessStore(context).read()!!.token)
+            assertEquals(1_900_000_000_000,MusicAccessStore(context).read()!!.expiresAtMs)
+            assertFalse(file.readBytes().toString(Charsets.UTF_8).contains("COOKIE_SECRET"))
+            assertTrue(MusicAccessStore(context).read()!!.renewal!!.parent.contains("PARENT_SECRET"))
             val bytes=file.readBytes();bytes[bytes.lastIndex]=(bytes.last().toInt() xor 1).toByte();file.writeBytes(bytes)
             assertThrows(Exception::class.java){vault.read()}
             vault.save(MusicAccess(token,"Synthetic Client/1"));assertFalse(Diagnostics.export().contains(token))

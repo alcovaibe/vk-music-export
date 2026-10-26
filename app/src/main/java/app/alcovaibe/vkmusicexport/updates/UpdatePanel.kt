@@ -14,8 +14,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import app.alcovaibe.vkmusicexport.SettingsPage
-import app.alcovaibe.vkmusicexport.BuildConfig
+import androidx.compose.ui.Alignment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import java.io.File
 import kotlinx.coroutines.launch
@@ -29,8 +33,9 @@ internal object UpdateInstaller {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()->Unit) {
+internal fun UpdatePanel(controller: UpdateController) {
     val state by controller.state.collectAsState()
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
@@ -42,9 +47,7 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
     }
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
     val installer=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
-    val visible=open
-    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");controller.defer();onClose()}
-    fun browse(url: String){try{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}catch (_: Exception){android.widget.Toast.makeText(context,"Не удалось открыть браузер",android.widget.Toast.LENGTH_LONG).show()}}
+    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");controller.defer()}
     fun install() {
         if(installing)return
         installing=true;Diagnostics.button("install_update")
@@ -60,43 +63,60 @@ internal fun UpdatePanel(controller: UpdateController,open: Boolean,onClose: ()-
             finally{if(!launched)installing=false}
         }
     }
-    if(visible)SettingsPage("Обновления",onBack=::close,tag="updates_screen") {
-            Text("Установлено: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-            Text("Обновления из публичного репозитория GitHub. Токен не требуется.")
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                Text("Проверять при открытии\nНе чаще раза в сутки",Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium)
-                Switch(checked=state.automatic,onCheckedChange={Diagnostics.button("automatic_updates");controller.automatic(it)},enabled=state.initialized)
-            }
-            state.release?.let{Text("Доступно: ${it.name} (${it.code})")}
-            val text=when(state.status) {
-                UpdateStatus.CHECKING->"Проверяем GitHub…"
-                UpdateStatus.CURRENT->"Новых совместимых версий нет."
-                UpdateStatus.ACCESS->"Источник обновлений или файл релиза недоступен. Повтори позже или открой релизы GitHub."
-                UpdateStatus.ERROR->"Не удалось проверить или загрузить обновление. Проверь сеть и повтори."
-                UpdateStatus.RATE_LIMIT->"GitHub ограничил частоту запросов. Повтори позже."
-                UpdateStatus.DOWNLOADING->"Загружено ${state.received/1024} из ${state.total/1024} КБ"
-                UpdateStatus.READY->"APK проверен. Нажми «Установить» и подтверди установку в Android."
-                UpdateStatus.INVALID_APK->"APK не прошёл проверку. Установка заблокирована; повтори загрузку."
-                UpdateStatus.INSTALL_ERROR->"Не удалось открыть установку. APK сохранён; повтори попытку."
-                UpdateStatus.AVAILABLE->"Обновление готово к загрузке."
-                else->""
-            }
-            if(text.isNotEmpty())Text(text,Modifier.testTag("update_status"))
-            if(state.status==UpdateStatus.CHECKING)LinearProgressIndicator(Modifier.fillMaxWidth())
-            if(state.status==UpdateStatus.DOWNLOADING)LinearProgressIndicator(progress={if(state.total>0)(state.received.toFloat()/state.total).coerceIn(0f,1f)else 0f},modifier=Modifier.fillMaxWidth())
-            if(state.apk!=null)Text("Если Android откроет разрешение установки из этого приложения, разреши его, вернись и снова нажми «Установить».",style=MaterialTheme.typography.bodySmall)
-            if(state.status!=UpdateStatus.DOWNLOADING&&state.apk==null) {
-                if(state.release!=null)TextButton(enabled=retryEnabled,onClick={Diagnostics.button("refresh_update");controller.cancel();controller.check()}){Text("Проверить заново")}
-                TextButton(onClick={Diagnostics.button("open_update_releases");browse("${UpdateProtocol.RELEASES}/latest")}){Text("Открыть релизы GitHub")}
-            }
-
-        when {
-            state.apk!=null->TextButton(enabled=!installing,onClick=::install){Text("Установить")}
-            state.release!=null&&state.status!=UpdateStatus.DOWNLOADING->TextButton(onClick={Diagnostics.button("download_update");controller.download()}){Text("Скачать обновление")}
-            state.status!=UpdateStatus.DOWNLOADING->TextButton(enabled=retryEnabled&&state.initialized&&state.status!=UpdateStatus.CHECKING,onClick={Diagnostics.button("check_updates");controller.check()}){Text("Проверить обновления")}
+    Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
+        IconButton(onClick={Diagnostics.button("check_updates");controller.check()},
+            enabled=state.initialized&&state.status !in setOf(UpdateStatus.CHECKING,UpdateStatus.DOWNLOADING),
+            modifier=Modifier.testTag("check_updates")) {
+            Icon(UpdateIcon,"Проверить обновления",Modifier.size(26.dp))
         }
-
-        TextButton(onClick=::close){Text(if(state.status==UpdateStatus.DOWNLOADING)"Отменить загрузку" else "Закрыть")}
+        if(state.status==UpdateStatus.CHECKING)CircularProgressIndicator(Modifier.size(42.dp).testTag("updates_progress"),strokeWidth=2.dp)
     }
+    val showResult=state.status in setOf(UpdateStatus.CURRENT,UpdateStatus.ACCESS,UpdateStatus.ERROR,UpdateStatus.RATE_LIMIT)
+    if(state.release!=null||showResult) {
+        ModalBottomSheet(onDismissRequest=::close,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("updates_sheet")) {
+                Column(Modifier.heightIn(max=360.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text(state.release?.let{"Доступно обновление ${it.name}"}?:"Проверка обновлений",style=MaterialTheme.typography.titleLarge)
+                    Text(when(state.status) {
+                        UpdateStatus.CURRENT->"Новых совместимых версий нет."
+                        UpdateStatus.ACCESS->"Источник обновлений недоступен. Повтори позже."
+                        UpdateStatus.ERROR->"Не удалось проверить или загрузить обновление. Проверь сеть и повтори."
+                        UpdateStatus.RATE_LIMIT->"Слишком много запросов. Повтори позже."
+                        UpdateStatus.DOWNLOADING->"Загружено ${state.received/1024} из ${state.total/1024} КБ"
+                        UpdateStatus.READY->"APK проверен. Установку нужно подтвердить в Android."
+                        UpdateStatus.INVALID_APK->"APK не прошёл проверку. Повтори загрузку."
+                        UpdateStatus.INSTALL_ERROR->"Не удалось открыть установку. APK сохранён; повтори попытку."
+                        else->"Скачать и установить новую версию приложения?"
+                    },Modifier.testTag("update_status"))
+                    if(state.status==UpdateStatus.DOWNLOADING)LinearProgressIndicator(
+                        progress={if(state.total>0)(state.received.toFloat()/state.total).coerceIn(0f,1f)else 0f},
+                        modifier=Modifier.fillMaxWidth().testTag("download_progress"))
+                    if(state.apk!=null)Text("Если откроется разрешение установки, разреши его, вернись и снова нажми «Установить».",style=MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.End) {
+                    TextButton(onClick=::close){Text(if(state.status==UpdateStatus.DOWNLOADING)"Отменить" else if(state.release!=null)"Позже" else "Закрыть")}
+                    when {
+                        state.apk!=null->TextButton(enabled=!installing,onClick=::install){Text("Установить")}
+                        state.release!=null&&state.status!=UpdateStatus.DOWNLOADING->TextButton(onClick={Diagnostics.button("download_update");controller.download()}){Text(if(state.status==UpdateStatus.AVAILABLE)"Скачать" else "Повторить")}
+                        showResult&&state.status!=UpdateStatus.CURRENT->TextButton(enabled=retryEnabled,onClick={controller.cancel();controller.check()}){Text("Повторить")}
+                    }
+                }
+            }
+        }
+    }
+}
 
+/** Metadata checks enter only the visible home; explicit transfers survive pause/rotation. */
+@Composable
+internal fun HomeUpdateLifecycle(controller: UpdateController,home: Boolean) {
+    val lifecycle=LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle,home,controller) {
+        val observer=LifecycleEventObserver {_,event->
+            if(event==Lifecycle.Event.ON_RESUME&&home)controller.resume()
+            else if(event==Lifecycle.Event.ON_PAUSE||event==Lifecycle.Event.ON_RESUME)controller.pause()
+        }
+        lifecycle.addObserver(observer)
+        if(home&&lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))controller.resume() else controller.pause()
+        onDispose{lifecycle.removeObserver(observer);controller.pause()}
+    }
 }

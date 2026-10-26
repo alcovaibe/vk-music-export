@@ -163,7 +163,7 @@ jobs:
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
         run: python3 tools/prepare-signing.py
-      - name: Build release and verify against installed 0.9.4
+      - name: Build release and verify against installed 0.9.5
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

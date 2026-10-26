@@ -39,6 +39,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val state by model.state.collectAsState()
+    val session by model.sessionState.collectAsState()
+    var clock by remember{mutableLongStateOf(System.currentTimeMillis())}
+    LaunchedEffect(Unit){while(true){clock=System.currentTimeMillis();kotlinx.coroutines.delay(30_000)}}
     val queue by AudioExportRuntime.state.collectAsState()
     val queueWorking=queue.status in setOf("RUNNING","QUEUED")
     val canPrepare=!state.busy&&!queue.unfinished&&!queueWorking
@@ -109,6 +112,19 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Если у тебя уже есть музыкальный токен ВК, его можно ввести вручную. Пароль и SMS-коды вводи только на странице ВК.",style=MaterialTheme.typography.bodySmall)
                 if(!state.initialized)LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(if(state.configured)"Доступ ВК сохранён на устройстве" else "Музыкальный доступ ВК не настроен")
+                if(state.configured) {
+                    val expiry=session.expiresAtMs
+                    Text(when {
+                        session.status==SessionStatus.RENEWING->"Обновляем доступ ВК…"
+                        session.status==SessionStatus.LOGIN_REQUIRED->"Доступ нужно подключить заново через Chrome."
+                        expiry==null->"ВК не сообщил срок действия этого токена."
+                        expiry<=clock->"Срок токена истёк."
+                        else->"Токен действует до "+java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(expiry))
+                    },Modifier.testTag("vk_access_lifetime"),style=MaterialTheme.typography.bodySmall)
+                    Text(if(session.renewable)"Автопродление доступно: приложение попробует обновить токен перед истечением срока и при запросах к ВК."
+                        else "Автопродление недоступно для этого входа. Новый вход через Chrome может подключить его.",style=MaterialTheme.typography.bodySmall)
+                    if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ по сети. Действующий токен сохранён; приложение повторит попытку позже.",style=MaterialTheme.typography.bodySmall)
+                }
                 Button(enabled=state.initialized&&!state.busy,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
                     Text(if(state.configured)"Изменить доступ ВК" else "Настроить доступ ВК")
                 }

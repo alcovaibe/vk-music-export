@@ -34,12 +34,10 @@ internal fun SettingsPage(title: String,onBack: ()->Unit,tag: String="settings_p
 }
 
 @Composable
-internal fun SettingsScreen(onBack: ()->Unit,onUpdates: ()->Unit) {
+internal fun SettingsScreen(onBack: ()->Unit) {
     SettingsPage("Настройки",onBack,"settings_screen") {
         Text("Диагностика",style=MaterialTheme.typography.titleMedium)
         DiagnosticControls()
-        HorizontalDivider()
-        TextButton(onClick=onUpdates){Text("Обновления приложения")}
     }
 }
 
