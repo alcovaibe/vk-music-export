@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 42) -> int:
+def verify(results: Path, minimum_tests: int = 49) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')

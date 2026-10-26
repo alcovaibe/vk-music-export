@@ -146,6 +146,29 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         if(prepared?.uri==before.uri)writableDatabase.execSQL("UPDATE tasks SET prepared=? WHERE task_key=?",arrayOf(json.encodeToString(after),before.taskKey))
         put("recent_files",json.encodeToString(recentFiles().map{if(it.uri==before.uri)after else it}))
     }
+    /** Compare-and-swap a location or explicitly confirmed replacement. Never changes queue states. */
+    @Synchronized fun relinked(before: PublishedAudio,after: PublishedAudio)=transaction {
+        musicCheck(before.taskKey==after.taskKey&&before.track==after.track,MusicError.STORAGE)
+        if(existing(before.taskKey)==after)return@transaction
+        musicCheck(existing(before.taskKey)==before&&!uriUsed(after.uri,before.taskKey),MusicError.STORAGE)
+        val recent=recentFiles()
+        val done=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(before.taskKey)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
+        if(done)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+(if(after.coverEmbedded)1 else 0)-(if(before.coverEmbedded)1 else 0)).coerceAtLeast(0).toString())
+        writableDatabase.execSQL("UPDATE files SET payload=? WHERE task_key=?",arrayOf(json.encodeToString(after),before.taskKey))
+        writableDatabase.execSQL("UPDATE tasks SET prepared=NULL WHERE task_key=?",arrayOf(before.taskKey))
+        put("recent_files",json.encodeToString(recent.map{if(it.taskKey==before.taskKey)after else it}))
+    }
+    @Synchronized fun uriUsed(uri: String,exceptKey: String)=savedFiles().any{it.uri==uri&&it.taskKey!=exceptKey}
+    /** Forget only this stale index entry. Never delete a MediaStore file, VK track or queue item. */
+    @Synchronized fun forgetFile(before: PublishedAudio)=transaction {
+        musicCheck(existing(before.taskKey)==before,MusicError.STORAGE)
+        val recent=recentFiles()
+        val done=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(before.taskKey)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
+        if(done&&before.coverEmbedded)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)-1).coerceAtLeast(0).toString())
+        writableDatabase.delete("files","task_key=?",arrayOf(before.taskKey))
+        writableDatabase.execSQL("UPDATE tasks SET prepared=NULL WHERE task_key=?",arrayOf(before.taskKey))
+        put("recent_files",json.encodeToString(recent.filterNot{it.taskKey==before.taskKey}))
+    }
     @Synchronized fun failed(task: AudioExportTask,error: MusicError){writableDatabase.execSQL("UPDATE tasks SET state='FAILED',error=? WHERE task_key=?",arrayOf(error.name,task.key))}
     @Synchronized fun releaseRunning(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING' WHERE state='RUNNING'")}
     @Synchronized fun retryFailed(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE state='FAILED'")}

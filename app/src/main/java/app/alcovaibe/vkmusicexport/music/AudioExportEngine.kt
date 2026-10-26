@@ -9,6 +9,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
     private val credential: suspend()->MusicAccess,private val artwork: ArtworkSource=ArtworkLoader(api),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) {
     suspend fun recover() {
         ArtworkRepair(shared.context,store,shared).recover()
+        SavedFileRecovery(shared.context,store,shared).let{it.recover();it.discard()}
         temporary.mkdirs();temporary.listFiles()?.filter{it.isFile}?.forEach{it.delete()}
         reconcile()
         store.recoverItems()

@@ -19,6 +19,21 @@ class ArtworkDiagnosticsTest {
         assertEquals(records[0].second["operation_id"],records[1].second["operation_id"])
         assertFalse(records.toString().contains("secret"));assertFalse(records.toString().contains("filename"))
     }
+    @Test fun fileFailuresHaveSpecificPrivateReasonsAndRemainIncompleteForQueuePolicy() {
+        val records=mutableListOf<Map<String,Any?>>()
+        val report=ArtworkDiagnostics{_,fields->records.add(fields)}
+        report.item=17;report.step=ArtworkStep.VERIFY_FILE
+        for(reason in listOf(SavedFileReason.MISSING,SavedFileReason.NO_ACCESS,SavedFileReason.SIZE_CHANGED,SavedFileReason.HASH_CHANGED)) {
+            val error=SavedFileFailure(reason)
+            assertEquals(MusicError.INCOMPLETE,error.code)
+            val issue=artworkIssue(17,"private name",ArtworkStep.VERIFY_FILE,error)
+            assertTrue(issue.reason.startsWith(reason.label))
+            report.result("FAILED",error)
+            assertEquals(reason.name,records.last()["file_reason"])
+            assertEquals("INCOMPLETE",records.last()["code"])
+        }
+        assertFalse(records.toString().contains("private name"))
+    }
     @Test fun emptyVkAudioIsUnavailableButMalformedOrMismatchedResponsesRemainErrors() {
         val track=NativeTrack("12_34","CI","Artist",1)
         val unavailable=assertThrows(MusicFailure::class.java){NativeProtocol.artwork(Json.parseToJsonElement("[]"),track)}

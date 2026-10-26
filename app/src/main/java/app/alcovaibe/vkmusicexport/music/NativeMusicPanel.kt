@@ -43,6 +43,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
     val artwork by model.artwork.collectAsState()
+    val savedFiles by model.savedFiles.collectAsState()
+    val savedFilePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
+        if(uri==null)model.cancelSavedFileSelection()else model.previewSavedFile(uri)
+    }
     var clock by remember{mutableLongStateOf(System.currentTimeMillis())}
     LaunchedEffect(Unit){while(true){clock=System.currentTimeMillis();kotlinx.coroutines.delay(30_000)}}
     val queue by AudioExportRuntime.state.collectAsState()
@@ -72,6 +76,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Новые файлы сохраняются с обложкой, если ВК её отдаёт. Звук не перекодируется.",style=MaterialTheme.typography.bodySmall)
                 OutlinedButton(enabled=state.initialized&&!state.busy&&!queueWorking,onClick=model::showArtwork,
                     modifier=Modifier.testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!queueWorking,onClick=model::showSavedFiles,
+                    modifier=Modifier.testTag("saved_file_recovery")){Text("Проверить сохранённые файлы")}
                 if(queue.recent.isNotEmpty()) {
                     RecentFilesHeading(enabled=!state.busy,onClear=model::clearRecentFiles)
                     queue.recent.forEach{row->
@@ -177,6 +183,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
     LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
+    if(savedFiles.visible)SavedFilesSheet(savedFiles,{model.checkSavedFiles()},{model.checkSavedFiles(true)},
+        onSelect={row->model.selectSavedFile(row);savedFilePicker.launch(arrayOf("audio/*"))},
+        onConfirm=model::confirmSavedFile,onForget=model::requestForgetFile,onConfirmForget=model::confirmForgetFile,
+        onBack=model::backSavedFiles,onStop=model::cancel,onDismiss=model::dismissSavedFiles)
     if(artwork.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork)
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
 }
