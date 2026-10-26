@@ -42,6 +42,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val state by model.state.collectAsState()
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
+    val artwork by model.artwork.collectAsState()
     var clock by remember{mutableLongStateOf(System.currentTimeMillis())}
     LaunchedEffect(Unit){while(true){clock=System.currentTimeMillis();kotlinx.coroutines.delay(30_000)}}
     val queue by AudioExportRuntime.state.collectAsState()
@@ -68,10 +69,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Моя музыка, Плейлисты и Альбомы создаются при первом сохранении. Готовые файлы не удаляются приложением по количеству или возрасту.")
                 Text("Один трек может сохраняться в нескольких папках: это отдельные копии и дополнительное место. В папки альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
                 if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
+                Text("Новые файлы сохраняются с обложкой, если ВК её отдаёт. Звук не перекодируется.",style=MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!queueWorking,onClick=model::showArtwork,
+                    modifier=Modifier.testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
                 if(queue.recent.isNotEmpty()) {
                     RecentFilesHeading(enabled=!state.busy,onClear=model::clearRecentFiles)
                     queue.recent.forEach{row->
                         Text("${row.displayName}\n${row.relativePath}",style=MaterialTheme.typography.bodySmall)
+                        Text(if(row.coverEmbedded)"С обложкой" else "Без добавленной обложки",style=MaterialTheme.typography.labelSmall)
                         TextButton(onClick={
                             Diagnostics.button("audio_public_open")
                             scope.launch {
@@ -172,6 +177,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
     LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
+    if(artwork.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork)
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
 }
 

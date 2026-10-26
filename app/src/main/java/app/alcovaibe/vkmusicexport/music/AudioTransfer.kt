@@ -16,7 +16,7 @@ internal data class ProcessedAudio(val extension: String,val mime: String,val du
 internal fun interface AudioProcessor {
     suspend fun process(input: File,output: File,track: NativeTrack,hlsSeconds: Double?): ProcessedAudio
 }
-internal class TransferResult(val file: File,val media: ProcessedAudio)
+internal class TransferResult(val file: File,val media: ProcessedAudio,val coverEmbedded: Boolean=false)
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.media(),private val processor: AudioProcessor = AndroidAudioProcessor(),
     private val timeoutMs: Long=10*60*1000L,

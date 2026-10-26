@@ -40,6 +40,51 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _downloadsOpen.value=true
         AudioExportRuntime.start(getApplication(),retry)
     }
+    private val _artwork=MutableStateFlow(ArtworkState());val artwork=_artwork.asStateFlow()
+    fun showArtwork(){if(_state.value.initialized&&!_state.value.busy)_artwork.value=ArtworkState(visible=true)}
+    fun dismissArtwork(){_artwork.update{it.copy(visible=false)}}
+    fun addSavedArtwork() {
+        if(!_artwork.value.visible||_artwork.value.running)return
+        run("artwork"){g->
+            _artwork.value=ArtworkState(visible=true,running=true)
+            try {
+                withContext(Dispatchers.IO) {
+                    AudioExportRuntime.editSaved(getApplication()) {
+                        AudioExportStore(getApplication()).use{store->
+                            val shared=SharedAudioStore(getApplication());val repair=ArtworkRepair(getApplication(),store,shared)
+                            repair.recover()
+                            val files=store.savedFiles().distinctBy{it.uri}
+                            _artwork.update{it.copy(total=files.size)}
+                            val source=ArtworkLoader(api)
+                            for(row in files) {
+                                active(g);_artwork.update{it.copy(current="${row.track.artist} — ${row.track.title}")}
+                                try {
+                                    musicCheck(shared.valid(row),MusicError.INCOMPLETE)
+                                    if(row.coverEmbedded)_artwork.update{it.copy(existing=it.existing+1)}
+                                    else {
+                                        val changed=repair.add(row,source){sessions?.current()?:access()}
+                                        val marked=store.existing(row.taskKey)?.coverEmbedded==true
+                                        _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1)}}
+                                    }
+                                }catch(e: CancellationException){throw e}
+                                 catch(e: Exception) {
+                                    // Stop if restoring a damaged write failed. Keep backup and journal intact.
+                                    repair.recover()
+                                    if((e as? MusicFailure)?.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.DENIED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.STORAGE,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT)||e is java.io.IOException)throw e
+                                    _artwork.update{it.copy(failed=it.failed+1)}
+                                }
+                                _artwork.update{it.copy(processed=it.processed+1)}
+                                AudioExportRuntime.refresh()
+                            }
+                        }
+                    }
+                }
+                active(g);_artwork.update{it.copy(message="Обработка завершена. Музыка повторно не скачивалась.")}
+            }catch(e: CancellationException){_artwork.update{it.copy(message="Обработка прервана. При следующем запуске можно продолжить: готовые обложки будут пропущены.")};throw e}
+             catch(e: Exception){_artwork.update{it.copy(message="Обработка остановлена (${(e as? MusicFailure)?.code?.name?:"STORAGE"}). Уже готовые файлы сохранены; при незавершённой записи резервная копия остаётся до восстановления.")}}
+            finally{_artwork.update{it.copy(running=false,current=null)}}
+        }
+    }
     private val _removal=MutableStateFlow(LibraryRemovalState());val removal=_removal.asStateFlow()
     fun dismissRemoval() {
         if(_removal.value.phase==LibraryRemovalPhase.CHECKING)cancel()

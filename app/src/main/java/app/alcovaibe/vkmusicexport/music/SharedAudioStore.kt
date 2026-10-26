@@ -12,7 +12,7 @@ import java.io.InputStream
 import java.security.MessageDigest
 
 /** Own shared audio only. Pending rows are hidden until bytes, digest and index checkpoint exist. */
-internal class SharedAudioStore(private val context: Context) {
+internal class SharedAudioStore(internal val context: Context) {
     private val resolver=context.contentResolver
     private val collection=MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
     private fun uri(raw: String): Uri {
@@ -41,6 +41,25 @@ internal class SharedAudioStore(private val context: Context) {
             count==record.bytes&&hex(digest.digest())==record.sha256
         }catch(e: CancellationException){throw e}catch(_: Exception){false}
     }
+    suspend fun copyTo(record: PublishedAudio,target: java.io.File) {
+        java.io.FileOutputStream(target).use{out->open(record).use{input->
+            val buffer=ByteArray(65536);var size=0L
+            while(true){currentCoroutineContext().ensureActive();val n=input.read(buffer);if(n<0)break
+                size+=n;musicCheck(size<=record.bytes,MusicError.INCOMPLETE);out.write(buffer,0,n)}
+            musicCheck(size==record.bytes,MusicError.INCOMPLETE);out.flush();out.fd.sync()
+        }}
+    }
+    /** Called only after a durable verified backup and edit journal exist. Never deletes a MediaStore row. */
+    suspend fun overwrite(record: PublishedAudio,source: java.io.File) {
+        musicCheck(own(record.uri,false),MusicError.STORAGE)
+        val fd=resolver.openFileDescriptor(uri(record.uri),"rwt")?:throw MusicFailure(MusicError.STORAGE)
+        ParcelFileDescriptor.AutoCloseOutputStream(fd).use{out->source.inputStream().use{input->
+            val buffer=ByteArray(65536)
+            while(true){currentCoroutineContext().ensureActive();val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)}
+            out.flush();out.fd.sync()
+        }}
+        resolver.notifyChange(uri(record.uri),null)
+    }
     fun removePending(raw: String){if(own(raw,true))resolver.delete(uri(raw),null,null)}
     fun removeAbandonedPending() {
         val rows=resolver.query(collection,arrayOf(MediaStore.MediaColumns._ID),
@@ -49,9 +68,9 @@ internal class SharedAudioStore(private val context: Context) {
         rows.forEach(::removePending)
     }
     suspend fun publish(task: AudioExportTask,result: TransferResult,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
-        publish(task,result.media,result.file.length(),null,relative,{FileInputStream(result.file)},prepared)
+        publish(task,result.media,result.file.length(),null,relative,result.coverEmbedded,{FileInputStream(result.file)},prepared)
     suspend fun copy(task: AudioExportTask,record: PublishedAudio,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
-        publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,relative,{open(record)},prepared)
+        publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,relative,record.coverEmbedded,{open(record)},prepared)
     private suspend fun availableName(task: AudioExportTask,extension: String,relative: String): String {
         var duplicate=1
         while(true) {
@@ -64,7 +83,7 @@ internal class SharedAudioStore(private val context: Context) {
             duplicate++;musicCheck(duplicate<=1_000_000,MusicError.STORAGE)
         }
     }
-    private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,relative: String,input:()->InputStream,
+    private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,relative: String,covered: Boolean,input:()->InputStream,
         prepared:(PublishedAudio)->Unit): PublishedAudio {
         val c=currentCoroutineContext();c.ensureActive()
         musicCheck(size in 1..AudioTransfer.MAX_BYTES&&media.durationMs>0,MusicError.INCOMPLETE)
@@ -94,7 +113,7 @@ internal class SharedAudioStore(private val context: Context) {
             val actual=resolver.query(target,arrayOf(MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.RELATIVE_PATH),null,null,null)?.use{
                 if(it.moveToFirst())it.getString(0) to it.getString(1)else null
             }?:throw MusicFailure(MusicError.STORAGE)
-            val row=PublishedAudio(task.key,task.track,target.toString(),actual.first,actual.second,media.extension,media.mime,media.durationMs,bytes,hash)
+            val row=PublishedAudio(task.key,task.track,target.toString(),actual.first,actual.second,media.extension,media.mime,media.durationMs,bytes,hash,covered)
             // Checkpoint before publishing: recovery can adopt a finished file after a process kill.
             prepared(row);c.ensureActive()
             musicCheck(resolver.update(target,ContentValues().apply{put(MediaStore.MediaColumns.IS_PENDING,0)},null,null)==1,MusicError.STORAGE)
