@@ -111,5 +111,6 @@ class DownloadProgressEntryDeviceTest {
             ui.runOnUiThread{model.dismissDownloads()}
             withContext(Dispatchers.IO){AudioExportRuntime.pause(context);withTimeout(20000){while(AudioExportRuntime.active.get())delay(50)};AudioExportRuntime.clear(context)}
         }
+        Unit
     }
 }
