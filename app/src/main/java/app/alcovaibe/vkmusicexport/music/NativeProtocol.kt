@@ -32,9 +32,9 @@ internal fun musicCheck(ok: Boolean, error: MusicError = MusicError.RESPONSE) { 
 /** Not a data class: accidental toString must not reveal a credential. */
 internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: Long?=null,
     val renewal: WebRenewal?=null,val lastVerifiedAtMs: Long?=null,val renewalBlocked: Boolean=false,
-    val credentialId: String=java.util.UUID.randomUUID().toString(),val renewalOwner: Long?=null,val persisted: Boolean=false) {
-    fun withSession(renewal: WebRenewal?=this.renewal,verifiedAt: Long?=lastVerifiedAtMs,blocked: Boolean=renewalBlocked)=
-        MusicAccess(token,agent,expiresAtMs,renewal,verifiedAt,blocked,credentialId,renewalOwner,persisted)
+    val credentialId: String=java.util.UUID.randomUUID().toString(),val renewalOwner: Long?=null,val persisted: Boolean=false,val rejected: Boolean=false) {
+    fun withSession(renewal: WebRenewal?=this.renewal,verifiedAt: Long?=lastVerifiedAtMs,blocked: Boolean=renewalBlocked,rejected: Boolean=this.rejected)=
+        MusicAccess(token,agent,expiresAtMs,renewal,verifiedAt,blocked,credentialId,renewalOwner,persisted,rejected)
     override fun toString() = "MusicAccess([redacted])"
 }
 

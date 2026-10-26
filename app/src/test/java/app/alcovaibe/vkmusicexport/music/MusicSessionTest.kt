@@ -66,6 +66,9 @@ class MusicSessionTest {
         try{m.request(old){requests++;throw MusicFailure(MusicError.ACCESS,5)};fail()}
         catch(e: MusicFailure){assertEquals(5,e.remoteCode)}
         assertEquals(1,renewals);assertEquals(2,requests)
+        assertTrue(store.value!!.rejected)
+        try{m.current();fail()}catch(_: MusicFailure){}
+        assertEquals(1,renewals);assertEquals(SessionStatus.LOGIN_REQUIRED,m.state.value.status)
     }
     @Test fun transientFailureKeepsValidAccessAndUsesFiveMinuteBackoff()=runTest {
         val old=access();val store=Store(old);var calls=0;var clock=now

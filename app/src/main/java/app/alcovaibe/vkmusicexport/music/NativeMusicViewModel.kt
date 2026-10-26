@@ -150,6 +150,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val result=try{api.library(access)}catch(e: CancellationException){throw e}
                 catch(e: MusicFailure){throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,e.remoteCode,e.code)}
             active(g);authForeground.first{it};active(g)
+            if(access.renewal!=null&&access.renewal.owner!=result.owner)
+                throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,musicError=MusicError.ACCESS)
             // Only a real successful audio.get may replace an already saved credential.
             try{withContext(Dispatchers.IO){vault.save(access.withSession(verifiedAt=System.currentTimeMillis()))}}
             catch(e: CancellationException){throw e}

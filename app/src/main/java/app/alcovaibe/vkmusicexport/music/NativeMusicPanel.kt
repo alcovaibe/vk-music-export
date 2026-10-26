@@ -121,7 +121,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         expiry<=clock->"Срок токена истёк."
                         else->"Токен действует до "+java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(expiry))
                     },Modifier.testTag("vk_access_lifetime"),style=MaterialTheme.typography.bodySmall)
-                    Text(if(session.renewable)"Автопродление доступно: приложение попробует обновить токен перед истечением срока и при запросах к ВК."
+                    Text(if(session.renewable)"Включена автоматическая попытка продления. Если ВК отклонит её, понадобится новый вход."
                         else "Автопродление недоступно для этого входа. Новый вход через Chrome может подключить его.",style=MaterialTheme.typography.bodySmall)
                     if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ по сети. Действующий токен сохранён; приложение повторит попытку позже.",style=MaterialTheme.typography.bodySmall)
                 }

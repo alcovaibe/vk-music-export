@@ -13,7 +13,7 @@ import java.util.Base64
 import java.util.UUID
 import javax.net.ssl.SSLException
 
-/** Native pairing cookies only. Never reads Chrome's profile or writes a cookie to disk. */
+/** Native pairing cookies only. Never reads Chrome's profile; snapshots use the encrypted credential store. */
 internal class PairingCookieJar: CookieJar {
     private val values=mutableListOf<Cookie>()
     @Volatile var limited=false; private set
