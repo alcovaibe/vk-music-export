@@ -151,8 +151,10 @@ internal object NativeProtocol {
         return NativeCatalog(lists,total)
     }
     fun artwork(response: JsonElement,expected: NativeTrack): String? = parse {
-        val items=response as? JsonArray;musicCheck(items?.size==1)
-        val o=items!![0].jsonObject;val actual=track(o)
+        val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
+        if(items.isEmpty())throw MusicFailure(MusicError.UNAVAILABLE)
+        musicCheck(items.size==1)
+        val o=items[0].jsonObject;val actual=track(o)
         musicCheck(actual.id==expected.id&&actual.duration==expected.duration)
         val album=o["album"] as? JsonObject
         val candidates=listOfNotNull(o["thumb"] as? JsonObject,album?.get("thumb") as? JsonObject)

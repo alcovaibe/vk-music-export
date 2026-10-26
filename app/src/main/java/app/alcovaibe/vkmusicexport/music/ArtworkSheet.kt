@@ -10,7 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 internal data class ArtworkState(val visible: Boolean=false,val running: Boolean=false,val total: Int=0,val processed: Int=0,
-    val added: Int=0,val existing: Int=0,val missing: Int=0,val failed: Int=0,val current: String?=null,val message: String?=null)
+    val added: Int=0,val existing: Int=0,val missing: Int=0,val failed: Int=0,val current: String?=null,val message: String?=null,val issues: List<ArtworkIssue> = emptyList())
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,14 +27,22 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
                 }
                 if(state.running||state.message!=null) {
                     Text("Обработано: ${state.processed}/${state.total}",Modifier.testTag("artwork_count"))
-                    Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не вернул обложку: ${state.missing} · ошибки: ${state.failed}")
+                    Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nНет обложки или трек недоступен: ${state.missing} · ошибки: ${state.failed}")
                 }else Text("Готовые обложки пропускаются. Изменённые или недоступные файлы не перезаписываются. На время обработки приостанови скачивание и оставь приложение открытым.")
                 state.message?.let{Text(it,Modifier.testTag("artwork_result"))}
+                if(state.issues.isNotEmpty()) {
+                    Text("Последние проблемы",style=MaterialTheme.typography.titleSmall)
+                    state.issues.forEach{issue->
+                        Text("${issue.item}. ${issue.name}",style=MaterialTheme.typography.bodySmall)
+                        Text("${issue.reason} Код: ${issue.code.name} · ${issue.step.name}",
+                            Modifier.testTag("artwork_issue_${issue.item}"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                    }
+                }
             }
             Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick=onDismiss){Text(if(state.running)"Свернуть" else "Закрыть")}
                 if(state.running)OutlinedButton(onClick=onStop,modifier=Modifier.testTag("artwork_stop")){Text("Остановить")}
-                else if(state.message==null)Button(onClick=onStart,modifier=Modifier.testTag("artwork_start")){Text("Добавить обложки")}
+                else Button(onClick=onStart,modifier=Modifier.testTag("artwork_start")){Text(if(state.message==null)"Добавить обложки" else "Повторить обработку")}
             }
         }
     }

@@ -1,0 +1,42 @@
+package app.alcovaibe.vkmusicexport.music
+
+import java.util.UUID
+
+internal enum class ArtworkStep { INITIALIZE,RECOVERY,VERIFY_FILE,BACKUP,READ_TAGS,RESOLVE_COVER,FETCH_COVER,DECODE_COVER,
+    WRITE_TAGS,VERIFY_TAGGED,REPLACE_FILE,VERIFY_WRITTEN,UPDATE_INDEX }
+internal data class ArtworkIssue(val item: Int,val name: String,val step: ArtworkStep,val code: MusicError,val reason: String)
+internal fun artworkIssue(item: Int,name: String,step: ArtworkStep,error: Exception): ArtworkIssue {
+    val code=(error as? MusicFailure)?.code?:MusicError.STORAGE
+    val reason=when {
+        code==MusicError.INCOMPLETE&&step==ArtworkStep.VERIFY_FILE->"Файл отсутствует или изменён. Запись не начиналась."
+        code==MusicError.INCOMPLETE&&step in setOf(ArtworkStep.FETCH_COVER,ArtworkStep.DECODE_COVER)->"Картинка получена не полностью."
+        code==MusicError.INCOMPLETE->"Повторная проверка файла не прошла. Запись не начиналась."
+        code==MusicError.MEDIA_URL->"Адрес картинки не относится к поддерживаемым серверам ВК."
+        code==MusicError.FORMAT&&step==ArtworkStep.READ_TAGS->"Структура тегов файла не поддерживается. Запись не начиналась."
+        code==MusicError.FORMAT&&step==ArtworkStep.DECODE_COVER->"Картинка не распознана или превышает допустимые размеры."
+        step==ArtworkStep.RESOLVE_COVER&&code==MusicError.RESPONSE->"ВК вернул неожиданные данные трека."
+        code==MusicError.HTTP->"Сервер обложки вернул ошибку HTTP."
+        code in setOf(MusicError.NETWORK,MusicError.TIMEOUT,MusicError.TLS)->"Не удалось получить обложку по сети."
+        code==MusicError.FORMAT->"Не удалось безопасно добавить обложку в этот формат файла."
+        code==MusicError.STORAGE->"Не удалось прочитать или записать данные. Проверь свободное место и результат восстановления."
+        else->code.label
+    }
+    return ArtworkIssue(item,name,step,code,reason)
+}
+
+/** Only fixed codes, random operation ID, ordinals and counters. Never names, URLs or exception messages. */
+internal class ArtworkDiagnostics(private val observe:(String,Map<String,Any?>)->Unit) {
+    private val operation=UUID.randomUUID().toString()
+    var item=0
+    var step=ArtworkStep.INITIALIZE
+    fun result(outcome: String,error: Exception?=null) {
+        val issue=error?.let{artworkIssue(item,"",step,it)}
+        observe("audio_artwork_item",mapOf("operation_id" to operation,"item" to item,"stage" to step.name,
+            "outcome" to outcome,"code" to issue?.code?.name,"kind" to (error as? MusicFailure)?.kind?.name,
+            "vk_code" to (error as? MusicFailure)?.remoteCode))
+    }
+    fun summary(outcome: String,state: ArtworkState) {
+        observe("audio_artwork_summary",mapOf("operation_id" to operation,"outcome" to outcome,"total" to state.total,
+            "processed" to state.processed,"added" to state.added,"existing" to state.existing,"missing" to state.missing,"failed" to state.failed))
+    }
+}
