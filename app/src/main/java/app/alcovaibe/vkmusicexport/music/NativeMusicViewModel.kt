@@ -58,7 +58,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             diagnostic.step=ArtworkStep.RECOVERY;repair.recover()
                             val files=store.savedFiles().distinctBy{it.uri}
                             _artwork.update{it.copy(total=files.size)}
-                            val source=ArtworkLoader(api,onStep={diagnostic.step=it})
+                            val source=ArtworkLoader(api,onAttempt=diagnostic::candidate,onStep={diagnostic.step=it})
                             for((index,row) in files.withIndex()) {
                                 active(g);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
                                 _artwork.update{it.copy(current="${row.track.artist} — ${row.track.title}")}

@@ -50,6 +50,18 @@ class EmbeddedArtworkTest {
         for(url in listOf("http://userapi.com/x","https://userapi.com.evil.test/x","https://127.0.0.1/x","https://u:p@userapi.com/x","https://userapi.com:444/x"))assertThrows(MusicFailure::class.java){ArtworkAddress.require(url)}
         assertEquals("sun9.userapi.com",ArtworkAddress.require("https://sun9.userapi.com/a.jpg").host)
     }
+    @Test fun allProvidedVariantsAreOrderedDeduplicatedAndNeverGuessedFromPlaylistOrUrl() {
+        val expected=NativeTrack("12_34","CI","Artist",1)
+        val response=Json.parseToJsonElement("""[{"owner_id":12,"id":34,"title":"CI","artist":"Artist","duration":1,
+            "thumb":{"photo_1200":"https://sun9.userapi.com/a","photo_600":"https://sun9.userapi.com/b","photo_300":"https://sun9.userapi.com/a","photo_68":"https://evil.test/forbidden"},
+            "album":{"id":4,"title":"Album","thumb":{"photo_1200":"https://sun9.userapi.com/c","photo_600":"https://sun9.userapi.com/b","photo_135":"https://sun9.userapi.com/d"}},
+            "playlist":{"thumb":{"photo_1200":"https://sun9.userapi.com/wrong"}}}]""")
+        val variants=NativeProtocol.artworkCandidates(response,expected)
+        assertEquals(listOf("https://sun9.userapi.com/a","https://sun9.userapi.com/b","https://sun9.userapi.com/c","https://sun9.userapi.com/d"),variants.map{it.url})
+        assertEquals(listOf(ArtworkOrigin.TRACK,ArtworkOrigin.TRACK,ArtworkOrigin.ALBUM,ArtworkOrigin.ALBUM),variants.map{it.origin})
+        assertEquals(listOf(1200,600,1200,135),variants.map{it.size})
+        assertEquals(MusicError.RESPONSE,assertThrows(MusicFailure::class.java){NativeProtocol.artworkCandidates(response,expected.copy(duration=2))}.code)
+    }
     @Test fun coverComesOnlyFromTheExactAudioOrAlbumAndNeverFromAPlaylist() {
         val expected=NativeTrack("12_34","CI","Artist",1)
         fun response(extra: String)=Json.parseToJsonElement("""[{"owner_id":12,"id":34,"title":"CI","artist":"Artist","duration":1,$extra}]""")
