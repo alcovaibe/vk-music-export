@@ -92,7 +92,7 @@ class MusicExportDeviceTest {
         val (context,base)=isolated("public-audio-cancel");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val task=ExportLayout.task(track(20),listOf("Моя музыка","CI cancel"),1);var prepared: PublishedAudio?=null
         try {
-            store.replace(listOf(task));store.status("QUEUED");assertTrue(store.beginRun());assertEquals(task,store.claim())
+            store.replace(listOf(task));store.status("QUEUED");assertTrue(store.beginRun());assertEquals(task,store.claim());assertEquals(task,store.snapshot().currentTask)
             val input=File(base,"audio.mp3").apply{writeBytes(ByteArray(8192))}
             val job=launch {
                 shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1000))){row->
@@ -104,7 +104,7 @@ class MusicExportDeviceTest {
             assertEquals(0,context.contentResolver.query(Uri.parse(prepared!!.uri),arrayOf("_id"),null,null,null)!!.use{it.count})
             store.close();val reopened=AudioExportStore(context)
             try{AudioExportEngine(reopened,shared,File(base,"tmp"),noApi,credential={error("no access")},observe={_,_->}).recover()
-                assertEquals(1,reopened.snapshot().pending);assertEquals("PAUSED",reopened.snapshot().status);assertTrue(reopened.prepared().isEmpty())
+                assertEquals(1,reopened.snapshot().pending);assertEquals("PAUSED",reopened.snapshot().status);assertNull(reopened.snapshot().currentTask);assertTrue(reopened.prepared().isEmpty())
             }finally{reopened.close()}
         }finally{store.close();prepared?.let{cleanup(listOf(it))};base.deleteRecursively()}
     }

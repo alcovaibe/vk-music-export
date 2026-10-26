@@ -73,7 +73,10 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 @Composable
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
     var settingsScreen by rememberSaveable{mutableStateOf<String?>(null)}
-    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,settingsScreen==null)
+    val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
+    val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
+    val musicState by nativeMusic.state.collectAsState()
+    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,settingsScreen==null&&!downloadsOpen)
     if(settingsScreen==null)Scaffold(
         containerColor=MaterialTheme.colorScheme.background,
         bottomBar={
@@ -81,7 +84,7 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
                 verticalAlignment=Alignment.CenterVertically) {
                 Text("v ${BuildConfig.VERSION_NAME}",Modifier.weight(1f),
                     style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates)
+                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen)
             }
         },
         topBar={
@@ -96,7 +99,7 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
         }
     ){padding->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            HomeScreen(onMusic={
+            HomeScreen(queue,onDownloads=nativeMusic::showDownloads,onMusic={
                 Diagnostics.button("open_native_music");settingsScreen="native"
             })
         }
@@ -105,10 +108,13 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
         onBack={Diagnostics.button("settings_back");settingsScreen=null})
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,settingsScreen=="native",
         onDismiss={settingsScreen=null})
+    if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy,musicState.error,
+        onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
+        onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads)
 }
 
 @Composable
-private fun HomeScreen(onMusic: () -> Unit) {
+private fun HomeScreen(queue: app.alcovaibe.vkmusicexport.music.ExportSnapshot,onDownloads: ()->Unit,onMusic: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -120,6 +126,7 @@ private fun HomeScreen(onMusic: () -> Unit) {
                 Icon(musicIcon(),null,Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Text("Открыть мою музыку")
             }
         }
+        item {app.alcovaibe.vkmusicexport.music.DownloadQueueButton(queue,onDownloads)}
         item { WelcomeArtwork() }
         item {
             Text("Музыка и плейлисты ВК", style = MaterialTheme.typography.headlineMedium,

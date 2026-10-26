@@ -57,27 +57,15 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
         return
     }
-    SettingsPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen") {
+    SettingsPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen",actions={
+        IconButton(onClick=model::showDownloads,modifier=Modifier.testTag("open_music_downloads")) {
+            Icon(DownloadIcon,"Скачивания")
+        }
+    }) {
                 Text("Папка: Music/VK Music Export",style=MaterialTheme.typography.titleMedium)
                 Text("Моя музыка, Плейлисты и Альбомы создаются при первом сохранении. Готовые файлы не удаляются приложением по количеству или возрасту.")
                 Text("Один трек может сохраняться в нескольких папках: это отдельные копии и дополнительное место. В папки альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
                 if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
-                if(queue.total==0)queue.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
-                if(queue.total>0) {
-                    Text("Очередь: ${queue.done}/${queue.total} файлов · пропущено ${queue.failed}",style=MaterialTheme.typography.titleMedium)
-                    Text(when(queue.status){"RUNNING"->"Скачивание продолжается, приложение можно свернуть";"QUEUED"->"Ожидание сети и запуска системой";"FINISHED"->"Готово";"FINISHED_WITH_ERRORS"->"Готово с пропусками";else->"Приостановлено"})
-                    if(queueWorking)LinearProgressIndicator(progress={if(queue.total>0)(queue.done+queue.failed).toFloat()/queue.total else 0f},modifier=Modifier.fillMaxWidth())
-                    queue.progress?.let{Text("Текущий файл: ${it.bytes/1024} КБ" )}
-                    queue.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
-                    if(queue.sourceIssues>0)Text("Не прочитаны источники/подборки: ${queue.sourceIssues}. Экспорт всей библиотеки не подтверждён.",color=MaterialTheme.colorScheme.error)
-                    if(queueWorking)TextButton(onClick=model::pauseQueue){Text("Пауза скачивания")}
-                    else {
-                        if(queue.unfinished)Button(enabled=!state.busy,onClick={model.resumeQueue()}){Text("Продолжить скачивание")}
-                        if(queue.failed>0)OutlinedButton(enabled=!state.busy,onClick={model.resumeQueue(true)}){Text("Повторить пропущенные треки")}
-                        TextButton(enabled=!state.busy,onClick=model::clearQueue){Text("Очистить очередь · файлы останутся")}
-                    }
-                    queue.failures.forEach{Text("${it.task.track.artist} — ${it.task.track.title}: ${it.error.name}",style=MaterialTheme.typography.bodySmall)}
-                }
                 if(queue.recent.isNotEmpty()) {
                     RecentFilesHeading(enabled=!state.busy,onClear=model::clearRecentFiles)
                     queue.recent.forEach{row->

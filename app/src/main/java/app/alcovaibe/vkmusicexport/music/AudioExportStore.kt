@@ -12,7 +12,7 @@ import java.util.Locale
 internal data class ExportFailure(val task: AudioExportTask,val error: MusicError)
 internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,val done: Int=0,val pending: Int=0,
     val failed: Int=0,val sourceIssues: Int=0,val error: MusicError?=null,val recent: List<PublishedAudio> = emptyList(),
-    val failures: List<ExportFailure> = emptyList(),val progress: AudioProgress?=null) {
+    val failures: List<ExportFailure> = emptyList(),val progress: AudioProgress?=null,val currentTask: AudioExportTask?=null) {
     val unfinished get()=pending>0
 }
 
@@ -73,8 +73,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         readableDatabase.rawQuery("SELECT state,COUNT(*) FROM tasks GROUP BY state",null).use{while(it.moveToNext())counts[it.getString(0)]=it.getInt(1)}
         val recent=recentFiles()
         val failures=readableDatabase.rawQuery("SELECT payload,error FROM tasks WHERE state='FAILED' ORDER BY ordinal LIMIT 10",null).use{c->buildList{while(c.moveToNext())add(ExportFailure(json.decodeFromString(c.getString(0)),parseError(c.getString(1))?:MusicError.RESPONSE))}}
+        val current=readableDatabase.rawQuery("SELECT payload FROM tasks WHERE state='RUNNING' ORDER BY ordinal LIMIT 1",null).use{
+            if(it.moveToFirst())json.decodeFromString<AudioExportTask>(it.getString(0))else null
+        }
         return ExportSnapshot(get("status")?:"EMPTY",counts.values.sum(),counts["DONE"]?:0,
-            (counts["PENDING"]?:0)+(counts["RUNNING"]?:0),counts["FAILED"]?:0,get("source_issues")?.toIntOrNull()?:0,parseError(get("error")),recent,failures)
+            (counts["PENDING"]?:0)+(counts["RUNNING"]?:0),counts["FAILED"]?:0,get("source_issues")?.toIntOrNull()?:0,parseError(get("error")),recent,failures,currentTask=current)
     }
     @Synchronized fun status(status: String,error: MusicError?=null){put("status",status);put("error",error?.name?:"")}
     @Synchronized fun beginRun(): Boolean=transaction {if(get("status")!="QUEUED")false else{status("RUNNING");true}}
