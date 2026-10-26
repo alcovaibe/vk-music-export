@@ -34,10 +34,12 @@ internal class ArtworkLoader(private val api: MusicApi,private val client: OkHtt
                 val req=Request.Builder().url(url).header("User-Agent","VK-Music-Export-Artwork/1").get().build()
                 val response=client.newCall(req).readBounded(2*1024*1024)
                 if(response.status in setOf(301,302,303,307,308)) {
-                    musicCheck(hop<3,MusicError.HTTP)
-                    url=ArtworkAddress.require(ArtworkAddress.require(url).resolve(response.location?:throw MusicFailure(MusicError.HTTP))?.toString()?:throw MusicFailure(MusicError.HTTP)).toString()
+                    if(hop>=3)throw ArtworkFetchFailure(response.status,ArtworkFetchReason.REDIRECT_LIMIT)
+                    val location=response.location?:throw ArtworkFetchFailure(response.status,ArtworkFetchReason.REDIRECT_LOCATION_MISSING)
+                    url=try{ArtworkAddress.require(ArtworkAddress.require(url).resolve(location)?.toString()?:throw MusicFailure(MusicError.MEDIA_URL)).toString()}
+                        catch(_: MusicFailure){throw ArtworkFetchFailure(response.status,ArtworkFetchReason.REDIRECT_UNSAFE,MusicError.MEDIA_URL)}
                 }else {
-                    musicCheck(response.status==200,MusicError.HTTP)
+                    if(response.status!=200)throw ArtworkFetchFailure(response.status,ArtworkFetchReason.HTTP_STATUS)
                     onStep(ArtworkStep.DECODE_COVER)
                     val image=decode(response.bytes);cache[first]=image;return@withTimeoutOrNull image
                 }

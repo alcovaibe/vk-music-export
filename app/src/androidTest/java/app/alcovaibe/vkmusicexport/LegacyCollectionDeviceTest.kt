@@ -19,13 +19,13 @@ class LegacyCollectionDeviceTest {
         try {
             file.writeBytes(legacy)
             ui.activityRule.scenario.recreate()
-            ui.onNodeWithText("Музыка ВК").assertExists()
+            ui.onNodeWithText("VK Music").assertExists()
             ui.onNodeWithText("Моя коллекция").assertDoesNotExist()
-            ui.onNodeWithText("Открыть мою музыку").performScrollTo().performClick()
+            ui.onNodeWithText("VK Music").performScrollTo().performClick()
             ui.onNodeWithTag("native_music_screen").assertExists()
             ui.onNodeWithText("Сохранить эту страницу в коллекцию…").assertDoesNotExist()
             ui.onNodeWithContentDescription("Назад").performClick()
-            ui.onNodeWithContentDescription("Настройки").performClick()
+            ui.onNodeWithContentDescription("Меню").performClick()
             ui.onNodeWithText("Очистить коллекцию").assertDoesNotExist()
             assertArrayEquals(legacy,file.readBytes())
         } finally {

@@ -57,6 +57,6 @@ class EmbeddedArtworkTest {
         assertEquals("https://sun9.userapi.com/track.jpg",NativeProtocol.artwork(response(extra),expected))
         assertNull(NativeProtocol.artwork(response(""""playlist":{"thumb":{"photo_600":"https://sun9.userapi.com/wrong.jpg"}}"""),expected))
         assertThrows(MusicFailure::class.java){NativeProtocol.artwork(response(extra),expected.copy(id="12_35"))}
-        assertNull(NativeProtocol.artwork(response(""""thumb":{"photo_600":"https://evil.test/x"}"""),expected))
+        assertEquals(MusicError.MEDIA_URL,assertThrows(MusicFailure::class.java){NativeProtocol.artwork(response(""""thumb":{"photo_600":"https://evil.test/x"}"""),expected)}.code)
     }
 }

@@ -25,8 +25,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import app.alcovaibe.vkmusicexport.SettingsPage
-import app.alcovaibe.vkmusicexport.SecureSettingsContent
+import app.alcovaibe.vkmusicexport.AppPage
+import app.alcovaibe.vkmusicexport.SecureCredentialContent
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -64,7 +64,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
         return
     }
-    SettingsPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen",actions={
+    AppPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen",actions={
         IconButton(onClick=model::showDownloads,modifier=Modifier.testTag("open_music_downloads")) {
             Icon(DownloadIcon,"Скачивания")
         }
@@ -207,8 +207,8 @@ internal fun DeviceConfirmationScreen(state: NativeMusicState,onSubmit: (String)
         owner.lifecycle.addObserver(observer)
         onDispose{owner.lifecycle.removeObserver(observer);clear()}
     }
-    SecureSettingsContent {
-        SettingsPage("Код подключения ВК",onBack={cancel()},tag="native_auth_code_screen") {
+    SecureCredentialContent {
+        AppPage("Код подключения ВК",onBack={cancel()},tag="native_auth_code_screen") {
             Text("ВК запросил подтверждение текущего подключения.",style=MaterialTheme.typography.titleMedium)
             Text("Введи 6 цифр, показанных на странице VK ID «Запрос входа с нового устройства», и нажми «Подтвердить код».")
             Text("Пароль и SMS-коды вводи только на странице ВК.",style=MaterialTheme.typography.bodySmall)
@@ -240,8 +240,8 @@ private fun NativeAccessScreen(onBack: ()->Unit,onSave: (String,String)->Unit) {
     var agent by remember {mutableStateOf(NativeProtocol.DEFAULT_AGENT)}
     var invalid by remember {mutableStateOf(false)}
     fun close(){token="";agent="";onBack()}
-    SecureSettingsContent {
-        SettingsPage("Музыкальный доступ ВК",onBack=::close,tag="native_access_screen") {
+    SecureCredentialContent {
+        AppPage("Музыкальный доступ ВК",onBack=::close,tag="native_access_screen") {
             Text("Введи уже выданный токен ВК. Если он выдан определённому клиенту, укажи исходный User-Agent. Эти значения не попадают в диагностический лог.")
             OutlinedTextField(value=token,onValueChange={if(it.length<=4096){token=it;invalid=false}},label={Text("Токен ВК")},
                 modifier=Modifier.fillMaxWidth().testTag("native_vk_token"),singleLine=true,visualTransformation=PasswordVisualTransformation(),

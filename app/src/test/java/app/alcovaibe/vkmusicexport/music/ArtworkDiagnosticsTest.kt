@@ -34,6 +34,22 @@ class ArtworkDiagnosticsTest {
         }
         assertFalse(records.toString().contains("private name"))
     }
+    @Test fun noCoverAndUnavailableHaveSeparateCountsAndHttpIsNeverReportedAsMissingCover() {
+        val skips=listOf(ArtworkSkip(1,"private artist","private title",ArtworkSkipReason.NO_COVER),
+            ArtworkSkip(2,"other artist","other title",ArtworkSkipReason.TRACK_UNAVAILABLE))
+        val state=ArtworkState(total=3,processed=3,missing=2,failed=1,skipped=skips)
+        assertEquals(1,state.noCover);assertEquals(1,state.unavailable)
+        val records=mutableListOf<Map<String,Any?>>()
+        val diagnostic=ArtworkDiagnostics{_,fields->records.add(fields)}
+        diagnostic.step=ArtworkStep.FETCH_COVER
+        diagnostic.result("FAILED",ArtworkFetchFailure(404,ArtworkFetchReason.HTTP_STATUS))
+        diagnostic.summary("COMPLETED",state)
+        assertEquals(404,records.first()["http_status"]);assertEquals("HTTP_STATUS",records.first()["fetch_reason"])
+        assertEquals(1,records.last()["no_cover"]);assertEquals(1,records.last()["unavailable"])
+        assertFalse(records.toString().contains("private"));assertFalse(records.toString().contains("artist"))
+        val issue=artworkIssue(3,"name",ArtworkStep.FETCH_COVER,ArtworkFetchFailure(403,ArtworkFetchReason.HTTP_STATUS))
+        assertTrue(issue.reason.contains("403"));assertEquals(MusicError.HTTP,issue.code)
+    }
     @Test fun emptyVkAudioIsUnavailableButMalformedOrMismatchedResponsesRemainErrors() {
         val track=NativeTrack("12_34","CI","Artist",1)
         val unavailable=assertThrows(MusicFailure::class.java){NativeProtocol.artwork(Json.parseToJsonElement("[]"),track)}

@@ -158,11 +158,14 @@ internal object NativeProtocol {
         musicCheck(actual.id==expected.id&&actual.duration==expected.duration)
         val album=o["album"] as? JsonObject
         val candidates=listOfNotNull(o["thumb"] as? JsonObject,album?.get("thumb") as? JsonObject)
+        var offered=false
         for(thumb in candidates)for(size in listOf(1200,600,300,270,135,68,34)) {
             val url=(thumb["photo_$size"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotBlank()}?:continue
+            offered=true
             val safe=runCatching{ArtworkAddress.require(url).toString()}.getOrNull()
             if(safe!=null)return@parse safe
         }
+        if(offered)throw MusicFailure(MusicError.MEDIA_URL)
         null
     }
     fun media(response: JsonElement, expected: NativeTrack): String = parse {

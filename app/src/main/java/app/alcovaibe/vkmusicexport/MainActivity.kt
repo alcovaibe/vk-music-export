@@ -8,12 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import android.view.WindowInsetsController
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 
 private val Ink = Color(0xFF202337)
 private val Accent = Color(0xFF5B4DE8)
@@ -44,11 +42,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val dark = isSystemInDarkTheme()
             SideEffect {
                 val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
                     WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                window.insetsController?.setSystemBarsAppearance(if (dark) 0 else lightBars, lightBars)
+                window.insetsController?.setSystemBarsAppearance(0, lightBars)
             }
             MusicTheme { MusicApp(updates.controller,nativeMusic) }
         }
@@ -57,13 +54,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 internal fun MusicTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) darkColorScheme(
-        primary = Color(0xFFB9AFFF), background = Color(0xFF12131B), surface = Color(0xFF1C1D28),
+    val colors = darkColorScheme(
+        primary = Color(0xFFB9AFFF), background = Color.Black, surface = Color(0xFF1C1D28),
         surfaceVariant = Color(0xFF2A2B3C), onSurfaceVariant = Color(0xFFB9B9CA)
-    ) else lightColorScheme(
-        primary = Accent, onPrimary = Color.White, background = Color(0xFFF6F6FA), surface = Color.White,
-        onBackground = Ink, onSurface = Ink, surfaceVariant = Color(0xFFEFEDF9),
-        onSurfaceVariant = Color(0xFF727486), outlineVariant = Color(0xFFE8E8F0)
     )
     MaterialTheme(colorScheme = colors, shapes = Shapes(
         small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(28.dp)
@@ -72,13 +65,13 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
-    var settingsScreen by rememberSaveable{mutableStateOf<String?>(null)}
+    var screen by rememberSaveable{mutableStateOf<String?>(null)}
     val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
     val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
     val musicState by nativeMusic.state.collectAsState()
-    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,settingsScreen==null&&!downloadsOpen)
-    if(settingsScreen==null)Scaffold(
-        containerColor=MaterialTheme.colorScheme.background,
+    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,screen!="native"&&!downloadsOpen)
+    if(screen!="native")Scaffold(
+        modifier=Modifier.testTag("home_screen"),containerColor=MaterialTheme.colorScheme.background,
         bottomBar={
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
                 verticalAlignment=Alignment.CenterVertically) {
@@ -94,20 +87,18 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
                 }
                 Spacer(Modifier.width(10.dp))
                 Text("VK Music Export",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                IconButton(onClick={Diagnostics.button("settings");settingsScreen="settings"}){Icon(Icons.Default.MoreVert,"Настройки")}
+                LatestReportMenu()
             }
         }
     ){padding->
         Column(Modifier.fillMaxSize().padding(padding)) {
             HomeScreen(queue,onDownloads=nativeMusic::showDownloads,onMusic={
-                Diagnostics.button("open_native_music");settingsScreen="native"
+                Diagnostics.button("open_native_music");screen="native"
             })
         }
     }
-    if(settingsScreen=="settings")SettingsScreen(
-        onBack={Diagnostics.button("settings_back");settingsScreen=null})
-    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,settingsScreen=="native",
-        onDismiss={settingsScreen=null})
+    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,screen=="native",
+        onDismiss={screen=null})
     if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy,musicState.error,
         onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
         onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads)
@@ -118,12 +109,8 @@ private fun HomeScreen(queue: app.alcovaibe.vkmusicexport.music.ExportSnapshot,o
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Text("Музыка ВК", style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold, letterSpacing = (-1).sp)
-        }
-        item {
             Button(onClick=onMusic,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp),shape=RoundedCornerShape(16.dp)) {
-                Icon(musicIcon(),null,Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Text("Открыть мою музыку")
+                Icon(musicIcon(),null,Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Text("VK Music")
             }
         }
         item {app.alcovaibe.vkmusicexport.music.DownloadQueueButton(queue,onDownloads)}

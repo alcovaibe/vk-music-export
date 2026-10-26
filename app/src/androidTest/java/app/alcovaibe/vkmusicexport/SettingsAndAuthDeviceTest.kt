@@ -20,17 +20,21 @@ import org.junit.runner.RunWith
 import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
-class SettingsNavigationDeviceTest {
+class HomeMenuNavigationDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun settingsAreASeparateRestorableScreenAndBackReturnsToHome() {
-        ui.onNodeWithContentDescription("Настройки").performClick()
-        ui.onNodeWithTag("settings_screen").assertExists()
+    @Test fun homeMenuHasOnlyLatestReportAndNoSettingsDestinationAfterRecreation() {
+        ui.onNodeWithContentDescription("Меню").performClick()
+        ui.onNodeWithText("Поделиться JSON-отчётом").assertIsDisplayed()
         ui.onAllNodes(isDialog()).assertCountEquals(0)
+        for(label in listOf("Настройки","Диагностика","Копировать лог","Другие логи","Поделиться предыдущим JSON"))
+            ui.onNodeWithText(label).assertDoesNotExist()
+        ui.runOnUiThread{ui.activity.onBackPressedDispatcher.onBackPressed()}
+        ui.onNodeWithText("VK Music").assertIsDisplayed()
         ui.activityRule.scenario.recreate()
-        ui.onNodeWithTag("settings_screen").assertExists()
-        ui.onNodeWithContentDescription("Назад").performClick()
-        ui.onNodeWithText("Музыка ВК").assertExists()
+        ui.onNodeWithText("VK Music").assertIsDisplayed()
         ui.onNodeWithTag("settings_screen").assertDoesNotExist()
+        ui.onNodeWithContentDescription("Меню").performClick()
+        ui.onNodeWithText("Поделиться JSON-отчётом").assertIsDisplayed()
     }
 }
 
