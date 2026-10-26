@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 
 internal data class ArtworkState(val visible: Boolean=false,val running: Boolean=false,val total: Int=0,val processed: Int=0,
     val added: Int=0,val existing: Int=0,val missing: Int=0,val failed: Int=0,val current: String?=null,val message: String?=null,
-    val issues: List<ArtworkIssue> = emptyList(),val skipped: List<ArtworkSkip> = emptyList()) {
+    val issues: List<ArtworkIssue> = emptyList(),val skipped: List<ArtworkSkip> = emptyList(),val readySkipped: Int=0) {
     val noCover get()=skipped.count{it.reason==ArtworkSkipReason.NO_COVER}
     val unavailable get()=skipped.count{it.reason==ArtworkSkipReason.TRACK_UNAVAILABLE}
 }
@@ -31,6 +31,7 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
                 }
                 if(state.running||state.message!=null)item {
                     Text("Обработано: ${state.processed}/${state.total}",Modifier.testTag("artwork_count"))
+                    Text("Готовых файлов пропущено: ${state.readySkipped}")
                     Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не передал обложку: ${state.noCover}\nТрек недоступен: ${state.unavailable} · ошибки: ${state.failed}")
                 }else item {Text("Готовые обложки пропускаются. Изменённые или недоступные файлы не перезаписываются. На время обработки приостанови скачивание и оставь приложение открытым.")}
                 state.message?.let{item {Text(it,Modifier.testTag("artwork_result"))}}
@@ -62,7 +63,7 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
             Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick=onDismiss){Text(if(state.running)"Свернуть" else "Закрыть")}
                 if(state.running)OutlinedButton(onClick=onStop,modifier=Modifier.testTag("artwork_stop")){Text("Остановить")}
-                else Button(onClick=onStart,modifier=Modifier.testTag("artwork_start")){Text(if(state.message==null)"Добавить обложки" else "Повторить обработку")}
+                else Button(onClick=onStart,modifier=Modifier.testTag("artwork_start")){Text(if(state.message==null)"Добавить обложки" else "Повторить неудачные")}
             }
         }
     }

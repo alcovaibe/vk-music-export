@@ -63,6 +63,6 @@ internal class ArtworkDiagnostics(private val observe:(String,Map<String,Any?>)-
     }
     fun summary(outcome: String,state: ArtworkState) {
         observe("audio_artwork_summary",mapOf("operation_id" to operation,"outcome" to outcome,"total" to state.total,
-            "processed" to state.processed,"added" to state.added,"existing" to state.existing,"missing" to state.missing,"no_cover" to state.noCover,"unavailable" to state.unavailable,"failed" to state.failed))
+            "processed" to state.processed,"added" to state.added,"existing" to state.existing,"ready_skipped" to state.readySkipped,"missing" to state.missing,"no_cover" to state.noCover,"unavailable" to state.unavailable,"failed" to state.failed))
     }
 }

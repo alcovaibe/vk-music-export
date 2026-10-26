@@ -10,12 +10,12 @@ class ArtworkDiagnosticsTest {
         val report=ArtworkDiagnostics{type,fields->records.add(type to fields)}
         report.item=21;report.step=ArtworkStep.DECODE_COVER
         report.result("FAILED",IllegalStateException("secret token URL filename"))
-        val state=ArtworkState(total=100,processed=21,added=18,existing=1,missing=1,failed=1)
+        val state=ArtworkState(total=100,processed=21,added=18,existing=1,missing=1,failed=1,readySkipped=3)
         report.summary("INTERRUPTED",state)
         assertEquals("audio_artwork_item",records[0].first)
         assertEquals(21,records[0].second["item"]);assertEquals("DECODE_COVER",records[0].second["stage"])
         assertEquals("audio_artwork_summary",records[1].first);assertEquals("INTERRUPTED",records[1].second["outcome"])
-        assertEquals(21,records[1].second["processed"]);assertEquals(1,records[1].second["failed"])
+        assertEquals(3,records[1].second["ready_skipped"]);assertEquals(21,records[1].second["processed"]);assertEquals(1,records[1].second["failed"])
         assertEquals(records[0].second["operation_id"],records[1].second["operation_id"])
         assertFalse(records.toString().contains("secret"));assertFalse(records.toString().contains("filename"))
     }

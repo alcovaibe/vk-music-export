@@ -18,11 +18,11 @@ class InstrumentationReportTest(unittest.TestCase):
             return verify(root)
 
     def successful_report(self):
-        cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(54))
-        return f'<testsuites tests="54" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(58))
+        return f'<testsuites tests="58" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 54)
+        self.assertEqual(self.check([self.successful_report()], '0'), 58)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -48,7 +48,7 @@ class InstrumentationReportTest(unittest.TestCase):
     def test_duplicate_reports_do_not_inflate_coverage(self):
         report = '<testsuite><testcase classname="C" name="n"/></testsuite>'
         with self.assertRaisesRegex(ValueError, 'Only 1'):
-            self.check([report] * 54)
+            self.check([report] * 58)
 
     def test_missing_interface_coverage_is_rejected(self):
         report = self.successful_report().replace('app.alcovaibe.vkmusicexport.InterfaceTest', 'OtherTest')
