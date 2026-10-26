@@ -36,7 +36,7 @@ class LibraryTrackRemovalTest {
             val body=if(req.url.encodedPath.endsWith("users.get"))"""{"response":[{"id":12}]}""" else """{"response":1}"""
             Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic").body(body.toResponseBody("application/json".toMediaType())).build()
         }.build()
-        VkAudioClient(client).removeLibraryTrack(access,12,track)
+        VkAudioClient(client){_,_->}.removeLibraryTrack(access,12,track)
         assertEquals(listOf("users.get","audio.delete"),requests.map{it.url.encodedPath.substringAfterLast('/')})
         val req=requests.last();assertEquals("POST",req.method);assertNull(req.url.query)
         val body=req.body as FormBody;val fields=(0 until body.size).associate{body.name(it) to body.value(it)}
@@ -48,7 +48,7 @@ class LibraryTrackRemovalTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
                 .body("""{"response":[{"id":13}]}""".toResponseBody("application/json".toMediaType())).build()
         }.build()
-        try{VkAudioClient(wrong).removeLibraryTrack(access,12,track);fail("account mismatch")}
+        try{VkAudioClient(wrong){_,_->}.removeLibraryTrack(access,12,track);fail("account mismatch")}
         catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
         assertEquals(1,requests.size)
     }
@@ -59,7 +59,7 @@ class LibraryTrackRemovalTest {
             val body=if(methods.last()=="users.get")"""{"response":[{"id":12}]}""" else """{"error":{"error_code":5}}"""
             Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic").body(body.toResponseBody("application/json".toMediaType())).build()
         }.build()
-        try{VkAudioClient(client).removeLibraryTrack(access,12,track);fail("must reject")}
+        try{VkAudioClient(client){_,_->}.removeLibraryTrack(access,12,track);fail("must reject")}
         catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
         assertEquals(listOf("users.get","audio.delete"),methods)
         for(raw in listOf("0","true","\"1\"","null","{}"))assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.success(Json.parseToJsonElement(raw))}
