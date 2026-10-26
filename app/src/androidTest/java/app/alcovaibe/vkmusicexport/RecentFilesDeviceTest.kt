@@ -27,7 +27,7 @@ class RecentFilesDeviceTest {
         ui.waitForIdle()
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val screenshot=instrumentation.uiAutomation.takeScreenshot()
-        val file=File(instrumentation.targetContext.cacheDir,"recent-files-clear.png")
+        val file=File(instrumentation.targetContext.getExternalFilesDir(null),"screenshots/recent-files-clear.png").apply{parentFile!!.mkdirs()}
         file.outputStream().use{screenshot.compress(Bitmap.CompressFormat.PNG,100,it)};screenshot.recycle()
         for(command in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots",
             "cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/recent-files-clear.png")) {
