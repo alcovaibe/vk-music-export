@@ -6,7 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
@@ -77,7 +77,10 @@ class ArtworkDeviceTest {
             val tasks=(1..2).map{ExportLayout.task(track(it),listOf("Моя музыка","Artwork retrofit CI"),it)};store.replace(tasks)
             for((i,ext)in listOf("mp3","m4a").withIndex()) {
                 val input=fixture(dir,ext);val task=tasks[i]
-                val row=shared.publish(task,TransferResult(input,ProcessedAudio(ext,if(ext=="mp3")"audio/mpeg"else "audio/mp4",1200))){store.prepared(task,it)}
+                // The CDN fixture is fragmented MP4. Old app exports are normal MediaMuxer M4A.
+                val exported=File(dir,"exported.$ext")
+                val media=AndroidAudioProcessor().process(input,exported,task.track,null)
+                val row=shared.publish(task,TransferResult(exported,media)){store.prepared(task,it)}
                 rows.add(row);store.done(task,row)
             }
             store.clearRecentFiles();var requests=0
@@ -95,6 +98,11 @@ class ArtworkDeviceTest {
                 assertTrue(store.snapshot().recent.isEmpty())
             }
             assertEquals(2,requests);assertEquals(2,store.snapshot().covered)
+            val changed=store.existing(rows.first().taskKey)!!
+            app.contentResolver.openOutputStream(Uri.parse(changed.uri),"wt")!!.use{it.write(byteArrayOf(9,8,7))}
+            try{repair.add(changed,ArtworkSource{_,_->error("modified file must not reach VK")}){access};fail("modified file")}
+            catch(e: MusicFailure){assertEquals(MusicError.INCOMPLETE,e.code)}
+            assertArrayEquals(byteArrayOf(9,8,7),app.contentResolver.openInputStream(Uri.parse(changed.uri))!!.use{it.readBytes()})
         }finally{rows.forEach{app.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()}
     }
     private class ProcessDeath: Error()
@@ -145,14 +153,17 @@ class ArtworkDeviceTest {
 
 @RunWith(AndroidJUnit4::class)
 class ArtworkUiDeviceTest {
-    @get:Rule val ui=createComposeRule()
+    @get:Rule val ui=createAndroidComposeRule<androidx.activity.ComponentActivity>()
     @Test fun editingStartsOnlyOnExplicitClickAndProgressCanBeDismissedWithoutStopping() {
         var state by mutableStateOf(ArtworkState(visible=true));var starts=0;var stops=0
+        awaitTestWindowFocus(ui.activity)
         ui.setContent{MusicTheme{if(state.visible)ArtworkSheet(state,
             onStart={starts++;state=state.copy(running=true,total=10,processed=3,added=2,missing=1)},
             onStop={stops++;state=state.copy(running=false,message="Прервано")},onDismiss={state=state.copy(visible=false)})}}
         ui.onNodeWithTag("artwork_sheet").assertIsDisplayed();assertEquals(0,starts)
-        val inst=InstrumentationRegistry.getInstrumentation();ui.waitForIdle();inst.uiAutomation.waitForIdle(200,5000)
+        ui.mainClock.advanceTimeBy(500);ui.waitForIdle()
+        ui.onNodeWithTag("artwork_start").assertIsDisplayed()
+        val inst=InstrumentationRegistry.getInstrumentation();inst.waitForIdleSync();inst.uiAutomation.waitForIdle(300,5000)
         val bitmap=inst.uiAutomation.takeScreenshot()
         val file=File(File(inst.targetContext.getExternalFilesDir(null),"screenshots").apply{mkdirs()},"saved-artwork.png")
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()

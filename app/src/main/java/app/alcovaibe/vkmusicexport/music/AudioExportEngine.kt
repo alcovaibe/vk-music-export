@@ -23,6 +23,11 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
         if(!store.beginRun())return
         observe("audio_queue_state",mapOf("state" to "RUNNING"))
         var lastProgress=0L
+        musicCheck(temporary.isDirectory||temporary.mkdirs(),MusicError.STORAGE)
+        suspend fun withArtwork(result: TransferResult,track: NativeTrack): TransferResult {
+            AudioExportRuntime.progress(AudioProgress("artwork"))
+            return DownloadArtwork(artwork).add(result,track,credential)
+        }
         try {
             // Also reconcile a pause in this process, including cancellation just after publication.
             reconcile()
@@ -45,7 +50,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                             var result=TransferResult(local,ProcessedAudio(copy.extension,copy.mime,copy.durationMs))
                             try {
                                 shared.copyTo(copy,local)
-                                result=DownloadArtwork(artwork).add(result,task.track,credential)
+                                result=withArtwork(result,task.track)
                                 published=shared.publish(task,result,store.directory(task)){store.prepared(task,it)}
                             }finally{local.delete();result.file.delete()}
                         }
@@ -71,7 +76,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                     delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                                 }
                             }
-                            result=DownloadArtwork(artwork).add(result?:throw MusicFailure(MusicError.INCOMPLETE),task.track,credential)
+                            result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),task.track)
                             val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
                             published=shared.publish(task,file,store.directory(task)){store.prepared(task,it)}
                         }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}

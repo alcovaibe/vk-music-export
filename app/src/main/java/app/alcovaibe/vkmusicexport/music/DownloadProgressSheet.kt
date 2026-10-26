@@ -63,6 +63,7 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                     Text("${task.track.artist} — ${task.track.title}",Modifier.testTag("downloads_current_track"))
                     queue.progress?.let{p->
                         Text(when(p.stage) {
+                            "artwork"->"Получение и добавление обложки"
                             "manifest"->"Чтение списка сегментов"
                             "segments"->"Сегменты: ${p.segment}/${p.segments} · получено ${p.bytes/1024} КБ"
                             "verifying"->"Проверка и сохранение файла · ${p.bytes/1024} КБ"
