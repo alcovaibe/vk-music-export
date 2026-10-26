@@ -23,12 +23,12 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
         if(!store.beginRun())return
         observe("audio_queue_state",mapOf("state" to "RUNNING"))
         var lastProgress=0L
-        musicCheck(temporary.isDirectory||temporary.mkdirs(),MusicError.STORAGE)
         suspend fun withArtwork(result: TransferResult,track: NativeTrack): TransferResult {
             AudioExportRuntime.progress(AudioProgress("artwork"))
             return DownloadArtwork(artwork).add(result,track,credential)
         }
         try {
+            musicCheck(temporary.isDirectory||temporary.mkdirs(),MusicError.STORAGE)
             // Also reconcile a pause in this process, including cancellation just after publication.
             reconcile()
             while(store.running()) {
