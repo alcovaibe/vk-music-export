@@ -12,6 +12,20 @@ class NativeProtocolTest {
     private val track="""{"owner_id":12,"id":34,"title":"Название","artist":"Исполнитель","duration":2}"""
     private fun json(s: String)=Json.parseToJsonElement(s)
     private fun failure(code: MusicError,block:()->Unit){assertEquals(code,assertThrows(MusicFailure::class.java,block).code)}
+    @Test fun primaryMediaExchangeRetainsAllCoverVariantsForFallbackWithoutAnExtraApiCall()=runBlocking {
+        var calls=0
+        val body="""{"response":[{"owner_id":12,"id":34,"title":"Название","artist":"Исполнитель","duration":2,
+            "url":"https://audio.userapi.com/song.mp3","thumb":{"photo_1200":"https://sun9.userapi.com/large","photo_600":"https://sun9.userapi.com/small"},
+            "album":{"id":4,"title":"Album","thumb":{"photo_300":"https://sun9.userapi.com/album"}}}]}"""
+        val client=NetworkClients.api().newBuilder().addInterceptor{chain->calls++
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic").body(body.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val api=VkAudioClient(client){_,_->};val access=MusicAccess("a".repeat(64),"Synthetic agent")
+        val expected=NativeTrack("12_34","Название","Исполнитель",2)
+        api.media(access,expected)
+        assertEquals(listOf(1200,600,300),api.artworkCandidates(access,expected).map{it.size});assertEquals(1,calls)
+        assertEquals(3,api.artworkCandidates(access,expected).size);assertEquals(2,calls)
+    }
     @Test fun cachedArtworkParseFailureRemainsAnErrorAndNextAttemptRequestsFreshMetadata()=runBlocking {
         var calls=0
         val client=NetworkClients.api().newBuilder().addInterceptor{chain->

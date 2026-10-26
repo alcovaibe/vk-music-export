@@ -154,6 +154,81 @@ class ArtworkDeviceTest {
             assertFalse(steps.contains(ArtworkStep.REPLACE_FILE));assertEquals(saved,store.existing(task.key))
         }finally{row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()}
     }
+    private fun variantApi(variants: List<ArtworkCandidate>)=object: MusicApi by api() {
+        override suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack)=variants
+    }
+    private val variants get()=listOf(ArtworkCandidate("https://sun9.userapi.com/track1200",ArtworkOrigin.TRACK,1200),
+        ArtworkCandidate("https://sun9.userapi.com/track600",ArtworkOrigin.TRACK,600),
+        ArtworkCandidate("https://sun9.userapi.com/album1200",ArtworkOrigin.ALBUM,1200))
+    @Test fun smallerAndAlbumVariantsAreTriedAfter404And410AndFirstDecodedImageStopsSearch()=runBlocking<Unit>(Dispatchers.IO) {
+        val calls=mutableListOf<String>();val attempts=mutableListOf<ArtworkAttempt>();val cover=image().bytes
+        val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+            val request=chain.request();calls.add(request.url.encodedPath)
+            assertNull(request.header("Authorization"));assertNull(request.header("Cookie"));assertFalse(request.url.toString().contains(access.token))
+            val status=when(request.url.encodedPath){"/track1200"->404;"/track600"->410;else->200}
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(status).message("Synthetic")
+                .body((if(status==200)cover else byteArrayOf()).toResponseBody()).build()
+        }.build()
+        val source=ArtworkLoader(variantApi(variants+variants[1]),client,onAttempt={attempts.add(it)})
+        assertNotNull(source.load(access,track()))
+        assertEquals(listOf("/track1200","/track600","/album1200"),calls)
+        assertEquals(listOf(404,410,200),attempts.filter{it.outcome==ArtworkAttemptOutcome.RESPONSE}.map{it.httpStatus})
+        assertEquals(ArtworkOrigin.ALBUM,attempts.last().origin);assertEquals(ArtworkAttemptOutcome.DECODED,attempts.last().outcome)
+        assertNotNull(source.load(access,track()));assertEquals(5,calls.size)
+        assertEquals(ArtworkAttemptOutcome.CACHE_HIT,attempts.last().outcome)
+        // A working smaller track image stops before the album, not just after exhausting every URL.
+        calls.clear()
+        val smaller=NetworkClients.api().newBuilder().addInterceptor{chain->
+            calls.add(chain.request().url.encodedPath);val status=if(calls.size==1)404 else 200
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("Synthetic")
+                .body((if(status==200)cover else byteArrayOf()).toResponseBody()).build()
+        }.build()
+        assertNotNull(ArtworkLoader(variantApi(variants),smaller).load(access,track()))
+        assertEquals(listOf("/track1200","/track600"),calls)
+    }
+    @Test fun allMissingVariantsRemainAnErrorAndOtherFailuresAndTotalBudgetStopFallback()=runBlocking<Unit>(Dispatchers.IO) {
+        for(mode in listOf("missing","forbidden","rate","server","unsafe","invalid","budget")) {
+            var calls=0
+            val offered=if(mode=="budget")(1..5).map{ArtworkCandidate("https://sun9.userapi.com/$it",ArtworkOrigin.TRACK)}else variants
+            val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+                calls++;val status=when(mode){"forbidden"->403;"rate"->429;"server"->503;"unsafe"->302;"invalid"->200;else->404}
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("Synthetic")
+                    .apply{if(mode=="unsafe")header("Location","https://evil.test/private?token=secret")}
+                    .body((if(mode=="budget")ByteArray(2*1024*1024)else byteArrayOf(1,2,3)).toResponseBody()).build()
+            }.build()
+            try{ArtworkLoader(variantApi(offered),client).load(access,track());fail("must fail: $mode")}
+            catch(e: MusicFailure){when(mode) {
+                "missing"->{assertTrue(e is ArtworkFetchFailure);assertEquals(3,(e as ArtworkFetchFailure).candidatesTried);assertEquals(404,e.httpStatus);assertEquals(3,calls)}
+                "budget"->{assertEquals(MusicError.TOO_LARGE,e.code);assertEquals(4,calls)}
+                "unsafe"->{assertEquals(MusicError.MEDIA_URL,e.code);assertEquals(1,calls)}
+                "invalid"->{assertEquals(MusicError.FORMAT,e.code);assertEquals(1,calls)}
+                else->{assertEquals(MusicError.HTTP,e.code);assertEquals(1,calls)}
+            }}
+        }
+    }
+    @Test fun fallbackRetagsOnlyVerifiedAudioAndAll404LeaveOriginalAndIndexIntact()=runBlocking<Unit>(Dispatchers.IO) {
+        val (context,dir)=isolated("artwork-fallback");val store=AudioExportStore(context);val shared=SharedAudioStore(context);val rows=mutableListOf<PublishedAudio>()
+        try {
+            val cover=image().bytes
+            for(failAll in listOf(false,true)) {
+                val task=ExportLayout.task(track(if(failAll)8 else 7),listOf("Моя музыка","Fallback CI"),1)
+                val input=fixture(dir,"mp3")
+                val saved=shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){ };rows.add(saved);store.done(task,saved)
+                val payload=EmbeddedArtwork.payloadDigest(input,"mp3");val hash=saved.sha256
+                val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+                    val status=if(failAll||chain.request().url.encodedPath!="/track600")404 else 200
+                    Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("Synthetic")
+                        .body((if(status==200)cover else byteArrayOf()).toResponseBody()).build()
+                }.build()
+                val repair=ArtworkRepair(context,store,shared)
+                try{assertTrue(repair.add(saved,ArtworkLoader(variantApi(variants),client)){access});assertFalse(failAll)}
+                catch(e: ArtworkFetchFailure){assertTrue(failAll);assertEquals(3,e.candidatesTried)}
+                val after=store.existing(task.key)!!;assertTrue(shared.valid(after));assertEquals(saved.uri,after.uri)
+                val copy=File(dir,"checked.mp3");shared.copyTo(after,copy);assertEquals(payload,EmbeddedArtwork.payloadDigest(copy,"mp3"))
+                if(failAll){assertEquals(saved,after);assertEquals(hash,fileSha256(copy))}else{assertTrue(after.coverEmbedded);picture(after)}
+            }
+        }finally{rows.forEach{app.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()}
+    }
     @Test fun artworkHttpFailuresKeepStatusAndRedirectReasonWithoutUrlsOrSecrets()=runBlocking<Unit>(Dispatchers.IO) {
         for((status,location,reason)in listOf(Triple(403,null,ArtworkFetchReason.HTTP_STATUS),Triple(404,null,ArtworkFetchReason.HTTP_STATUS),
             Triple(503,null,ArtworkFetchReason.HTTP_STATUS),Triple(302,null,ArtworkFetchReason.REDIRECT_LOCATION_MISSING),

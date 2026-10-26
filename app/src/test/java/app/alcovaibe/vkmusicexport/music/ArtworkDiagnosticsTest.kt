@@ -10,12 +10,12 @@ class ArtworkDiagnosticsTest {
         val report=ArtworkDiagnostics{type,fields->records.add(type to fields)}
         report.item=21;report.step=ArtworkStep.DECODE_COVER
         report.result("FAILED",IllegalStateException("secret token URL filename"))
-        val state=ArtworkState(total=100,processed=21,added=18,existing=1,missing=1,failed=1)
+        val state=ArtworkState(total=100,processed=21,added=18,existing=1,missing=1,failed=1,readySkipped=3)
         report.summary("INTERRUPTED",state)
         assertEquals("audio_artwork_item",records[0].first)
         assertEquals(21,records[0].second["item"]);assertEquals("DECODE_COVER",records[0].second["stage"])
         assertEquals("audio_artwork_summary",records[1].first);assertEquals("INTERRUPTED",records[1].second["outcome"])
-        assertEquals(21,records[1].second["processed"]);assertEquals(1,records[1].second["failed"])
+        assertEquals(3,records[1].second["ready_skipped"]);assertEquals(21,records[1].second["processed"]);assertEquals(1,records[1].second["failed"])
         assertEquals(records[0].second["operation_id"],records[1].second["operation_id"])
         assertFalse(records.toString().contains("secret"));assertFalse(records.toString().contains("filename"))
     }
@@ -49,6 +49,20 @@ class ArtworkDiagnosticsTest {
         assertFalse(records.toString().contains("private"));assertFalse(records.toString().contains("artist"))
         val issue=artworkIssue(3,"name",ArtworkStep.FETCH_COVER,ArtworkFetchFailure(403,ArtworkFetchReason.HTTP_STATUS))
         assertTrue(issue.reason.contains("403"));assertEquals(MusicError.HTTP,issue.code)
+    }
+    @Test fun candidateTraceCorrelatesWithFinalItemAndContainsOnlyFixedMetadata() {
+        val records=mutableListOf<Pair<String,Map<String,Any?>>>()
+        val diagnostic=ArtworkDiagnostics{type,fields->records.add(type to fields)}
+        diagnostic.item=94;diagnostic.step=ArtworkStep.FETCH_COVER
+        diagnostic.candidate(ArtworkAttempt(2,3,ArtworkOrigin.ALBUM,600,1,ArtworkAttemptOutcome.RESPONSE,404))
+        diagnostic.result("FAILED",ArtworkFetchFailure(404,ArtworkFetchReason.HTTP_STATUS,candidatesTried=3))
+        assertEquals("audio_artwork_candidate",records.first().first)
+        assertEquals(94,records.first().second["item"]);assertEquals("ALBUM",records.first().second["origin"])
+        assertEquals(600,records.first().second["size"]);assertEquals(404,records.first().second["http_status"])
+        assertEquals(records.first().second["operation_id"],records.last().second["operation_id"])
+        assertEquals(3,records.last().second["candidates_tried"])
+        assertTrue(artworkIssue(94,"private",ArtworkStep.FETCH_COVER,ArtworkFetchFailure(404,ArtworkFetchReason.HTTP_STATUS,candidatesTried=3)).reason.contains("всем 3"))
+        assertFalse(records.toString().contains("private"));assertFalse(records.toString().contains("http://"));assertFalse(records.toString().contains("https://"))
     }
     @Test fun emptyVkAudioIsUnavailableButMalformedOrMismatchedResponsesRemainErrors() {
         val track=NativeTrack("12_34","CI","Artist",1)

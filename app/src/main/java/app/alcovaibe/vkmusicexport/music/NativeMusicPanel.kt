@@ -43,6 +43,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
     val artwork by model.artwork.collectAsState()
+    val duplicates by model.duplicates.collectAsState()
     val savedFiles by model.savedFiles.collectAsState()
     val savedFilePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri==null)model.cancelSavedFileSelection()else model.previewSavedFile(uri)
@@ -140,15 +141,20 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     Text(if(state.stopping)"Завершаем предыдущую операцию…"
                     else if(state.waitingForSlot)"Ожидаем завершения предыдущей операции…"
                     else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК"
+                    else if(state.stage.startsWith("duplicates_"))duplicates.progress.stage.ifEmpty{"Подготовка проверки дубликатов"}
                     else state.preparing?:"Проверка музыкального доступа")
                     if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
                     TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
+                }
+                if(duplicates.scanId.isNotEmpty()&&!duplicates.visible)OutlinedButton(
+                    enabled=!state.busy||duplicates.busy,onClick=model::showDuplicates,modifier=Modifier.testTag("reopen_duplicates")) {
+                    Text("Дубликаты: процесс и результат")
                 }
                 state.probe?.let {
                     HorizontalDivider()
                     MusicCatalogPanel(state,canPrepare,model::section,model::select,model::catalogPage,model::refreshCatalog,
                         onLibrary={albums->model.section(CatalogSection.LIBRARY);model.prepare(libraryAlbums=albums)},
-                        onCategory={model.prepare(catalogKind=it)},onClassify=model::classify)
+                        onCategory={model.prepare(catalogKind=it)},onClassify=model::classify,onDuplicates=model::showDuplicates)
                     Text("Подготовку списков дождись на этом экране. После создания очереди можно свернуть приложение; прогресс доступен кнопкой скачивания вверху.",style=MaterialTheme.typography.bodySmall)
                 }
                 state.page?.let { page ->
@@ -182,6 +188,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
+    if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
+        model::cancelDuplicateRemoval,model::skipDuplicate,model::cancel,model::dismissDuplicates)
     LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
     if(savedFiles.visible)SavedFilesSheet(savedFiles,{model.checkSavedFiles()},{model.checkSavedFiles(true)},
         onSelect={row->model.selectSavedFile(row);savedFilePicker.launch(arrayOf("audio/*"))},

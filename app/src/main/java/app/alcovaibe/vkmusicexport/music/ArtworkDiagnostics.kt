@@ -5,7 +5,7 @@ import java.util.UUID
 internal enum class ArtworkStep { INITIALIZE,RECOVERY,VERIFY_FILE,BACKUP,READ_TAGS,RESOLVE_COVER,FETCH_COVER,DECODE_COVER,
     WRITE_TAGS,VERIFY_TAGGED,REPLACE_FILE,VERIFY_WRITTEN,UPDATE_INDEX }
 internal enum class ArtworkFetchReason { HTTP_STATUS,REDIRECT_LIMIT,REDIRECT_LOCATION_MISSING,REDIRECT_UNSAFE }
-internal class ArtworkFetchFailure(val httpStatus: Int,val fetchReason: ArtworkFetchReason,code: MusicError=MusicError.HTTP): MusicFailure(code)
+internal class ArtworkFetchFailure(val httpStatus: Int,val fetchReason: ArtworkFetchReason,code: MusicError=MusicError.HTTP,val candidatesTried: Int=1): MusicFailure(code)
 internal enum class ArtworkSkipReason(val label: String) {
     NO_COVER("ВК не передал ссылку на обложку."),TRACK_UNAVAILABLE("ВК не вернул трек для текущего доступа.")
 }
@@ -20,7 +20,8 @@ internal fun artworkIssue(item: Int,name: String,step: ArtworkStep,error: Except
             ArtworkFetchReason.REDIRECT_LOCATION_MISSING->"Сервер картинки не передал адрес перенаправления (HTTP ${error.httpStatus})."
             ArtworkFetchReason.REDIRECT_UNSAFE->"Перенаправление картинки отклонено: адрес не поддерживается (HTTP ${error.httpStatus})."
             ArtworkFetchReason.HTTP_STATUS->when(error.httpStatus) {
-                404,410->"Картинка по переданному ВК адресу не найдена (HTTP ${error.httpStatus})."
+                404,410->if(error.candidatesTried>1)"Картинка не найдена по всем ${error.candidatesTried} предложенным ВК адресам (последний HTTP ${error.httpStatus})."
+                    else "Картинка по переданному ВК адресу не найдена (HTTP ${error.httpStatus})."
                 401,403->"Сервер картинки отказал в доступе (HTTP ${error.httpStatus})."
                 else->"Сервер картинки вернул HTTP ${error.httpStatus}."
             }
@@ -47,15 +48,21 @@ internal class ArtworkDiagnostics(private val observe:(String,Map<String,Any?>)-
     private val operation=UUID.randomUUID().toString()
     var item=0
     var step=ArtworkStep.INITIALIZE
+    fun candidate(attempt: ArtworkAttempt) {
+        observe("audio_artwork_candidate",mapOf("operation_id" to operation,"item" to item,"candidate" to attempt.candidate,
+            "total_candidates" to attempt.total,"origin" to attempt.origin.name,"size" to attempt.size,
+            "hop" to attempt.hop,"outcome" to attempt.outcome.name,"http_status" to attempt.httpStatus))
+    }
     fun result(outcome: String,error: Exception?=null) {
         val issue=error?.let{artworkIssue(item,"",step,it)}
         observe("audio_artwork_item",mapOf("operation_id" to operation,"item" to item,"stage" to step.name,
             "outcome" to outcome,"code" to issue?.code?.name,"kind" to (error as? MusicFailure)?.kind?.name,
             "vk_code" to (error as? MusicFailure)?.remoteCode,"file_reason" to (error as? SavedFileFailure)?.reason?.name,
-            "http_status" to (error as? ArtworkFetchFailure)?.httpStatus,"fetch_reason" to (error as? ArtworkFetchFailure)?.fetchReason?.name))
+            "http_status" to (error as? ArtworkFetchFailure)?.httpStatus,"fetch_reason" to (error as? ArtworkFetchFailure)?.fetchReason?.name,
+            "candidates_tried" to (error as? ArtworkFetchFailure)?.candidatesTried))
     }
     fun summary(outcome: String,state: ArtworkState) {
         observe("audio_artwork_summary",mapOf("operation_id" to operation,"outcome" to outcome,"total" to state.total,
-            "processed" to state.processed,"added" to state.added,"existing" to state.existing,"missing" to state.missing,"no_cover" to state.noCover,"unavailable" to state.unavailable,"failed" to state.failed))
+            "processed" to state.processed,"added" to state.added,"existing" to state.existing,"ready_skipped" to state.readySkipped,"missing" to state.missing,"no_cover" to state.noCover,"unavailable" to state.unavailable,"failed" to state.failed))
     }
 }
