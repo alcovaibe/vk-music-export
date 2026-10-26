@@ -58,6 +58,7 @@ internal object ExportLayout {
         return tasks
     }
     fun playlist(page: NativePage,list: NativePlaylist,kind: PlaylistKind=list.kind): List<AudioExportTask> {
+        musicCheck(kind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
         val folder=component(list.title)+" [${list.owner}_${list.id}]"
         return page.tracks.mapIndexed{i,track->task(track,listOf(kind.folder,folder),i+1)}
     }

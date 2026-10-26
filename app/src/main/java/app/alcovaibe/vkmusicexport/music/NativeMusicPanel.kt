@@ -131,33 +131,21 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
                     TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
                 }
-                state.probe?.let { probe ->
+                state.probe?.let {
                     HorizontalDivider()
-                    Text("Моя музыка: ${probe.library.count} позиций")
-                    Button(enabled=canPrepare,onClick={model.select(null);model.prepare()}){Text("Скачать всю мою музыку")}
-                    OutlinedButton(enabled=canPrepare,onClick={model.prepare(allCatalog=true)}){Text("Скачать музыку и все подборки")}
-                    Text("Подготовку списков дождись на этом экране. После создания очереди можно свернуть приложение. После перезапуска нажми «Продолжить скачивание»; готовые файлы будут проверены и использованы повторно.",style=MaterialTheme.typography.bodySmall)
-                    TextButton(enabled=!state.busy,onClick={model.select(null)}){Text("Показать мою музыку")}
+                    MusicCatalogPanel(state,canPrepare,model::section,model::select,model::catalogPage,model::refreshCatalog,
+                        onLibrary={albums->model.section(CatalogSection.LIBRARY);model.prepare(libraryAlbums=albums)},
+                        onCategory={model.prepare(catalogKind=it)},onClassify=model::classify)
+                    Text("Подготовку списков дождись на этом экране. После создания очереди можно свернуть приложение; прогресс доступен кнопкой скачивания вверху.",style=MaterialTheme.typography.bodySmall)
                 }
-                state.catalog?.let { catalog ->
-                    Text("Подборки: ${state.catalogOffset+1}–${state.catalogOffset+catalog.lists.size} из ${catalog.count}",style=MaterialTheme.typography.titleMedium)
-                    Text("Если ВК не указал тип подборки явно, она сохраняется в «Плейлисты». Для открытой подборки можно выбрать «Альбомы» вручную.",style=MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        TextButton(enabled=!state.busy&&state.catalogOffset>0,onClick={model.catalogPage(-1)}){Text("Подборки назад")}
-                        TextButton(enabled=!state.busy&&catalog.lists.isNotEmpty()&&state.catalogOffset+catalog.lists.size<catalog.count,onClick={model.catalogPage(1)}){Text("Ещё подборки")}
-                    }
-                    catalog.lists.forEach { list ->
-                        OutlinedButton(enabled=!state.busy,onClick={model.select(list)}){Text("${list.title} · ${list.count}")}
-                    }
-                }
-                state.catalogError?.let{Text("Каталог: ${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
                 state.page?.let { page ->
                     HorizontalDivider()
                     Text(state.selected?.title?:"Моя музыка",style=MaterialTheme.typography.titleMedium)
                     Text("Показано ${if(page.tracks.isEmpty())0 else state.pageOffset+1}–${state.pageOffset+page.tracks.size} из ${page.count}")
+                    val selectedKind=state.selected?.let{MusicCatalog.kind(it,state.catalogKinds)}
                     if(state.selected!=null) {
-                        Button(enabled=canPrepare,onClick={model.prepare(kind=PlaylistKind.PLAYLIST)}){Text("Скачать в «Плейлисты»")}
-                        OutlinedButton(enabled=canPrepare,onClick={model.prepare(kind=PlaylistKind.ALBUM)}){Text("Скачать в «Альбомы»")}
+                        if(selectedKind==PlaylistKind.UNKNOWN)Text("Чтобы скачать подборку, сначала укажи её тип.")
+                        else Button(enabled=canPrepare,onClick={model.prepare()}){Text(if(selectedKind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         TextButton(enabled=!state.busy&&state.pageOffset>0,onClick={model.page(-1)}){Text("Предыдущие треки")}
@@ -170,7 +158,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                 Text(track.artist)
                                 track.album?.let{Text("Альбом: ${it.title}",style=MaterialTheme.typography.bodySmall)}
                                 if(track.restricted||track.duration==0)Text("ВК отметил ограничение или не вернул длительность")
-                                TextButton(enabled=canPrepare&&!track.restricted&&track.duration>0,onClick={model.download(track,state.pageOffset+i+1)}){Text("Скачать этот трек")}
+                                TextButton(enabled=canPrepare&&selectedKind!=PlaylistKind.UNKNOWN&&!track.restricted&&track.duration>0,onClick={model.download(track,state.pageOffset+i+1)}){Text("Скачать этот трек")}
                             }
                         }
                     }

@@ -24,6 +24,7 @@ internal enum class MusicError(val label: String) {
     HLS("Этот вариант HLS пока не поддерживается. Готовый файл не создан."),
     INCOMPLETE("Загрузка или проверка длительности не завершена. Готовый файл не создан."),
     FORMAT("Формат аудио пока не поддерживается. Готовый файл не создан."),
+    COLLECTION_TYPE("Сначала выбери тип подборки: плейлист или альбом."),
     STORAGE("Не удалось сохранить данные на устройстве."), BUSY("Другая музыкальная операция ещё выполняется.")
 }
 internal enum class MusicFailureKind { DNS, CONNECT, SOCKET, TIMEOUT, TLS, PROTOCOL, EOF, IO, MEDIA_PARSE, OTHER }
@@ -50,7 +51,7 @@ internal class NativePlaylist(val owner: Long, val id: Long, val title: String, 
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
 internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int)
 internal data class NativeProbe(val owner: Long, val library: NativePage)
-internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Плейлисты") }
+internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Тип не определён") }
 
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
