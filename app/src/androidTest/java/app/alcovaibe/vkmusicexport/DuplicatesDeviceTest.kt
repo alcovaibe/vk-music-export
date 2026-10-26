@@ -84,7 +84,7 @@ class DuplicatesUiDeviceTest {
 
 @RunWith(AndroidJUnit4::class)
 class DuplicateHashDeviceTest {
-    @Test fun temporaryAudioHashIgnoresCoverAndLeavesInputsAndSharedMusicUntouched()=runBlocking<Unit>(Dispatchers.IO) {
+    @Test fun temporaryAudioHashIgnoresCoverAndRemovesTemporaryCopiesWithoutChangingInputs()=runBlocking<Unit>(Dispatchers.IO) {
         val instrumentation=InstrumentationRegistry.getInstrumentation();val app=instrumentation.targetContext
         val dir=File(app.cacheDir,"duplicate-hash-test").apply{deleteRecursively();mkdirs()}
         val context=object: ContextWrapper(app){override fun getCacheDir()=dir}
@@ -122,9 +122,10 @@ class ArtworkRetryDeviceTest {
             override fun getFilesDir()=File(dir,"files").apply{mkdirs()}
             override fun getCacheDir()=File(dir,"cache").apply{mkdirs()}
         }
-        val row=PublishedAudio("synthetic-ready",duplicateTrack(999999),"content://media/external_primary/audio/media/9223372036854775806",
+        val task=ExportLayout.task(duplicateTrack(999999),listOf("Моя музыка"),1)
+        val row=PublishedAudio(task.key,task.track,"content://media/external_primary/audio/media/9223372036854775806",
             "Synthetic.mp3",ExportLayout.ROOT+"Моя музыка/","mp3","audio/mpeg",1000,100,"a".repeat(64),coverEmbedded=true)
-        withContext(Dispatchers.IO){AudioExportStore(application).use{it.done(ExportLayout.task(row.track,listOf("Моя музыка"),1),row)}}
+        withContext(Dispatchers.IO){AudioExportStore(application).use{it.done(task,row)}}
         val holder=ViewModelStore();lateinit var model: NativeMusicViewModel
         try {
             instrumentation.runOnMainSync{model=ViewModelProvider(holder,object: ViewModelProvider.Factory {
