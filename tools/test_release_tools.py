@@ -115,7 +115,7 @@ esac
         for phase in ('after','restarted'):
             call=next(line for line in calls if line.startswith('assert_visible '+phase+' '))
             self.assertEqual(call,f'assert_visible {phase} "VK Music"')
-            for label,expected in [('VK Music',0),('Открыть мою музыку',1)]:
+            for label,expected in [('VK Music',0),('Открыть мою музыку',1),('VK Music Export',1)]:
                 with tempfile.TemporaryDirectory() as td:
                     directory=Path(td);(directory/'upgrade-results').mkdir();(directory/'tools').mkdir()
                     (directory/'tools/emulator-dialog.py').write_text((TOOLS/'emulator-dialog.py').read_text())

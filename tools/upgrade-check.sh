@@ -56,7 +56,7 @@ assert_visible() {
       adb shell input tap "$x" "$y"
       continue
     fi
-    if grep -q "$expected_text" "upgrade-results/$1.xml"; then return; fi
+    if grep -Fq -- "text=\"$expected_text\"" "upgrade-results/$1.xml"; then return; fi
     sleep 2
   done
   echo 'Expected release screen was not rendered.'
