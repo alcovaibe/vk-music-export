@@ -22,10 +22,10 @@ import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsPage(title: String,onBack: ()->Unit,tag: String="settings_page",
-    content: @Composable ColumnScope.()->Unit) {
+    actions: @Composable RowScope.()->Unit={},content: @Composable ColumnScope.()->Unit) {
     BackHandler {Diagnostics.event("settings_navigation",mapOf("screen" to tag,"detector" to "system_back"));onBack()}
     Scaffold(modifier=Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
-        topBar={TopAppBar(title={Text(title)},navigationIcon={
+        topBar={TopAppBar(title={Text(title)},actions=actions,navigationIcon={
             IconButton(onClick={Diagnostics.button(tag+"_back");onBack()}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}
         })}) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(24.dp),

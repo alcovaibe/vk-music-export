@@ -35,7 +35,7 @@ internal object UpdateInstaller {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun UpdatePanel(controller: UpdateController) {
+internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
     val state by controller.state.collectAsState()
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
@@ -72,7 +72,7 @@ internal fun UpdatePanel(controller: UpdateController) {
         if(state.status==UpdateStatus.CHECKING)CircularProgressIndicator(Modifier.size(42.dp).testTag("updates_progress"),strokeWidth=2.dp)
     }
     val showResult=state.status in setOf(UpdateStatus.CURRENT,UpdateStatus.ACCESS,UpdateStatus.ERROR,UpdateStatus.RATE_LIMIT)
-    if(state.release!=null||showResult) {
+    if(showSheet&&(state.release!=null||showResult)) {
         ModalBottomSheet(onDismissRequest=::close,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
             Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("updates_sheet")) {
                 Column(Modifier.heightIn(max=360.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {

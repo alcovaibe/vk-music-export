@@ -31,6 +31,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var sessionMonitor: Job?=null
     private val operations=NativeOperationJournal(application)
     private val _state=MutableStateFlow(NativeMusicState());val state=_state.asStateFlow()
+    private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
+    fun showDownloads(){Diagnostics.button("audio_downloads_open");_downloadsOpen.value=true}
+    fun dismissDownloads(){Diagnostics.button("audio_downloads_dismiss");_downloadsOpen.value=false}
+    private suspend fun startDownloads(retry: Boolean=false) {
+        // Presentation state only: dismissing the sheet never controls the UIDT job.
+        _downloadsOpen.value=true
+        AudioExportRuntime.start(getApplication(),retry)
+    }
     private var work: Job?=null
     private val authForeground=MutableStateFlow(false)
     private val authOpened=MutableStateFlow(false)
@@ -280,7 +288,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     }
                 }
                 active(g);AudioExportRuntime.replace(getApplication(),tasks,issues)
-                active(g);AudioExportRuntime.start(getApplication())
+                active(g);startDownloads()
                 _state.update{it.copy(message="Очередь готова. Файлы сохраняются в Music/VK Music Export. Можно свернуть приложение."+
                     if(issues>0)" Не удалось прочитать источников: $issues. См. итог очереди." else "")}
             }
@@ -293,12 +301,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             musicCheck(position>0,MusicError.RESPONSE)
             val tasks=if(s.selected==null)listOf(ExportLayout.task(track,listOf("Моя музыка"),position))
                 else ExportLayout.playlist(NativePage(listOf(track),1),s.selected).map{ExportLayout.task(it.track,it.folders,position)}
-            active(g);AudioExportRuntime.replace(getApplication(),tasks);active(g);AudioExportRuntime.start(getApplication())
+            active(g);AudioExportRuntime.replace(getApplication(),tasks);active(g);startDownloads()
         }}
     }
     fun resumeQueue(retry: Boolean=false) {
         Diagnostics.button(if(retry)"audio_queue_retry" else "audio_queue_resume")
-        run("queue_resume"){g->withContext(Dispatchers.IO){active(g);AudioExportRuntime.start(getApplication(),retry)}}
+        run("queue_resume"){g->withContext(Dispatchers.IO){active(g);startDownloads(retry)}}
     }
     fun pauseQueue() {
         Diagnostics.button("audio_queue_pause")
