@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 internal enum class SavedFileReason(val label: String) {
-    OK("Файл проверен."),MISSING("Файл по сохранённому адресу не найден."),NO_ACCESS("Android не разрешил прочитать файл."),
+    OK("Файл проверен."),MISSING("Запись файла не найдена в доступной медиатеке."),NO_ACCESS("Android не разрешил прочитать файл."),
     OWNER_CHANGED("Файл больше не принадлежит приложению."),PENDING("Публикация файла не завершена."),
     OUTSIDE_FOLDER("Файл перемещён за пределы разрешённой папки."),SIZE_CHANGED("Размер файла изменился."),
     HASH_CHANGED("Содержимое файла изменилось: SHA-256 не совпал."),READ_ERROR("Не удалось прочитать файл."),

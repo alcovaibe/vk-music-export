@@ -48,7 +48,7 @@ class SavedFileRecoveryDeviceTest {
             app.contentResolver.update(Uri.parse(row.uri),ContentValues().apply{put(MediaStore.MediaColumns.DISPLAY_NAME,"renamed-recovery.mp3")},null,null)
             assertEquals(SavedFileReason.LOCATION_CHANGED,shared.inspect(row).reason)
             assertFalse(shared.valid(row));assertEquals(row,store.existing(row.taskKey))
-            app.contentResolver.delete(Uri.parse(row.uri),null,null)
+            app.contentResolver.delete(Uri.parse(row.uri),null,null);rows.remove(row)
             assertEquals(SavedFileReason.MISSING,shared.inspect(row).reason)
         }
     }

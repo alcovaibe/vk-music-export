@@ -43,8 +43,9 @@ internal class SharedAudioStore(internal val context: Context) {
     suspend fun inspect(record: PublishedAudio): SavedFileCheck {
         try {
             val target=uri(record.uri)
-            val meta=resolver.query(target,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,
-                MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.DISPLAY_NAME),null,null,null)?.use{c->
+            val meta=resolver.query(collection,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.DISPLAY_NAME),
+                "${MediaStore.MediaColumns._ID}=?",arrayOf(target.lastPathSegment),null)?.use{c->
                 if(!c.moveToFirst())null else listOf(c.getString(0),c.getString(1),c.getInt(2).toString(),c.getString(3))
             }?:return SavedFileCheck(SavedFileReason.MISSING)
             if(meta[0]!=context.packageName)return SavedFileCheck(SavedFileReason.OWNER_CHANGED)
