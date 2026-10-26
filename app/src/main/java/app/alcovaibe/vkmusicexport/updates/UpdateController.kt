@@ -17,12 +17,11 @@ import kotlinx.coroutines.sync.Mutex
 
 internal enum class UpdateStatus { IDLE,CHECKING,AVAILABLE,CURRENT,ACCESS,ERROR,RATE_LIMIT,DOWNLOADING,READY,INVALID_APK,INSTALL_ERROR }
 internal data class UpdateState(val initialized: Boolean=false,
-    val automatic: Boolean=true,val status: UpdateStatus=UpdateStatus.IDLE,val release: UpdateRelease?=null,
+    val status: UpdateStatus=UpdateStatus.IDLE,val release: UpdateRelease?=null,
     val received: Long=0,val total: Long=0,val apk: File?=null)
 internal interface UpdatePreferences {
     var lastAttempt: Long
     var deferred: Int
-    var automatic: Boolean
 }
 
 internal class UpdateController(private val scope: CoroutineScope,private val preferences: UpdatePreferences,
@@ -40,15 +39,15 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
     init {
         scope.launch {
             withContext(Dispatchers.IO){try{prepare()}catch(e: CancellationException){throw e}catch(_: Exception){record("prepare_failed")}}
-            mutable.value=UpdateState(initialized=true,automatic=preferences.automatic)
+            mutable.value=UpdateState(initialized=true)
             automaticCheck()
         }
     }
     fun resume(){active=true;automaticCheck()}
-    fun pause(){active=false;checkGeneration++;checkJob?.cancel();if(mutable.value.status==UpdateStatus.CHECKING)mutable.update{it.copy(status=UpdateStatus.IDLE)}}
+    fun pause(){active=false;checkGeneration++;checkJob?.cancel();if(mutable.value.status !in transfers)mutable.update{it.copy(status=UpdateStatus.IDLE,release=null)}}
     private fun automaticCheck() {
         val s=mutable.value
-        if(!active||!s.initialized||!s.automatic||s.status!=UpdateStatus.IDLE)return
+        if(!active||!s.initialized||s.status!=UpdateStatus.IDLE)return
         val now=wall();val last=preferences.lastAttempt
         if(now<last){preferences.lastAttempt=now;return}
         if(last==0L||now-last>=86400000)check(false)
@@ -78,7 +77,6 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
     }
     private fun problem(e: Exception)=when((e as? UpdateProblem)?.code){"ACCESS"->UpdateStatus.ACCESS;"RATE_LIMIT"->UpdateStatus.RATE_LIMIT;"INVALID_APK"->UpdateStatus.INVALID_APK;else->UpdateStatus.ERROR}
     private fun error(status: UpdateStatus,manual: Boolean){mutable.update{it.copy(status=if(manual)status else UpdateStatus.IDLE)};record("check_failed")}
-    fun automatic(value: Boolean){preferences.automatic=value;mutable.update{it.copy(automatic=value)};if(value)automaticCheck()}
     fun download() {
         val s=mutable.value;val release=s.release ?: return
         if(!active||transfer?.isActive==true||s.status in setOf(UpdateStatus.CHECKING,UpdateStatus.READY,UpdateStatus.INSTALL_ERROR))return
@@ -124,10 +122,8 @@ internal class UpdateViewModel(app: Application): AndroidViewModel(app) {
         override var deferred: Int
             get()=preferences.getInt("deferred",0)
             set(v){preferences.edit().putInt("deferred",v).apply()}
-        override var automatic: Boolean
-            get()=preferences.getBoolean("automatic",true)
-            set(v){preferences.edit().putBoolean("automatic",v).apply()}
+
     },service,BuildConfig.VERSION_CODE.toLong(),Build.VERSION.SDK_INT,record={Diagnostics.event("updater",mapOf("stage" to it))},
-        prepare={service.purgeOrphans();LegacyUpdateAccess.cleanup(app)})
+        prepare={service.purgeOrphans();LegacyUpdateAccess.cleanup(app);preferences.edit().remove("automatic").apply()})
     override fun onCleared(){controller.close();service.close()}
 }

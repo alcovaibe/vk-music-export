@@ -11,7 +11,6 @@ class UpdateControllerTest {
     private class Preferences: UpdatePreferences {
         override var lastAttempt=100_000_000L
         override var deferred=0
-        override var automatic=true
     }
     private suspend fun UpdateController.waitFor(status: UpdateStatus)=withTimeout(5000){state.first{it.initialized&&it.status==status}}
     private suspend fun UpdateController.ready(){withTimeout(5000){state.first{it.initialized}}}

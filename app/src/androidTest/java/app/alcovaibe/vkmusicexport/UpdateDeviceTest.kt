@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport
 
 import android.content.Intent
+import androidx.activity.compose.setContent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -41,19 +42,38 @@ class UpdateAccessDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class UpdateUiDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun publicUpdatesPanelRequiresNoCredentialAndPreservesCollection() {
-        val updates=androidx.lifecycle.ViewModelProvider(ui.activity)[UpdateViewModel::class.java]
-        ui.waitUntil(10000){updates.controller.state.value.initialized}
+    @Test fun publicUpdatesUseHomeButtonAndNativeSheetWithoutSettingsEntry() {
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
+        ui.onNodeWithTag("check_updates").assertExists()
         ui.onNodeWithContentDescription("Настройки").performClick()
-        ui.onNodeWithText("Обновления приложения").performScrollTo().performClick()
-        ui.onNodeWithText("Обновления из публичного репозитория GitHub. Токен не требуется.").assertExists()
-        ui.onNodeWithText("Настроить доступ GitHub").assertDoesNotExist()
-        ui.onNodeWithTag("update_token").assertDoesNotExist()
-        ui.onNodeWithText("Проверить обновления").performScrollTo().assertExists()
-        assertFalse(File(ui.activity.noBackupFilesDir,"update-access.bin").exists())
-        ui.onNodeWithText("Закрыть").performScrollTo().performClick()
-        val after=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
-        assertArrayEquals(collection,after)
+        ui.onNodeWithText("Обновления приложения").assertDoesNotExist()
+        ui.onNodeWithTag("check_updates").assertDoesNotExist()
+        ui.onNodeWithContentDescription("Назад").performClick()
+        // A fixed local source proves the result sheet; this test never contacts GitHub or installs an APK.
+        lateinit var controller: UpdateController
+        val scope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Main.immediate)
+        ui.runOnUiThread {
+            controller=UpdateController(scope,object: UpdatePreferences {
+                override var lastAttempt=System.currentTimeMillis()
+                override var deferred=0
+            },object: UpdateService {
+                override suspend fun latest()=UpdateRelease("99.0.0",2_000_000_000,36,UpdateAsset(100,"a".repeat(64)))
+                override suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit): File=error("No download")
+                override suspend fun verify(file: File,release: UpdateRelease)=Unit
+            },1,36)
+            ui.activity.setContent {MusicTheme {UpdatePanel(controller)}}
+        }
+        try {
+            ui.waitUntil(10000){controller.state.value.initialized}
+            ui.runOnUiThread{controller.resume()}
+            ui.onNodeWithTag("check_updates").performClick()
+            ui.onNodeWithTag("updates_sheet").assertExists()
+            ui.onNodeWithText("Доступно обновление 99.0.0").assertExists()
+            ui.onNodeWithText("Позже").performClick()
+            ui.onNodeWithTag("updates_sheet").assertDoesNotExist()
+            ui.onNodeWithTag("check_updates").assertExists()
+            assertFalse(File(ui.activity.noBackupFilesDir,"update-access.bin").exists())
+            assertArrayEquals(collection,ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes())
+        }finally{ui.runOnUiThread{controller.close();scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()}}
     }
 }

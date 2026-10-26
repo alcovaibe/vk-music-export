@@ -59,6 +59,7 @@ class InterfaceTest {
 
     @Test fun nativeMusicEntryAndHomeSurviveRecreationWithoutRetiredScreens() {
         ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+        ui.onNodeWithTag("check_updates").assertExists()
         ui.onNodeWithText("Открыть мою музыку").performScrollTo().assertIsDisplayed()
         for(label in listOf("Открыть ВК в Chrome","Сбор из Chrome","Импорт JSON","Экспорт"))ui.onNodeWithText(label).assertDoesNotExist()
         capture("01-home")
@@ -84,7 +85,8 @@ class InterfaceTest {
         ui.onNodeWithText("Прямой доступ ВК · эксперимент").assertDoesNotExist()
         ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").assertDoesNotExist()
         ui.onNodeWithText("VK Music Export · ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})").assertDoesNotExist()
-        ui.onNodeWithText("Обновления приложения").performScrollTo().assertExists()
+        ui.onNodeWithText("Обновления приложения").assertDoesNotExist()
+        ui.onNodeWithTag("check_updates").assertDoesNotExist()
         capture("settings-without-duplicate-entry")
         ui.onNodeWithContentDescription("Назад").performClick()
         ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}

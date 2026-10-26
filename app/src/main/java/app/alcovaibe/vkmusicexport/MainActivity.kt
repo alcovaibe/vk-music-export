@@ -37,8 +37,8 @@ private fun musicIcon() = ImageVector.vectorResource(R.drawable.ic_music_note)
 class MainActivity : ComponentActivity() {
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
-    override fun onResume(){super.onResume();nativeMusic.setForeground(true);updates.controller.resume()}
-    override fun onPause(){nativeMusic.setForeground(false);updates.controller.pause();super.onPause()}
+    override fun onResume(){super.onResume();nativeMusic.setForeground(true)}
+    override fun onPause(){nativeMusic.setForeground(false);super.onPause()}
     override fun onStop(){nativeMusic.stopInBackground();super.onStop()}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,7 +73,7 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 @Composable
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
     var settingsScreen by rememberSaveable{mutableStateOf<String?>(null)}
-    val updateState by updates.state.collectAsState()
+    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,settingsScreen==null)
     if(settingsScreen==null)Scaffold(
         containerColor=MaterialTheme.colorScheme.background,
         bottomBar={
@@ -88,23 +88,19 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
                 }
                 Spacer(Modifier.width(10.dp))
                 Text("VK Music Export",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates)
                 IconButton(onClick={Diagnostics.button("settings");settingsScreen="settings"}){Icon(Icons.Default.MoreVert,"Настройки")}
             }
         }
     ){padding->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if(updateState.release!=null)TextButton(onClick={Diagnostics.button("updates_available");settingsScreen="updates"}) {
-                Text(if(updateState.apk!=null)"Установить обновление"else"Доступно обновление приложения")
-            }
             HomeScreen(onMusic={
                 Diagnostics.button("open_native_music");settingsScreen="native"
             })
         }
     }
     if(settingsScreen=="settings")SettingsScreen(
-        onBack={Diagnostics.button("settings_back");settingsScreen=null},
-        onUpdates={Diagnostics.button("updates");settingsScreen="updates"})
-    app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,settingsScreen=="updates"){settingsScreen="settings"}
+        onBack={Diagnostics.button("settings_back");settingsScreen=null})
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,settingsScreen=="native",
         onDismiss={settingsScreen=null})
 }

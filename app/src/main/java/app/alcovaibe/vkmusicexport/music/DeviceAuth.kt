@@ -165,7 +165,7 @@ internal object DeviceAuthProtocol {
         }else {check(expiry in 1..86400);expiry*1000}
         DeviceSession(b.anonymous,hash,url,Math.addExact(startedAt,remaining.coerceAtMost(300_000)))
     }
-    fun poll(response: JsonElement): DeviceCheck = parse {
+    fun poll(response: JsonElement,wallTimeMs: Long=System.currentTimeMillis()): DeviceCheck = parse {
         val o=response.jsonObject
         when(number(o,"status")) {
             0L,1L,200L -> DeviceCheck.Pending(number(o,"status")==1L)
@@ -184,7 +184,7 @@ internal object DeviceAuthProtocol {
                     return@parse DeviceCheck.ExchangeRequired(pending)
                 }
                 check(token!=null && NativeProtocol.validAccess(token,NativeProtocol.DEFAULT_AGENT))
-                DeviceCheck.Approved(MusicAccess(token!!,NativeProtocol.DEFAULT_AGENT))
+                DeviceCheck.Approved(MusicAccess(token!!,NativeProtocol.DEFAULT_AGENT,expiresAtMs=MusicCredentialCodec.expiry(o,wallTimeMs)))
             }
             else -> throw DeviceAuthFailure(DeviceAuthIssue.RESPONSE)
         }

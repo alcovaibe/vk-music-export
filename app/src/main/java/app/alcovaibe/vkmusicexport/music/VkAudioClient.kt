@@ -37,8 +37,12 @@ private object MusicApiPacer {
     }
 }
 
-internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.api(),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) : MusicApi {
+internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.api(),private val sessions: MusicSessionManager?=null,
+    private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) : MusicApi {
     private suspend fun request(access: MusicAccess, method: String, fields: Map<String,String> = emptyMap()): JsonElement {
+        return sessions?.request(access){requestRaw(it,method,fields)}?:requestRaw(access,method,fields)
+    }
+    private suspend fun requestRaw(access: MusicAccess,method: String,fields: Map<String,String>): JsonElement {
         musicCheck(NativeProtocol.validAccess(access.token,access.agent),MusicError.INVALID_ACCESS)
         musicCheck(method in NativeProtocol.methods && fields.keys.none { it in setOf("access_token","v","method") })
         val form = FormBody.Builder().add("access_token",access.token).add("v","5.199")

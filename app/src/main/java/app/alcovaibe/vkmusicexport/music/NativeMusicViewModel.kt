@@ -22,10 +22,13 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
     val preparing: String?=null)
 
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
-    private val api: MusicApi=VkAudioClient(),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
+    private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
+    private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
+    val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
+    private var sessionMonitor: Job?=null
     private val operations=NativeOperationJournal(application)
     private val _state=MutableStateFlow(NativeMusicState());val state=_state.asStateFlow()
     private var work: Job?=null
@@ -113,6 +116,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun setForeground(value: Boolean) {
         if(authForeground.value==value)return
         authForeground.value=value
+        sessionMonitor?.cancel();sessionMonitor=null
+        if(value&&sessions!=null)sessionMonitor=viewModelScope.launch {
+            while(isActive) {
+                try{sessions.current()}catch(e: CancellationException){throw e}catch(_: Exception){/* Sanitized session state describes the result. */}
+                delay(60_000)
+            }
+        }
         if(_state.value.stage=="browser_auth")Diagnostics.event("native_auth_lifecycle",
             mapOf("foreground" to value,"detector" to if(value)"activity_onResume" else "activity_onPause"))
     }
@@ -140,11 +150,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val result=try{api.library(access)}catch(e: CancellationException){throw e}
                 catch(e: MusicFailure){throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,e.remoteCode,e.code)}
             active(g);authForeground.first{it};active(g)
+            if(access.renewal!=null&&access.renewal.owner!=result.owner)
+                throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,musicError=MusicError.ACCESS)
             // Only a real successful audio.get may replace an already saved credential.
-            try{withContext(Dispatchers.IO){vault.save(access)}}
+            try{withContext(Dispatchers.IO){vault.save(access.withSession(verifiedAt=System.currentTimeMillis()))}}
             catch(e: CancellationException){throw e}
             catch(_: Exception){throw DeviceAuthFailure(DeviceAuthIssue.STORAGE)}
             active(g)
+            sessions?.reload()
             _state.update{it.copy(configured=true)}
             acceptProbe(g,access,result);active(g)
             authPhase(DeviceAuthPhase.CONNECTED)
@@ -182,6 +195,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("configure") {g->
             withContext(Dispatchers.IO){vault.save(MusicAccess(token,agent))};active(g)
             _state.value=NativeMusicState(initialized=true,configured=true,busy=true,stage="configure")
+            sessions?.reload()
             probe(g)
         }
     }
@@ -189,6 +203,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private suspend fun probe(g: Int) {
         _state.update{it.copy(probe=null,page=null,selected=null,catalog=null,catalogError=null)}
         val access=access();val probe=api.library(access);active(g)
+        withContext(Dispatchers.IO){vault.replace(access,access.withSession(verifiedAt=System.currentTimeMillis()))}
+        sessions?.reload()
         acceptProbe(g,access,probe)
     }
     private suspend fun acceptProbe(g: Int,access: MusicAccess,probe: NativeProbe) {
@@ -313,7 +329,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(_state.value.busy)return
         Diagnostics.button("native_music_forget_access")
         run("forget") {g->
-            withContext(Dispatchers.IO){vault.delete()};active(g)
+            withContext(Dispatchers.IO){vault.delete()};active(g);sessions?.reload()
             _state.value=NativeMusicState(initialized=true,busy=true,stage="forget",message="Доступ ВК удалён с устройства.")
         }
     }
