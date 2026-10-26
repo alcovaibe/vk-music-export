@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -21,7 +21,7 @@ internal fun RecentFilesHeading(enabled: Boolean=true,onClear: ()->Unit) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
         Text("Последние сохранённые файлы",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
         IconButton(enabled=enabled,onClick={confirm=true},modifier=Modifier.testTag("clear_recent_files")) {
-            Icon(Icons.Default.DeleteOutline,"Очистить список последних файлов")
+            Icon(Icons.Default.Delete,"Очистить список последних файлов")
         }
     }
     if(confirm)ModalBottomSheet(onDismissRequest={confirm=false},
