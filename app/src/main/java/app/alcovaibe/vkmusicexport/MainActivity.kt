@@ -77,9 +77,12 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
     if(settingsScreen==null)Scaffold(
         containerColor=MaterialTheme.colorScheme.background,
         bottomBar={
-            Text("v ${BuildConfig.VERSION_NAME}",
-                modifier=Modifier.fillMaxWidth().navigationBarsPadding().padding(start=12.dp,top=8.dp,bottom=8.dp),
-                style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
+                verticalAlignment=Alignment.CenterVertically) {
+                Text("v ${BuildConfig.VERSION_NAME}",Modifier.weight(1f),
+                    style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates)
+            }
         },
         topBar={
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=24.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -88,7 +91,6 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
                 }
                 Spacer(Modifier.width(10.dp))
                 Text("VK Music Export",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates)
                 IconButton(onClick={Diagnostics.button("settings");settingsScreen="settings"}){Icon(Icons.Default.MoreVert,"Настройки")}
             }
         }

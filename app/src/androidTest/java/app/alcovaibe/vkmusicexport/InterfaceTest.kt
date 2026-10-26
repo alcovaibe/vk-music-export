@@ -59,7 +59,13 @@ class InterfaceTest {
 
     @Test fun nativeMusicEntryAndHomeSurviveRecreationWithoutRetiredScreens() {
         ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
-        ui.onNodeWithTag("check_updates").assertExists()
+        ui.onNodeWithTag("check_updates").assertIsDisplayed()
+        val updateBounds=ui.onNodeWithTag("check_updates").fetchSemanticsNode().boundsInRoot
+        val settingsBounds=ui.onNodeWithContentDescription("Настройки").fetchSemanticsNode().boundsInRoot
+        val versionBounds=ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").fetchSemanticsNode().boundsInRoot
+        assertTrue(updateBounds.top>settingsBounds.bottom)
+        assertTrue(updateBounds.left>versionBounds.left)
+        assertTrue(updateBounds.top<=versionBounds.center.y&&updateBounds.bottom>=versionBounds.center.y)
         ui.onNodeWithText("Открыть мою музыку").performScrollTo().assertIsDisplayed()
         for(label in listOf("Открыть ВК в Chrome","Сбор из Chrome","Импорт JSON","Экспорт"))ui.onNodeWithText(label).assertDoesNotExist()
         capture("01-home")

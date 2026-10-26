@@ -79,7 +79,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     queue.failures.forEach{Text("${it.task.track.artist} — ${it.task.track.title}: ${it.error.name}",style=MaterialTheme.typography.bodySmall)}
                 }
                 if(queue.recent.isNotEmpty()) {
-                    Text("Последние сохранённые файлы",style=MaterialTheme.typography.titleMedium)
+                    RecentFilesHeading(enabled=!state.busy,onClear=model::clearRecentFiles)
                     queue.recent.forEach{row->
                         Text("${row.displayName}\n${row.relativePath}",style=MaterialTheme.typography.bodySmall)
                         TextButton(onClick={
