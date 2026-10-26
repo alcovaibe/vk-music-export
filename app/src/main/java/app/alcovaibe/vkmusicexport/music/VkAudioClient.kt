@@ -99,16 +99,16 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         musicCheck(NativeProtocol.owner(requestRaw(access,"users.get",emptyMap()))==owner,MusicError.ACCESS)
         LibraryRemovalProtocol.success(requestRaw(access,"audio.delete",mapOf("owner_id" to owner.toString(),"audio_id" to id.toString())))
     }
-    private data class CoverHint(val token: String,val url: String?)
+    private data class CoverHint(val token: String,val result: Result<String?>)
     private val coverHints=object: LinkedHashMap<String,CoverHint>(4,.75f,true){override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,CoverHint>?)=size>8}
     override suspend fun artwork(access: MusicAccess,track: NativeTrack): String? {
-        synchronized(coverHints){coverHints[track.id]?.takeIf{it.token==access.credentialId}?.let{return it.url}}
+        synchronized(coverHints){coverHints.remove(track.id)?.takeIf{it.token==access.credentialId}?.let{return it.result.getOrThrow()}}
         return NativeProtocol.artwork(request(access,"audio.getById",mapOf("audios" to track.id)),track)
     }
     override suspend fun media(access: MusicAccess,track: NativeTrack): String {
         val response=request(access,"audio.getById",mapOf("audios" to track.id))
         val url=NativeProtocol.media(response,track)
-        val cover=runCatching{NativeProtocol.artwork(response,track)}.getOrNull()
+        val cover=runCatching{NativeProtocol.artwork(response,track)}
         synchronized(coverHints){coverHints[track.id]=CoverHint(access.credentialId,cover)}
         return url
     }

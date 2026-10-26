@@ -12,6 +12,22 @@ class NativeProtocolTest {
     private val track="""{"owner_id":12,"id":34,"title":"Название","artist":"Исполнитель","duration":2}"""
     private fun json(s: String)=Json.parseToJsonElement(s)
     private fun failure(code: MusicError,block:()->Unit){assertEquals(code,assertThrows(MusicFailure::class.java,block).code)}
+    @Test fun cachedArtworkParseFailureRemainsAnErrorAndNextAttemptRequestsFreshMetadata()=runBlocking {
+        var calls=0
+        val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+            calls++
+            val thumb=if(calls==1)""", "thumb":{"photo_600":"https://evil.test/cover"}""" else ""
+            val body="""{"response":[{"owner_id":12,"id":34,"title":"Название","artist":"Исполнитель","duration":2,"url":"https://audio.userapi.com/song.mp3"$thumb}]}"""
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic").body(body.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val api=VkAudioClient(client){_,_->};val access=MusicAccess("a".repeat(64),"Synthetic agent")
+        val expected=NativeTrack("12_34","Название","Исполнитель",2)
+        assertEquals("https://audio.userapi.com/song.mp3",api.media(access,expected))
+        try{api.artwork(access,expected);fail("unsafe thumb must not become missing cover")}
+        catch(e: MusicFailure){assertEquals(MusicError.MEDIA_URL,e.code)}
+        assertEquals(1,calls)
+        assertNull(api.artwork(access,expected));assertEquals(2,calls)
+    }
     @Test fun pagesPreserveDuplicatePositionsAndUnavailableTracks() {
         val page=NativeProtocol.page(json("""{"count":2,"items":[$track,$track]}"""))
         assertEquals(2,page.tracks.size);assertEquals(page.tracks[0],page.tracks[1])
