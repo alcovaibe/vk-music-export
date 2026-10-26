@@ -43,7 +43,7 @@ class LibraryTrackRemovalTest {
         assertEquals(setOf("access_token","v","owner_id","audio_id"),fields.keys)
         assertEquals("12",fields["owner_id"]);assertEquals("34",fields["audio_id"])
         requests.clear()
-        val wrong=client.newBuilder().apply{interceptors.clear()}.addInterceptor{chain->
+        val wrong=NetworkClients.api().newBuilder().addInterceptor{chain->
             requests.add(chain.request())
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
                 .body("""{"response":[{"id":13}]}""".toResponseBody("application/json".toMediaType())).build()
