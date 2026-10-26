@@ -102,7 +102,7 @@ internal class VkMusicRenewer(private val base: OkHttpClient=NetworkClients.api(
 /** Process-wide lock coalesces UI and UIDT refreshes. CAS prevents sign-out/replacement from resurrecting access. */
 internal class MusicSessionManager(private val store: MusicCredentialStore,private val renewer: MusicRenewer,
     private val verify: suspend(MusicAccess)->NativeProbe,private val wall: ()->Long=System::currentTimeMillis,
-    private val event: (String)->Unit={}) {
+    private val io: CoroutineDispatcher=Dispatchers.IO,private val event: (String)->Unit={}) {
     private val mutex=Mutex()
     private val mutable=MutableStateFlow(MusicSessionState());val state=mutable.asStateFlow()
     private var attemptedId: String?=null;private var attemptedAt=0L
@@ -112,10 +112,10 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             status?:when{a==null->SessionStatus.UNKNOWN;a.rejected->SessionStatus.LOGIN_REQUIRED;a.expiresAtMs?.let{it<=wall()}==true->SessionStatus.LOGIN_REQUIRED;
                 a.lastVerifiedAtMs!=null->SessionStatus.VALID;else->SessionStatus.UNKNOWN})
     }
-    suspend fun reload(){publish(withContext(Dispatchers.IO){store.read()})}
+    suspend fun reload(){publish(withContext(io){store.read()})}
     suspend fun current(): MusicAccess=mutex.withLock {resolve(false,null)}
     private suspend fun resolve(force: Boolean,failed: MusicAccess?): MusicAccess {
-        val old=withContext(Dispatchers.IO){store.read()}?:run{publish(null);throw MusicFailure(MusicError.ACCESS)}
+        val old=withContext(io){store.read()}?:run{publish(null);throw MusicFailure(MusicError.ACCESS)}
         // Another request already refreshed the rejected token. Use that result, never refresh twice.
         if(force&&failed!=null&&old.credentialId!=failed.credentialId){publish(old);return old}
         if(old.rejected){publish(old,SessionStatus.LOGIN_REQUIRED);throw MusicFailure(MusicError.ACCESS)}
@@ -124,7 +124,7 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
         if(!due){publish(old);return old}
         if(old.renewal==null||old.renewalBlocked){
             val value=if(force)old.withSession(rejected=true) else old
-            if(force)withContext(Dispatchers.IO){store.replace(old,value)}
+            if(force)withContext(io){store.replace(old,value)}
             publish(value,if(expired||force)SessionStatus.LOGIN_REQUIRED else null)
             if(expired||force)throw MusicFailure(MusicError.ACCESS);return old
         }
@@ -141,24 +141,24 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             musicCheck(probe.owner==old.renewal.owner,MusicError.ACCESS)
             val next=fresh.withSession(verifiedAt=wall())
             currentCoroutineContext().ensureActive()
-            if(!withContext(Dispatchers.IO){store.replace(old,next)})throw MusicFailure(MusicError.ACCESS)
+            if(!withContext(io){store.replace(old,next)})throw MusicFailure(MusicError.ACCESS)
             publish(next);event("verified");return next
         }catch(e: CancellationException){publish(old);throw e}
          catch(e: Exception){
             val failure=e as? MusicFailure?:MusicFailure(MusicError.RESPONSE)
             lastFailure=failure
             val blocked=failure.code==MusicError.ACCESS||failure.code==MusicError.DENIED
-            if(blocked)withContext(Dispatchers.IO){store.replace(old,old.withSession(blocked=true,rejected=force))}
-            val remaining=withContext(Dispatchers.IO){store.read()}
+            if(blocked)withContext(io){store.replace(old,old.withSession(blocked=true,rejected=force))}
+            val remaining=withContext(io){store.read()}
             if(remaining==null||remaining.credentialId!=old.credentialId){publish(remaining);throw MusicFailure(MusicError.ACCESS)}
             publish(remaining,if(blocked)SessionStatus.LOGIN_REQUIRED else SessionStatus.RETRY)
             event(if(blocked)"reconnect_required" else "retry_later")
             if(expired||force)throw failure
-            return remaining?:throw MusicFailure(MusicError.ACCESS)
+            return remaining
         }
     }
     suspend fun <T> request(supplied: MusicAccess,block: suspend(MusicAccess)->T): T {
-        val stored=withContext(Dispatchers.IO){store.read()}
+        val stored=withContext(io){store.read()}
         // Initial pairing is verified before saving. It must never be substituted by an old account.
         if(!supplied.persisted&&(stored==null||stored.credentialId!=supplied.credentialId))return block(supplied)
         if(stored==null)throw MusicFailure(MusicError.ACCESS)
@@ -172,8 +172,8 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             try{return block(renewed)}catch(second: MusicFailure) {
                 if(second.code==MusicError.ACCESS&&(second.remoteCode==null||second.remoteCode==5)) {
                     val rejected=renewed.withSession(blocked=true,rejected=true)
-                    withContext(Dispatchers.IO){store.replace(renewed,rejected)}
-                    publish(withContext(Dispatchers.IO){store.read()})
+                    withContext(io){store.replace(renewed,rejected)}
+                    publish(withContext(io){store.read()})
                 }
                 throw second
             } // Exactly one retry, including a second ACCESS response.

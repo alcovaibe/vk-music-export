@@ -26,7 +26,7 @@ class MusicSessionTest {
         }
     }
     private fun manager(store: Store,renew: suspend(MusicAccess)->MusicAccess,verify: suspend(MusicAccess)->NativeProbe={NativeProbe(12,NativePage(emptyList(),0))},clock: ()->Long={now})=
-        MusicSessionManager(store,object: MusicRenewer{override suspend fun renew(access: MusicAccess)=renew(access)},verify,clock)
+        MusicSessionManager(store,object: MusicRenewer{override suspend fun renew(access: MusicAccess)=renew(access)},verify,clock,io=Dispatchers.Unconfined)
     @Test fun legacyCodecNeverInventsExpiryAndKeepsAllRenewalSecretsInsideTheEnvelopePayload() {
         val old=MusicCredentialCodec.decode("""{"token":"$token","agent":"Client/1"}""")
         assertNull(old.expiresAtMs);assertNull(old.renewal);assertTrue(old.persisted)
@@ -90,10 +90,10 @@ class MusicSessionTest {
     }
     @Test fun signOutOrNewLoginDuringRefreshCannotBeUndoneByTheLateResponse()=runTest {
         for(replacement in listOf(null,access(expiry=now+900_000,id="another-login"))) {
-            val store=Store(access());val gate=CompletableDeferred<Unit>()
-            val m=manager(store,{gate.await();fresh()})
+            val store=Store(access());val gate=CompletableDeferred<Unit>();val started=CompletableDeferred<Unit>()
+            val m=manager(store,{started.complete(Unit);gate.await();fresh()})
             val job=async{runCatching{m.current()}}
-            runCurrent();store.value=replacement;gate.complete(Unit)
+            started.await();store.value=replacement;gate.complete(Unit)
             assertTrue(job.await().isFailure);assertSame(replacement,store.value)
         }
     }
