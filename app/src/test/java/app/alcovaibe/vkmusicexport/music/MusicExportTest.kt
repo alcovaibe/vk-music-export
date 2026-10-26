@@ -44,7 +44,7 @@ class MusicExportTest {
         val component=ExportLayout.component("😀".repeat(100))
         assertTrue(component.toByteArray().size<=110);assertFalse(component.endsWith("\uD83D"))
         val page=NativePage(listOf(t,t),2)
-        val list=NativePlaylist(-12,34,"../ Сборник / ?",2,"PRIVATE_ACCESS_KEY",null,null,null)
+        val list=NativePlaylist(-12,34,"../ Сборник / ?",2,"PRIVATE_ACCESS_KEY",null,null,null,PlaylistKind.PLAYLIST)
         val tasks=ExportLayout.playlist(page,list)
         assertNotEquals(tasks[0].key,tasks[1].key);assertEquals(ExportLayout.name(tasks[0],"mp3"),ExportLayout.name(tasks[1],"mp3"))
         for(task in tasks) {
@@ -57,7 +57,7 @@ class MusicExportTest {
     }
     @Test fun visibleNamesOmitOnlyGeneratedNumbersWhileOldQueueIdentityAndRealTitleNumbersRemain() {
         val t=track(0).copy(title="1984 [2026]",artist="Artist 123")
-        val list=NativePlaylist(607277757,535,"Солнечный день [2020]",1,null,null,null,null)
+        val list=NativePlaylist(607277757,535,"Солнечный день [2020]",1,null,null,null,null,PlaylistKind.PLAYLIST)
         val task=ExportLayout.playlist(NativePage(listOf(t),1),list).single()
         assertEquals("Artist 123 — 1984 [2026].mp3",ExportLayout.name(task,"mp3"))
         assertEquals("Artist 123 — 1984 [2026] (2).m4a",ExportLayout.name(task,"m4a",2))

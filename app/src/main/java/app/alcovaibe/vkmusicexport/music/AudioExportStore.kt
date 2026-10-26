@@ -124,5 +124,20 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun releaseRunning(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING' WHERE state='RUNNING'")}
     @Synchronized fun retryFailed(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE state='FAILED'")}
     @Synchronized fun clearQueue(){writableDatabase.delete("tasks",null,null);status("EMPTY");put("source_issues","0")}
+    @Synchronized fun catalogKinds(account: Long): Map<String,PlaylistKind> {
+        musicCheck(account>0,MusicError.STORAGE)
+        val prefix="catalog_kind:$account:"
+        return readableDatabase.rawQuery("SELECT name,value FROM meta WHERE substr(name,1,?)=?",arrayOf(prefix.length.toString(),prefix)).use{c->buildMap{
+            while(c.moveToNext()) {
+                val kind=runCatching{PlaylistKind.valueOf(c.getString(1))}.getOrNull()
+                if(kind!=null&&kind!=PlaylistKind.UNKNOWN)put(c.getString(0).removePrefix(prefix),kind)
+            }
+        }}
+    }
+    @Synchronized fun catalogKind(account: Long,list: NativePlaylist,kind: PlaylistKind)=transaction {
+        musicCheck(account>0,MusicError.STORAGE)
+        val name="catalog_kind:$account:${list.key}"
+        if(kind==PlaylistKind.UNKNOWN)writableDatabase.delete("meta","name=?",arrayOf(name)) else put(name,kind.name)
+    }
     private fun parseError(value: String?)=runCatching{MusicError.valueOf(value.orEmpty())}.getOrNull()
 }

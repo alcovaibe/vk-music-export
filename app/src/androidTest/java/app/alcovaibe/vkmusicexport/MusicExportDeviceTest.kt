@@ -134,7 +134,7 @@ class MusicExportDeviceTest {
         val (context,base)=isolated("clean-audio-names");var store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val t=track(50).copy(title="Песня [2026]",artist="Исполнитель")
         val folderTitle="CI Солнечный день"
-        fun tasks(id: Long,title: String=folderTitle)=ExportLayout.playlist(NativePage(listOf(t,t),2),NativePlaylist(12,id,title,2,null,null,null,null))
+        fun tasks(id: Long,title: String=folderTitle)=ExportLayout.playlist(NativePage(listOf(t,t),2),NativePlaylist(12,id,title,2,null,null,null,null,PlaylistKind.PLAYLIST))
         val first=tasks(535);val second=tasks(536);val caseVariant=tasks(537,folderTitle.uppercase())
         val all=first+second+caseVariant
         val rows=mutableListOf<PublishedAudio>()
@@ -160,7 +160,7 @@ class MusicExportDeviceTest {
     }
     @Test fun versionOneQueueAndOldPublishedNamesSurviveMigrationAndResumeWithoutRedownload()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("audio-names-v1-upgrade");val shared=SharedAudioStore(context)
-        val t=track(60);val tasks=ExportLayout.playlist(NativePage(listOf(t,t),2),NativePlaylist(12,535,"CI Existing playlist",2,null,null,null,null))
+        val t=track(60);val tasks=ExportLayout.playlist(NativePage(listOf(t,t),2),NativePlaylist(12,535,"CI Existing playlist",2,null,null,null,null,PlaylistKind.PLAYLIST))
         val rows=mutableListOf<PublishedAudio>();var store: AudioExportStore?=null
         try {
             val input=File(base,"audio.mp3").apply{InstrumentationRegistry.getInstrumentation().context.assets.open("native-audio/tone.mp3").use{writeBytes(it.readBytes())}}
