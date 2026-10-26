@@ -130,6 +130,30 @@ class ArtworkDeviceTest {
             }finally{row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()}
         }
     }
+    @Test fun diagnosticsSeparateChangedAudioFromInvalidCoverBeforeAnyWrite()=runBlocking<Unit>(Dispatchers.IO) {
+        val (context,dir)=isolated("artwork-error-stages");val store=AudioExportStore(context);val shared=SharedAudioStore(context);var row: PublishedAudio?=null
+        try {
+            val task=ExportLayout.task(track(4),listOf("Моя музыка","Artwork diagnostics CI"),1);store.replace(listOf(task))
+            val input=fixture(dir,"mp3")
+            val saved=shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){store.prepared(task,it)};row=saved;store.done(task,saved)
+            val steps=mutableListOf<ArtworkStep>()
+            val repair=ArtworkRepair(context,store,shared,onStep={steps.add(it)})
+            app.contentResolver.openOutputStream(Uri.parse(saved.uri),"wt")!!.use{it.write(byteArrayOf(1,2,3))}
+            try{repair.add(saved,ArtworkSource{_,_->error("must not request cover")}){access};fail("modified file")}
+            catch(e: MusicFailure){assertEquals(MusicError.INCOMPLETE,e.code)}
+            assertEquals(ArtworkStep.VERIFY_FILE,steps.last())
+            shared.overwrite(saved,input);steps.clear()
+            val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
+                    .body(byteArrayOf(1,2,3).toResponseBody()).build()
+            }.build()
+            val source=ArtworkLoader(api(),client,onStep={steps.add(it)})
+            try{repair.add(saved,source){access};fail("invalid image")}
+            catch(e: MusicFailure){assertEquals(MusicError.FORMAT,e.code)}
+            assertEquals(ArtworkStep.DECODE_COVER,steps.last());assertTrue(shared.valid(saved))
+            assertFalse(steps.contains(ArtworkStep.REPLACE_FILE));assertEquals(saved,store.existing(task.key))
+        }finally{row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()}
+    }
     @Test fun imageTransportHasNoApiCredentialsAndRejectsRedirectsAndInvalidPictures()=runBlocking<Unit>(Dispatchers.IO) {
         var requests=0
         val bytes=image().bytes
@@ -172,8 +196,9 @@ class ArtworkUiDeviceTest {
         ui.onNodeWithTag("artwork_start").performClick();assertEquals(1,starts)
         ui.onNodeWithText("Обработано: 3/10").assertIsDisplayed()
         ui.onNodeWithText("Свернуть").performClick();ui.runOnIdle{assertEquals(0,stops);assertTrue(state.running)}
-        ui.runOnIdle{state=state.copy(visible=true)}
+        ui.runOnIdle{state=state.copy(visible=true,issues=listOf(artworkIssue(21,"Тестовый файл.mp3",ArtworkStep.READ_TAGS,MusicFailure(MusicError.FORMAT))))}
         ui.onNodeWithTag("artwork_stop").performClick();assertEquals(1,stops)
         ui.onNodeWithTag("artwork_result").assertIsDisplayed()
+        ui.onNodeWithTag("artwork_issue_21").performScrollTo().assertIsDisplayed()
     }
 }

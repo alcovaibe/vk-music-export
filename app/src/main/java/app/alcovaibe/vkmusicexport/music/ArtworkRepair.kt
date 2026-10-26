@@ -17,6 +17,7 @@ internal fun fileSha256(file: File): String {
 
 /** One durable transaction, outside cache. A failed restore retains the backup and blocks further editing. */
 internal class ArtworkRepair(context: Context,private val store: AudioExportStore,private val shared: SharedAudioStore,
+    private val onStep:(ArtworkStep)->Unit={},
     private val replace: suspend(PublishedAudio,File)->Unit=shared::overwrite) {
     private val dir=File(context.noBackupFilesDir,"artwork-repair").apply{mkdirs()}
     private val backup=File(dir,"original.audio")
@@ -40,26 +41,35 @@ internal class ArtworkRepair(context: Context,private val store: AudioExportStor
     }
     suspend fun add(row: PublishedAudio,source: ArtworkSource,access: suspend()->MusicAccess): Boolean {
         recover()
+        onStep(ArtworkStep.VERIFY_FILE)
         musicCheck(store.existing(row.taskKey)==row&&shared.valid(row),MusicError.INCOMPLETE)
+        onStep(ArtworkStep.BACKUP)
         musicCheck(dir.usableSpace>row.bytes*2+8*1024*1024,MusicError.STORAGE)
         try {
             shared.copyTo(row,backup)
             musicCheck(fileSha256(backup)==row.sha256,MusicError.INCOMPLETE)
+            onStep(ArtworkStep.READ_TAGS)
             if(EmbeddedArtwork.hasCover(backup,row.extension)) {
                 if(!row.coverEmbedded)store.retagged(row,row.copy(coverEmbedded=true))
                 return false
             }
+            onStep(ArtworkStep.RESOLVE_COVER)
             val image=source.load(access(),row.track)?:return false
             val ctx=currentCoroutineContext()
+            onStep(ArtworkStep.WRITE_TAGS)
             EmbeddedArtwork.write(backup,tagged,row.extension,image){ctx.ensureActive()}
+            onStep(ArtworkStep.VERIFY_TAGGED)
             musicCheck(tagged.length()<=AudioTransfer.MAX_BYTES&&shared.valid(row)&&store.existing(row.taskKey)==row,MusicError.INCOMPLETE)
             val after=row.copy(bytes=tagged.length(),sha256=fileSha256(tagged),coverEmbedded=true)
             val stream=journal.startWrite()
             try{stream.write(json.encodeToString(Edit(row,after)).toByteArray());journal.finishWrite(stream)}catch(e: Exception){journal.failWrite(stream);throw e}
             // Cancellation may occur during a write, so restoration and checkpoint completion cannot be cancellable.
             try {
+                onStep(ArtworkStep.REPLACE_FILE)
                 replace(row,tagged)
+                onStep(ArtworkStep.VERIFY_WRITTEN)
                 musicCheck(shared.valid(after),MusicError.STORAGE)
+                onStep(ArtworkStep.UPDATE_INDEX)
                 store.retagged(row,after);clear()
             }catch(e: Exception){withContext(NonCancellable+Dispatchers.IO){recover()};throw e}
             return true

@@ -19,16 +19,18 @@ internal object ArtworkAddress {
     }
 }
 internal fun interface ArtworkSource {suspend fun load(access: MusicAccess,track: NativeTrack): CoverImage?}
-internal class ArtworkLoader(private val api: MusicApi,private val client: OkHttpClient=NetworkClients.api()): ArtworkSource {
+internal class ArtworkLoader(private val api: MusicApi,private val client: OkHttpClient=NetworkClients.api(),private val onStep:(ArtworkStep)->Unit={}): ArtworkSource {
     // Small in-memory cache only; signed URLs and API response bodies never enter SQLite or logs.
     private val cache=object: LinkedHashMap<String,CoverImage>(8,.75f,true){override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,CoverImage>?)=size>4}
     override suspend fun load(access: MusicAccess,track: NativeTrack): CoverImage?=withContext(Dispatchers.IO) {
+        onStep(ArtworkStep.RESOLVE_COVER)
         val raw=api.artwork(access,track)?:return@withContext null
         val first=ArtworkAddress.require(raw).toString()
         cache[first]?.let{return@withContext it}
         withTimeoutOrNull(20_000) {
             var url=first
             repeat(4){hop->
+                onStep(ArtworkStep.FETCH_COVER)
                 val req=Request.Builder().url(url).header("User-Agent","VK-Music-Export-Artwork/1").get().build()
                 val response=client.newCall(req).readBounded(2*1024*1024)
                 if(response.status in setOf(301,302,303,307,308)) {
@@ -36,6 +38,7 @@ internal class ArtworkLoader(private val api: MusicApi,private val client: OkHtt
                     url=ArtworkAddress.require(ArtworkAddress.require(url).resolve(response.location?:throw MusicFailure(MusicError.HTTP))?.toString()?:throw MusicFailure(MusicError.HTTP)).toString()
                 }else {
                     musicCheck(response.status==200,MusicError.HTTP)
+                    onStep(ArtworkStep.DECODE_COVER)
                     val image=decode(response.bytes);cache[first]=image;return@withTimeoutOrNull image
                 }
             }
