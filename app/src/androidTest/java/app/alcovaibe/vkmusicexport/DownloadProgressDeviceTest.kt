@@ -89,7 +89,7 @@ class DownloadProgressEntryDeviceTest {
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             ui.runOnUiThread{model=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
             ui.onNodeWithTag("downloads_dismiss").performClick()
-            ui.onNodeWithText("Открыть мою музыку").performScrollTo().performClick()
+            ui.onNodeWithText("VK Music").performScrollTo().performClick()
             ui.onNodeWithTag("open_music_downloads").assertIsDisplayed().performClick()
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             androidx.test.espresso.Espresso.pressBack()

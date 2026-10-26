@@ -154,6 +154,26 @@ class ArtworkDeviceTest {
             assertFalse(steps.contains(ArtworkStep.REPLACE_FILE));assertEquals(saved,store.existing(task.key))
         }finally{row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()}
     }
+    @Test fun artworkHttpFailuresKeepStatusAndRedirectReasonWithoutUrlsOrSecrets()=runBlocking<Unit>(Dispatchers.IO) {
+        for((status,location,reason)in listOf(Triple(403,null,ArtworkFetchReason.HTTP_STATUS),Triple(404,null,ArtworkFetchReason.HTTP_STATUS),
+            Triple(503,null,ArtworkFetchReason.HTTP_STATUS),Triple(302,null,ArtworkFetchReason.REDIRECT_LOCATION_MISSING),
+            Triple(302,"https://evil.test/private?token=secret",ArtworkFetchReason.REDIRECT_UNSAFE),
+            Triple(302,"https://sun9.userapi.com/loop",ArtworkFetchReason.REDIRECT_LIMIT))) {
+            val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("Synthetic")
+                    .apply{location?.let{header("Location",it)}}.body(byteArrayOf().toResponseBody()).build()
+            }.build()
+            val events=mutableListOf<Map<String,Any?>>()
+            val diagnostic=ArtworkDiagnostics{_,fields->events.add(fields)}
+            try{ArtworkLoader(api(),client){diagnostic.step=it}.load(access,track());fail("HTTP/redirect must fail")}
+            catch(e: ArtworkFetchFailure){
+                assertEquals(status,e.httpStatus);assertEquals(reason,e.fetchReason);diagnostic.result("FAILED",e)
+                assertEquals(status,events.last()["http_status"]);assertEquals(reason.name,events.last()["fetch_reason"])
+                assertEquals(ArtworkStep.FETCH_COVER.name,events.last()["stage"])
+                assertFalse(events.toString().contains("secret"));assertFalse(events.toString().contains("userapi.com"));assertFalse(events.toString().contains("evil.test"))
+            }
+        }
+    }
     @Test fun imageTransportHasNoApiCredentialsAndRejectsRedirectsAndInvalidPictures()=runBlocking<Unit>(Dispatchers.IO) {
         var requests=0
         val bytes=image().bytes
@@ -178,6 +198,22 @@ class ArtworkDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class ArtworkUiDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<androidx.activity.ComponentActivity>()
+    @Test fun resultsListNamesAndArtistsForEveryMissingUnavailableAndFailedTrack() {
+        val noCover=(1..12).map{ArtworkSkip(it,"Исполнитель $it","Без картинки $it",ArtworkSkipReason.NO_COVER)}
+        val unavailable=ArtworkSkip(13,"Недоступный исполнитель","Недоступная песня",ArtworkSkipReason.TRACK_UNAVAILABLE)
+        val issue=artworkIssue(14,"old-name.mp3",ArtworkStep.FETCH_COVER,ArtworkFetchFailure(403,ArtworkFetchReason.HTTP_STATUS),"Исполнитель ошибки","Название ошибки")
+        val state=ArtworkState(visible=true,total=14,processed=14,missing=13,failed=1,message="Обработка завершена",skipped=noCover+unavailable,issues=listOf(issue))
+        awaitTestWindowFocus(ui.activity)
+        ui.setContent{MusicTheme{ArtworkSheet(state,{}, {}, {})}}
+        fun show(tag: String){ui.onNodeWithTag("artwork_results").performScrollToNode(hasTestTag(tag));ui.onNodeWithTag(tag).assertIsDisplayed()}
+        show("artwork_skip_12")
+        ui.onNodeWithText("Без картинки 12").assertIsDisplayed();ui.onNodeWithText("Исполнитель 12").assertIsDisplayed()
+        show("artwork_skip_13")
+        ui.onNodeWithText("Недоступная песня").assertIsDisplayed();ui.onNodeWithText("Недоступный исполнитель").assertIsDisplayed()
+        show("artwork_issue_14")
+        ui.onNodeWithText("Название ошибки").assertIsDisplayed();ui.onNodeWithText("Исполнитель ошибки").assertIsDisplayed()
+        ui.onNodeWithText(issue.reason).assertIsDisplayed()
+    }
     @Test fun editingStartsOnlyOnExplicitClickAndProgressCanBeDismissedWithoutStopping() {
         var state by mutableStateOf(ArtworkState(visible=true));var starts=0;var stops=0
         awaitTestWindowFocus(ui.activity)
@@ -199,6 +235,7 @@ class ArtworkUiDeviceTest {
         ui.runOnIdle{state=state.copy(visible=true,issues=listOf(artworkIssue(21,"Тестовый файл.mp3",ArtworkStep.READ_TAGS,MusicFailure(MusicError.FORMAT))))}
         ui.onNodeWithTag("artwork_stop").performClick();assertEquals(1,stops)
         ui.onNodeWithTag("artwork_result").assertIsDisplayed()
-        ui.onNodeWithTag("artwork_issue_21").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("artwork_results").performScrollToNode(hasTestTag("artwork_issue_21"))
+        ui.onNodeWithTag("artwork_issue_21").assertIsDisplayed()
     }
 }

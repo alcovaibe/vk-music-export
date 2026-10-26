@@ -17,7 +17,7 @@ internal enum class MusicError(val label: String) {
     TIMEOUT("Операция превысила допустимое время. Готовый файл не создан."),
     LIBRARY_CHANGED("Список ВК изменился во время чтения. Обнови его и повтори."),
     TLS("Не удалось проверить защищённое соединение."), TOO_LARGE("Ответ или аудиофайл превышает предел прототипа."),
-    RESPONSE("ВК вернул неизвестный формат данных. Скопируй диагностический лог."),
+    RESPONSE("ВК вернул неизвестный формат данных. Поделись JSON-отчётом этой попытки."),
     INVALID_ACCESS("Нужен только токен ВК длиной 32–4096 символов и корректный User-Agent, без адреса страницы."),
     MEDIA_URL("Адрес медиапотока не относится к поддерживаемым HTTPS-серверам ВК."),
     UNAVAILABLE("ВК не вернул доступную ссылку на этот трек."),
@@ -158,11 +158,14 @@ internal object NativeProtocol {
         musicCheck(actual.id==expected.id&&actual.duration==expected.duration)
         val album=o["album"] as? JsonObject
         val candidates=listOfNotNull(o["thumb"] as? JsonObject,album?.get("thumb") as? JsonObject)
+        var offered=false
         for(thumb in candidates)for(size in listOf(1200,600,300,270,135,68,34)) {
             val url=(thumb["photo_$size"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotBlank()}?:continue
+            offered=true
             val safe=runCatching{ArtworkAddress.require(url).toString()}.getOrNull()
             if(safe!=null)return@parse safe
         }
+        if(offered)throw MusicFailure(MusicError.MEDIA_URL)
         null
     }
     fun media(response: JsonElement, expected: NativeTrack): String = parse {

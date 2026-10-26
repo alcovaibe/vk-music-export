@@ -69,17 +69,17 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                                     }else {
                                         val changed=repair.add(row,source){sessions?.current()?:access()}
                                         val marked=store.existing(row.taskKey)?.coverEmbedded==true
-                                        _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1)}}
-                                        diagnostic.result(if(changed)"ADDED" else if(marked)"EXISTING" else "MISSING")
+                                        _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.title,ArtworkSkipReason.NO_COVER))}}
+                                        diagnostic.result(if(changed)"ADDED" else if(marked)"EXISTING" else "NO_COVER")
                                     }
                                 }catch(e: CancellationException){throw e}
                                  catch(e: Exception) {
                                     val unavailable=(e as? MusicFailure)?.code==MusicError.UNAVAILABLE&&diagnostic.step==ArtworkStep.RESOLVE_COVER
                                     if(unavailable) {
-                                        _artwork.update{it.copy(missing=it.missing+1)};diagnostic.result("UNAVAILABLE",e)
+                                        _artwork.update{it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.title,ArtworkSkipReason.TRACK_UNAVAILABLE))};diagnostic.result("UNAVAILABLE",e)
                                     }else {
-                                        val issue=artworkIssue(index+1,row.displayName,diagnostic.step,e)
-                                        _artwork.update{it.copy(issues=(it.issues+issue).takeLast(10))}
+                                        val issue=artworkIssue(index+1,row.displayName,diagnostic.step,e,row.track.artist,row.track.title)
+                                        _artwork.update{it.copy(issues=it.issues+issue)}
                                         diagnostic.result("FAILED",e)
                                         try{repair.recover()}catch(recovery: Exception){diagnostic.step=ArtworkStep.RECOVERY;throw recovery}
                                         if((e as? MusicFailure)?.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.DENIED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.STORAGE,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT)||e is java.io.IOException)throw e

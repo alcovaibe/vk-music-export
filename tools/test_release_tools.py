@@ -107,6 +107,34 @@ esac
             self.assertEqual((directory/'attempts').read_text().strip(),'2')
             self.assertIn('UI snapshot unavailable',result.stdout)
 
+    def test_updated_home_and_restart_require_new_entry_while_baseline_keeps_old_entry(self):
+        script=(TOOLS/'upgrade-check.sh').read_text()
+        function=script[script.index('assert_visible() {'):script.index('\nadb shell am start -W',script.index('assert_visible() {'))]
+        calls=[line for line in script.splitlines() if line.startswith('assert_visible ')]
+        self.assertIn('assert_visible before "Открыть мою музыку"',calls)
+        for phase in ('after','restarted'):
+            call=next(line for line in calls if line.startswith('assert_visible '+phase+' '))
+            self.assertEqual(call,f'assert_visible {phase} "VK Music"')
+            for label,expected in [('VK Music',0),('Открыть мою музыку',1),('VK Music Export',1)]:
+                with tempfile.TemporaryDirectory() as td:
+                    directory=Path(td);(directory/'upgrade-results').mkdir();(directory/'tools').mkdir()
+                    (directory/'tools/emulator-dialog.py').write_text((TOOLS/'emulator-dialog.py').read_text())
+                    adb=directory/'adb'
+                    adb.write_text('''#!/bin/bash
+case "$*" in
+ "shell rm -f /sdcard/upgrade-window.xml") rm -f remote.xml;;
+ "shell uiautomator dump /sdcard/upgrade-window.xml") printf '<hierarchy><node text="%s"/></hierarchy>' "$SNAPSHOT_LABEL" > remote.xml;;
+ pull*) cp remote.xml "$3";;
+ "logcat -d -b crash") exit 0;;
+ *) exit 3;;
+esac
+''')
+                    adb.chmod(0o755)
+                    sleep=directory/'sleep';sleep.write_text('#!/bin/bash\nexit 0\n');sleep.chmod(0o755)
+                    result=subprocess.run(['bash','-c','set -euo pipefail\n'+function+'\n'+call],cwd=td,
+                        env=dict(os.environ,PATH=td+os.pathsep+os.environ['PATH'],SNAPSHOT_LABEL=label),capture_output=True,text=True)
+                    self.assertEqual(result.returncode,expected,result.stderr)
+
     def test_physical_device_is_rejected_before_root_or_install(self):
         with tempfile.TemporaryDirectory() as td:
             directory = Path(td)

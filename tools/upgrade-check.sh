@@ -35,8 +35,8 @@ assert_collection() {
   test "$actual" = "$expected"
 }
 assert_visible() {
-  # Both the published 0.9.5 baseline and the new APK open the music home.
-  local expected_text="${2:-Открыть мою музыку}"
+  # Check the real entry label of each APK; the published baseline keeps its original label.
+  local expected_text="${2:?Expected entry label is required}"
   for attempt in $(seq 1 10); do
     # A fresh AVD can temporarily return a null accessibility root. Never read a stale dump.
     adb shell rm -f /sdcard/upgrade-window.xml
@@ -56,7 +56,7 @@ assert_visible() {
       adb shell input tap "$x" "$y"
       continue
     fi
-    if grep -q "$expected_text" "upgrade-results/$1.xml"; then return; fi
+    if grep -Fq -- "text=\"$expected_text\"" "upgrade-results/$1.xml"; then return; fi
     sleep 2
   done
   echo 'Expected release screen was not rendered.'
@@ -64,7 +64,7 @@ assert_visible() {
   return 1
 }
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible before
+assert_visible before "Открыть мою музыку"
 adb shell am force-stop "$package"
 assert_collection
 # Simulate an interrupted legacy cleanup in this disposable fixture; never alter a physical device.
@@ -109,7 +109,7 @@ assert re.search(r'versionCode=' + str(info['versionCode']) + r'\b', package)
 assert 'DEBUGGABLE' not in package
 PY
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible after
+assert_visible after "VK Music"
 assert_collection
 # Wait for the one-time IO migration, then verify the public audio and paused queue are intact.
 for attempt in $(seq 1 10); do
@@ -139,7 +139,7 @@ Path('upgrade-results/legacy-cleanup.txt').write_text('PASS: only retired privat
 print('PASS: only retired private audio removed; public Music and paused queue retained.')
 PYQUEUECHECK
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible restarted
+assert_visible restarted "VK Music"
 adb pull "$appdata/no_backup/diagnostics" upgrade-results/diagnostics >/dev/null
 python3 - <<'PYDIAG'
 import json
