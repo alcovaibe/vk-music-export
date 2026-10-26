@@ -33,6 +33,16 @@ class LibraryRemovalUiDeviceTest {
         ui.runOnIdle{library=true}
         ui.onNodeWithTag("remove_from_vk").performClick()
         ui.onNodeWithTag("confirm_remove_from_vk").assertIsDisplayed()
+        ui.waitForIdle()
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.waitForIdle(200,5000)
+        val bitmap=instrumentation.uiAutomation.takeScreenshot()
+        val image=File(File(instrumentation.targetContext.getExternalFilesDir(null),"screenshots").apply{mkdirs()},"library-removal-confirm.png")
+        image.outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+        bitmap.recycle()
+        listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${image.absolutePath} /data/local/tmp/vk-music-export-screenshots/library-removal-confirm.png").forEach {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(it)).use{input->input.readBytes()}
+        }
         ui.onNodeWithText("Отмена").performClick();ui.runOnIdle{assertEquals(0,deletes)}
         ui.onNodeWithTag("remove_from_vk").performClick()
         ui.onNodeWithTag("confirm_remove_from_vk").performClick()

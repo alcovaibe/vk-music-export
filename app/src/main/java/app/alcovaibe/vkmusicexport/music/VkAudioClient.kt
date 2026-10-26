@@ -95,7 +95,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack) {
         val id=LibraryRemovalProtocol.audioId(owner,track)
         // Bind the exact supplied token to the confirmed account. Never replay a mutation via sessions.request.
-        musicCheck(NativeProtocol.owner(requestRaw(access,"users.get"))==owner,MusicError.ACCESS)
+        musicCheck(NativeProtocol.owner(requestRaw(access,"users.get",emptyMap()))==owner,MusicError.ACCESS)
         LibraryRemovalProtocol.success(requestRaw(access,"audio.delete",mapOf("owner_id" to owner.toString(),"audio_id" to id.toString())))
     }
     override suspend fun media(access: MusicAccess,track: NativeTrack): String = NativeProtocol.media(
