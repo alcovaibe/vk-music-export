@@ -72,8 +72,11 @@ internal object AudioExportRuntime {
         }
     }
     fun progress(value: AudioProgress){mutable.update{it.copy(progress=value)}}
-    fun refresh(){mutable.value=database.snapshot()}
-    suspend fun run(update: suspend(ExportSnapshot)->Unit){engine.run{snapshot->mutable.value=snapshot;update(snapshot)}}
+    suspend fun clearRecentFiles(context: Context) {
+        initialize(context);controls.withLock {database.clearRecentFiles();refresh()}
+    }
+    @Synchronized fun refresh(){mutable.value=database.snapshot()}
+    suspend fun run(update: suspend(ExportSnapshot)->Unit){engine.run{refresh();update(state.value)}}
     suspend fun stopped(){withContext(NonCancellable+Dispatchers.IO){database.releaseRunning();if(database.snapshot().unfinished)database.status("PAUSED",database.snapshot().error);refresh()}}
     fun notification(context: Context,snapshot: ExportSnapshot): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)

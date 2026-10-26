@@ -53,16 +53,37 @@ class MusicExportDeviceTest {
                 if(i!=tasks.lastIndex)store.done(task,row) // Simulate process death after IS_PENDING=0, before done.
             }
             assertEquals(11,store.snapshot().done);store.close()
-            val reopened=AudioExportStore(context)
+            var reopened=AudioExportStore(context)
             try {
-                val engine=AudioExportEngine(reopened,shared,File(base,"temporary"),noApi,credential={error("must reuse checkpoint")},observe={_,_->})
+                var engine=AudioExportEngine(reopened,shared,File(base,"temporary"),noApi,credential={error("must reuse checkpoint")},observe={_,_->})
                 engine.recover();assertEquals(12,reopened.snapshot().done);assertFalse(reopened.snapshot().unfinished)
                 rows.forEach{assertTrue(shared.valid(it))};assertEquals(5,reopened.snapshot().recent.size)
+                val beforeClear=reopened.snapshot()
+                reopened.clearRecentFiles()
+                assertEquals(beforeClear.copy(recent=emptyList()),reopened.snapshot())
+                rows.forEach{assertTrue(shared.valid(it))}
+                assertEquals(rows.map{it.uri},tasks.map{reopened.existing(it.key)!!.uri})
+                assertEquals(listOf(rows.first()),reopened.copies(tasks.first().track))
+                reopened.close();reopened=AudioExportStore(context)
+                assertTrue(reopened.snapshot().recent.isEmpty())
+                engine=AudioExportEngine(reopened,shared,File(base,"temporary"),noApi,credential={error("must reuse checkpoint")},observe={_,_->})
                 // A new queue reuses every existing file. The UI's last-five list is not retention.
-                reopened.replace(tasks);reopened.status("QUEUED");engine.run{}
+                reopened.replace(tasks);reopened.status("QUEUED")
+                val queued=reopened.snapshot();reopened.clearRecentFiles()
+                assertEquals(queued,reopened.snapshot()) // Clearing history cannot pause/replace a queue.
+                engine.run{}
                 assertEquals("FINISHED",reopened.snapshot().status);assertEquals(12,reopened.snapshot().done)
                 assertEquals(rows.map{it.uri},tasks.map{reopened.existing(it.key)!!.uri})
                 assertTrue(reopened.prepared().isEmpty())
+                assertTrue(reopened.snapshot().recent.isEmpty()) // Existing files are reused, not new saves.
+                val next=ExportLayout.task(track(99),listOf("Моя музыка","CI checkpoints"),1)
+                reopened.replace(listOf(next))
+                val nextRow=shared.publish(next,result){reopened.prepared(next,it)};rows.add(nextRow)
+                reopened.done(next,nextRow)
+                assertEquals(listOf(nextRow),reopened.snapshot().recent)
+                reopened.close();reopened=AudioExportStore(context)
+                assertEquals(listOf(nextRow),reopened.snapshot().recent)
+                assertEquals(rows.first(),reopened.existing(tasks.first().key))
                 reopened.clearQueue();rows.forEach{assertTrue(shared.valid(it))}
             }finally{reopened.close()}
         }finally{store.close();cleanup(rows);base.deleteRecursively()}
@@ -162,6 +183,7 @@ class MusicExportDeviceTest {
             val reopened=AudioExportStore(context);store=reopened
             assertEquals(2,reopened.readableDatabase.version);assertEquals(1,reopened.snapshot().done);assertEquals(1,reopened.snapshot().pending)
             assertEquals(old,reopened.existing(tasks.first().key));assertEquals("PAUSED",reopened.snapshot().status)
+            assertEquals(listOf(old),reopened.snapshot().recent) // Old schema has no separate history yet.
             val engine=AudioExportEngine(reopened,shared,File(base,"tmp"),noApi,credential={error("local copy")},observe={_,_->})
             engine.recover();reopened.status("QUEUED");engine.run{}
             val copy=reopened.existing(tasks.last().key)!!;rows.add(copy)

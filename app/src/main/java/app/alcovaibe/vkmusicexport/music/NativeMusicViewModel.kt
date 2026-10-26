@@ -308,6 +308,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         Diagnostics.button("audio_queue_clear")
         run("queue_clear"){g->withContext(Dispatchers.IO){active(g);AudioExportRuntime.clear(getApplication())}}
     }
+    fun clearRecentFiles() {
+        Diagnostics.button("audio_recent_clear")
+        run("recent_clear"){g->withContext(Dispatchers.IO){active(g);AudioExportRuntime.clearRecentFiles(getApplication())}}
+    }
     fun cancel()=stop("native_stop_button")
     fun stopForWindow()=stop("native_window_closed")
     fun stopInBackground() {

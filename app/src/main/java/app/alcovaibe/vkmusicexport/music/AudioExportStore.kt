@@ -71,7 +71,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun snapshot(): ExportSnapshot {
         val counts=mutableMapOf<String,Int>()
         readableDatabase.rawQuery("SELECT state,COUNT(*) FROM tasks GROUP BY state",null).use{while(it.moveToNext())counts[it.getString(0)]=it.getInt(1)}
-        val recent=readableDatabase.rawQuery("SELECT payload FROM files ORDER BY rowid DESC LIMIT 5",null).use{c->buildList{while(c.moveToNext())add(json.decodeFromString<PublishedAudio>(c.getString(0)))}}
+        val recent=recentFiles()
         val failures=readableDatabase.rawQuery("SELECT payload,error FROM tasks WHERE state='FAILED' ORDER BY ordinal LIMIT 10",null).use{c->buildList{while(c.moveToNext())add(ExportFailure(json.decodeFromString(c.getString(0)),parseError(c.getString(1))?:MusicError.RESPONSE))}}
         return ExportSnapshot(get("status")?:"EMPTY",counts.values.sum(),counts["DONE"]?:0,
             (counts["PENDING"]?:0)+(counts["RUNNING"]?:0),counts["FAILED"]?:0,get("source_issues")?.toIntOrNull()?:0,parseError(get("error")),recent,failures)
@@ -97,9 +97,22 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun clearPrepared(key: String){writableDatabase.execSQL("UPDATE tasks SET prepared=NULL WHERE task_key=?",arrayOf(key))}
     @Synchronized fun done(task: AudioExportTask,record: PublishedAudio)=transaction {
         musicCheck(record.taskKey==task.key,MusicError.STORAGE)
+        val previous=existing(task.key)
+        val recent=recentFiles()
         writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload) VALUES(?,?,?)",arrayOf(task.key,task.track.id,json.encodeToString(record)))
         writableDatabase.execSQL("UPDATE tasks SET state='DONE',error=NULL,prepared=NULL WHERE task_key=?",arrayOf(task.key))
+        // Reusing an existing file completes the queue item without reviving cleared history.
+        if(previous!=record)put("recent_files",json.encodeToString((listOf(record)+recent.filterNot{it.taskKey==record.taskKey}).take(5)))
     }
+    private fun recentFiles(): List<PublishedAudio> {
+        get("recent_files")?.let{return json.decodeFromString(it)}
+        // Existing installations keep their last-five list until the first clear/new publication.
+        return readableDatabase.rawQuery("SELECT payload FROM files ORDER BY rowid DESC LIMIT 5",null).use{c->buildList{
+            while(c.moveToNext())add(json.decodeFromString<PublishedAudio>(c.getString(0)))
+        }}
+    }
+    /** Display history only. Files, deduplication records, tasks and checkpoints stay intact. */
+    @Synchronized fun clearRecentFiles()=transaction {put("recent_files","[]")}
     @Synchronized fun existing(key: String): PublishedAudio?=readableDatabase.rawQuery("SELECT payload FROM files WHERE task_key=?",arrayOf(key)).use{if(it.moveToFirst())json.decodeFromString<PublishedAudio>(it.getString(0))else null}
     @Synchronized fun copies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC LIMIT 8",arrayOf(track.id)).use{c->buildList{
         while(c.moveToNext()){val row=json.decodeFromString<PublishedAudio>(c.getString(0));if(row.track==track)add(row)}
