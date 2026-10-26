@@ -78,9 +78,10 @@ class EmulatorDialogTest(unittest.TestCase):
         self.assertEqual(self.dialog("Quickstep isn't responding", 'Close app'), '20 30')
 
 class UpgradeDeviceGuardTest(unittest.TestCase):
-    def test_missing_accessibility_snapshot_retries_without_accepting_stale_xml(self):
+    def test_published_baseline_home_retries_missing_snapshot_without_accepting_stale_xml(self):
         script=(TOOLS/'upgrade-check.sh').read_text()
         function=script[script.index('assert_visible() {'):script.index('\nadb shell am start -W',script.index('assert_visible() {'))]
+        before_call=next(line for line in script.splitlines() if line.startswith('assert_visible before'))
         with tempfile.TemporaryDirectory() as td:
             directory=Path(td)
             (directory/'upgrade-results').mkdir();(directory/'tools').mkdir()
@@ -100,7 +101,7 @@ esac
 ''')
             adb.chmod(0o755)
             sleep=directory/'sleep';sleep.write_text('#!/bin/bash\nexit 0\n');sleep.chmod(0o755)
-            result=subprocess.run(['bash','-c','set -euo pipefail\n'+function+'\nassert_visible before'],cwd=td,
+            result=subprocess.run(['bash','-c','set -euo pipefail\n'+function+'\n'+before_call],cwd=td,
                 env=dict(os.environ,PATH=td+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual((directory/'attempts').read_text().strip(),'2')
