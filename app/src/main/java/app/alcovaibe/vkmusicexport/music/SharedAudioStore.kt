@@ -28,19 +28,57 @@ internal class SharedAudioStore(internal val context: Context) {
                 c.getInt(2)==(if(pending)1 else 0)
         }?:false
     }.getOrDefault(false)
+    private fun ownRecord(record: PublishedAudio): Boolean {
+        if(!record.recoveredLocation)return own(record.uri,false)
+        return runCatching{resolver.query(uri(record.uri),arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),null,null,null)?.use{c->
+            c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1).startsWith("Music/")&&c.getInt(2)==0
+        }?:false}.getOrDefault(false)
+    }
     fun open(record: PublishedAudio): InputStream {
-        musicCheck(own(record.uri,false),MusicError.STORAGE)
+        musicCheck(ownRecord(record),MusicError.STORAGE)
         return resolver.openInputStream(uri(record.uri))?:throw MusicFailure(MusicError.STORAGE)
     }
-    suspend fun valid(record: PublishedAudio): Boolean {
-        if(!own(record.uri,false))return false
-        return try {
+    /** Precise result; a mismatch never grants permission to overwrite a file. */
+    suspend fun inspect(record: PublishedAudio): SavedFileCheck {
+        try {
+            val target=uri(record.uri)
+            val meta=resolver.query(collection,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.DISPLAY_NAME),
+                "${MediaStore.MediaColumns._ID}=?",arrayOf(target.lastPathSegment),null)?.use{c->
+                if(!c.moveToFirst())null else listOf(c.getString(0),c.getString(1),c.getInt(2).toString(),c.getString(3))
+            }?:return SavedFileCheck(SavedFileReason.MISSING)
+            if(meta[0]!=context.packageName)return SavedFileCheck(SavedFileReason.OWNER_CHANGED)
+            if(meta[2]!="0")return SavedFileCheck(SavedFileReason.PENDING)
+            val path=meta[1].orEmpty()
+            if(!path.startsWith(ExportLayout.ROOT)&&!(record.recoveredLocation&&path.startsWith("Music/")))
+                return SavedFileCheck(SavedFileReason.OUTSIDE_FOLDER)
             val c=currentCoroutineContext();val digest=MessageDigest.getInstance("SHA-256");var count=0L
-            open(record).use{input->val buffer=ByteArray(65536);while(true){c.ensureActive();val n=input.read(buffer);if(n<0)break;count+=n
-                if(count>record.bytes)return false;digest.update(buffer,0,n)}}
-            count==record.bytes&&hex(digest.digest())==record.sha256
-        }catch(e: CancellationException){throw e}catch(_: Exception){false}
+            val input=resolver.openInputStream(target)?:return SavedFileCheck(SavedFileReason.NO_ACCESS)
+            input.use{val buffer=ByteArray(65536);while(true){c.ensureActive();val n=it.read(buffer);if(n<0)break;count+=n
+                if(count>record.bytes)return SavedFileCheck(SavedFileReason.SIZE_CHANGED);digest.update(buffer,0,n)}}
+            if(count!=record.bytes)return SavedFileCheck(SavedFileReason.SIZE_CHANGED)
+            if(hex(digest.digest())!=record.sha256)return SavedFileCheck(SavedFileReason.HASH_CHANGED)
+            val actual=record.copy(displayName=meta[3].orEmpty(),relativePath=path)
+            return SavedFileCheck(if(actual!=record)SavedFileReason.LOCATION_CHANGED else SavedFileReason.OK,actual)
+        }catch(e: CancellationException){throw e}
+         catch(_: SecurityException){return SavedFileCheck(SavedFileReason.NO_ACCESS)}
+         catch(_: java.io.FileNotFoundException){return SavedFileCheck(SavedFileReason.MISSING)}
+         catch(_: Exception){return SavedFileCheck(SavedFileReason.READ_ERROR)}
     }
+    suspend fun valid(record: PublishedAudio)=inspect(record).reason==SavedFileReason.OK
+    suspend fun requireValid(record: PublishedAudio) {
+        val check=inspect(record)
+        if(check.reason!=SavedFileReason.OK)throw SavedFileFailure(check.reason)
+    }
+    /** Query only audio owned by this package. No broad media permission or filename matching. */
+    fun recoveryCandidates(record: PublishedAudio): List<PublishedAudio> = resolver.query(collection,
+        arrayOf(MediaStore.MediaColumns._ID,MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.RELATIVE_PATH),
+        "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME}=? AND ${MediaStore.MediaColumns.IS_PENDING}=0 AND ${MediaStore.MediaColumns.SIZE}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+        arrayOf(context.packageName,record.bytes.toString(),"Music/%"),null)?.use{c->buildList{
+            while(c.moveToNext())add(record.copy(uri=ContentUris.withAppendedId(collection,c.getLong(0)).toString(),
+                displayName=c.getString(1),relativePath=c.getString(2),recoveredLocation=true))
+        }}?:emptyList()
     suspend fun copyTo(record: PublishedAudio,target: java.io.File) {
         java.io.FileOutputStream(target).use{out->open(record).use{input->
             val buffer=ByteArray(65536);var size=0L
@@ -51,7 +89,7 @@ internal class SharedAudioStore(internal val context: Context) {
     }
     /** Called only after a durable verified backup and edit journal exist. Never deletes a MediaStore row. */
     suspend fun overwrite(record: PublishedAudio,source: java.io.File) {
-        musicCheck(own(record.uri,false),MusicError.STORAGE)
+        musicCheck(ownRecord(record),MusicError.STORAGE)
         val fd=resolver.openFileDescriptor(uri(record.uri),"rwt")?:throw MusicFailure(MusicError.STORAGE)
         ParcelFileDescriptor.AutoCloseOutputStream(fd).use{out->source.inputStream().use{input->
             val buffer=ByteArray(65536)

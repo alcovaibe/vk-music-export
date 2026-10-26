@@ -6,8 +6,9 @@ internal enum class ArtworkStep { INITIALIZE,RECOVERY,VERIFY_FILE,BACKUP,READ_TA
     WRITE_TAGS,VERIFY_TAGGED,REPLACE_FILE,VERIFY_WRITTEN,UPDATE_INDEX }
 internal data class ArtworkIssue(val item: Int,val name: String,val step: ArtworkStep,val code: MusicError,val reason: String)
 internal fun artworkIssue(item: Int,name: String,step: ArtworkStep,error: Exception): ArtworkIssue {
-    val code=(error as? MusicFailure)?.code?:MusicError.STORAGE
+    val code=if(error is SavedFileFailure)MusicError.INCOMPLETE else (error as? MusicFailure)?.code?:MusicError.STORAGE
     val reason=when {
+        error is SavedFileFailure->error.reason.label+" Запись не начиналась."
         code==MusicError.INCOMPLETE&&step==ArtworkStep.VERIFY_FILE->"Файл отсутствует или изменён. Запись не начиналась."
         code==MusicError.INCOMPLETE&&step in setOf(ArtworkStep.FETCH_COVER,ArtworkStep.DECODE_COVER)->"Картинка получена не полностью."
         code==MusicError.INCOMPLETE->"Повторная проверка файла не прошла. Запись не начиналась."
@@ -33,7 +34,7 @@ internal class ArtworkDiagnostics(private val observe:(String,Map<String,Any?>)-
         val issue=error?.let{artworkIssue(item,"",step,it)}
         observe("audio_artwork_item",mapOf("operation_id" to operation,"item" to item,"stage" to step.name,
             "outcome" to outcome,"code" to issue?.code?.name,"kind" to (error as? MusicFailure)?.kind?.name,
-            "vk_code" to (error as? MusicFailure)?.remoteCode))
+            "vk_code" to (error as? MusicFailure)?.remoteCode,"file_reason" to (error as? SavedFileFailure)?.reason?.name))
     }
     fun summary(outcome: String,state: ArtworkState) {
         observe("audio_artwork_summary",mapOf("operation_id" to operation,"outcome" to outcome,"total" to state.total,

@@ -42,7 +42,8 @@ internal class ArtworkRepair(context: Context,private val store: AudioExportStor
     suspend fun add(row: PublishedAudio,source: ArtworkSource,access: suspend()->MusicAccess): Boolean {
         recover()
         onStep(ArtworkStep.VERIFY_FILE)
-        musicCheck(store.existing(row.taskKey)==row&&shared.valid(row),MusicError.INCOMPLETE)
+        musicCheck(store.existing(row.taskKey)==row,MusicError.INCOMPLETE)
+        shared.requireValid(row)
         onStep(ArtworkStep.BACKUP)
         musicCheck(dir.usableSpace>row.bytes*2+8*1024*1024,MusicError.STORAGE)
         try {
