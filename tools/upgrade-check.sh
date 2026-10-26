@@ -35,7 +35,7 @@ assert_collection() {
   test "$actual" = "$expected"
 }
 assert_visible() {
-  # Old APK renders its saved source; the new APK must open the music home.
+  # Both the published 0.9.5 baseline and the new APK open the music home.
   local expected_text="${2:-Открыть мою музыку}"
   for attempt in $(seq 1 10); do
     # A fresh AVD can temporarily return a null accessibility root. Never read a stale dump.
@@ -64,7 +64,7 @@ assert_visible() {
   return 1
 }
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible before UpgradeCheckFixture
+assert_visible before
 adb shell am force-stop "$package"
 assert_collection
 # Simulate an interrupted legacy cleanup in this disposable fixture; never alter a physical device.
