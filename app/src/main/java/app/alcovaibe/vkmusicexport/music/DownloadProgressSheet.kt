@@ -56,6 +56,7 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                     LinearProgressIndicator(progress={processed.toFloat()/queue.total},modifier=Modifier.fillMaxWidth().testTag("downloads_total_progress"))
                     Text("Обработано: $processed/${queue.total} · ${processed.toLong()*100/queue.total}%",style=MaterialTheme.typography.bodySmall)
                     Text("Осталось: ${queue.pending} · пропущено: ${queue.failed}")
+                    Text("С обложкой: ${queue.covered} · без добавленной обложки: ${queue.done-queue.covered}",style=MaterialTheme.typography.bodySmall)
                 }
                 if(queue.status=="RUNNING")queue.currentTask?.let{task->
                     Text("Текущий трек",style=MaterialTheme.typography.titleSmall)

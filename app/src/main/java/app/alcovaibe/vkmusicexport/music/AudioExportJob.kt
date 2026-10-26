@@ -72,6 +72,13 @@ internal object AudioExportRuntime {
         }
     }
     fun progress(value: AudioProgress){mutable.update{it.copy(progress=value)}}
+    suspend fun <T> editSaved(context: Context,block: suspend()->T): T {
+        initialize(context)
+        return controls.withLock {
+            musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
+            block()
+        }
+    }
     suspend fun clearRecentFiles(context: Context) {
         initialize(context);controls.withLock {database.clearRecentFiles();refresh()}
     }

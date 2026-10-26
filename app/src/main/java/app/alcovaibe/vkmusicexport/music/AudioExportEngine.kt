@@ -6,8 +6,9 @@ import java.io.File
 
 internal class AudioExportEngine(private val store: AudioExportStore,private val shared: SharedAudioStore,
     private val temporary: File,private val api: MusicApi=VkAudioClient(),private val transfer: AudioTransfer=AudioTransfer(),
-    private val credential: suspend()->MusicAccess,private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) {
+    private val credential: suspend()->MusicAccess,private val artwork: ArtworkSource=ArtworkLoader(api),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) {
     suspend fun recover() {
+        ArtworkRepair(shared.context,store,shared).recover()
         temporary.mkdirs();temporary.listFiles()?.filter{it.isFile}?.forEach{it.delete()}
         reconcile()
         store.recoverItems()
@@ -38,7 +39,16 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     var published: PublishedAudio?=null
                     for(copy in store.copies(task.track)) {
                         if(!shared.valid(copy))continue
-                        published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
+                        if(copy.coverEmbedded)published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
+                        else {
+                            val local=File(temporary,"local-copy.audio")
+                            var result=TransferResult(local,ProcessedAudio(copy.extension,copy.mime,copy.durationMs))
+                            try {
+                                shared.copyTo(copy,local)
+                                result=DownloadArtwork(artwork).add(result,task.track,credential)
+                                published=shared.publish(task,result,store.directory(task)){store.prepared(task,it)}
+                            }finally{local.delete();result.file.delete()}
+                        }
                         observe("audio_queue_item",mapOf("outcome" to "local_copy"));break
                     }
                     if(published==null) {
@@ -61,6 +71,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                     delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                                 }
                             }
+                            result=DownloadArtwork(artwork).add(result?:throw MusicFailure(MusicError.INCOMPLETE),task.track,credential)
                             val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
                             published=shared.publish(task,file,store.directory(task)){store.prepared(task,it)}
                         }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}

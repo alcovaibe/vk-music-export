@@ -6,7 +6,7 @@ import java.text.Normalizer
 
 @Serializable internal data class AudioExportTask(val key: String,val track: NativeTrack,val folders: List<String>,val position: Int)
 @Serializable internal data class PublishedAudio(val taskKey: String,val track: NativeTrack,val uri: String,val displayName: String,
-    val relativePath: String,val extension: String,val mime: String,val durationMs: Long,val bytes: Long,val sha256: String)
+    val relativePath: String,val extension: String,val mime: String,val durationMs: Long,val bytes: Long,val sha256: String,val coverEmbedded: Boolean=false)
 
 internal object ExportLayout {
     const val ROOT="Music/VK Music Export/"

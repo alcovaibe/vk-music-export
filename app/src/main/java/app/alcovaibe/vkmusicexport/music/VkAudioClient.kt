@@ -17,6 +17,7 @@ internal interface MusicApi {
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
     suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack): Unit = throw MusicFailure(MusicError.METHOD)
+    suspend fun artwork(access: MusicAccess,track: NativeTrack): String? = null
     suspend fun media(access: MusicAccess, track: NativeTrack): String
     suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
         musicCheck(offset==0,MusicError.INCOMPLETE);return library(access).library
@@ -98,8 +99,19 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         musicCheck(NativeProtocol.owner(requestRaw(access,"users.get",emptyMap()))==owner,MusicError.ACCESS)
         LibraryRemovalProtocol.success(requestRaw(access,"audio.delete",mapOf("owner_id" to owner.toString(),"audio_id" to id.toString())))
     }
-    override suspend fun media(access: MusicAccess,track: NativeTrack): String = NativeProtocol.media(
-        request(access,"audio.getById",mapOf("audios" to track.id)),track)
+    private data class CoverHint(val token: String,val url: String?)
+    private val coverHints=object: LinkedHashMap<String,CoverHint>(4,.75f,true){override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,CoverHint>?)=size>8}
+    override suspend fun artwork(access: MusicAccess,track: NativeTrack): String? {
+        synchronized(coverHints){coverHints[track.id]?.takeIf{it.token==access.credentialId}?.let{return it.url}}
+        return NativeProtocol.artwork(request(access,"audio.getById",mapOf("audios" to track.id)),track)
+    }
+    override suspend fun media(access: MusicAccess,track: NativeTrack): String {
+        val response=request(access,"audio.getById",mapOf("audios" to track.id))
+        val url=NativeProtocol.media(response,track)
+        val cover=runCatching{NativeProtocol.artwork(response,track)}.getOrNull()
+        synchronized(coverHints){coverHints[track.id]=CoverHint(access.credentialId,cover)}
+        return url
+    }
 }
 
 internal object NetworkClients {
