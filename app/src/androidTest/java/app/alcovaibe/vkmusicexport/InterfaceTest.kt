@@ -95,7 +95,7 @@ class InterfaceTest {
         ui.onNodeWithTag("settings_screen").assertDoesNotExist()
         ui.onNodeWithTag("check_updates").assertExists()
         capture("05-home-report-menu")
-        ui.runOnUiThread{ui.activity.onBackPressedDispatcher.onBackPressed()}
+        androidx.test.espresso.Espresso.pressBack()
         ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
         ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&
             ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)==0}

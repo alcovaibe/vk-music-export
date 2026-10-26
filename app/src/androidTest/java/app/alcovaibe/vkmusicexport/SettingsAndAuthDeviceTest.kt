@@ -28,7 +28,7 @@ class HomeMenuNavigationDeviceTest {
         ui.onAllNodes(isDialog()).assertCountEquals(0)
         for(label in listOf("Настройки","Диагностика","Копировать лог","Другие логи","Поделиться предыдущим JSON"))
             ui.onNodeWithText(label).assertDoesNotExist()
-        ui.runOnUiThread{ui.activity.onBackPressedDispatcher.onBackPressed()}
+        androidx.test.espresso.Espresso.pressBack()
         ui.onNodeWithText("VK Music").assertIsDisplayed()
         ui.activityRule.scenario.recreate()
         ui.onNodeWithText("VK Music").assertIsDisplayed()

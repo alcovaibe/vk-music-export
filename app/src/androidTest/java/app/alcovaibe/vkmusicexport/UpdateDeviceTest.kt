@@ -48,7 +48,7 @@ class UpdateUiDeviceTest {
         ui.onNodeWithContentDescription("Меню").performClick()
         ui.onNodeWithText("Обновления приложения").assertDoesNotExist()
         ui.onNodeWithTag("check_updates").assertExists()
-        ui.runOnUiThread{ui.activity.onBackPressedDispatcher.onBackPressed()}
+        androidx.test.espresso.Espresso.pressBack()
         // A fixed local source proves the result sheet; this test never contacts GitHub or installs an APK.
         lateinit var controller: UpdateController
         val scope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Main.immediate)
