@@ -120,6 +120,13 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun copies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC LIMIT 8",arrayOf(track.id)).use{c->buildList{
         while(c.moveToNext()){val row=json.decodeFromString<PublishedAudio>(c.getString(0));if(row.track==track)add(row)}
     }}
+    @Synchronized fun savedLibraryCopies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery(
+        "SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC",arrayOf(track.id)).use{c->buildList{
+        while(c.moveToNext()) {
+            val row=json.decodeFromString<PublishedAudio>(c.getString(0))
+            if(row.track==track&&row.relativePath==ExportLayout.ROOT+"Моя музыка/")add(row)
+        }
+    }}
     @Synchronized fun failed(task: AudioExportTask,error: MusicError){writableDatabase.execSQL("UPDATE tasks SET state='FAILED',error=? WHERE task_key=?",arrayOf(error.name,task.key))}
     @Synchronized fun releaseRunning(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING' WHERE state='RUNNING'")}
     @Synchronized fun retryFailed(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE state='FAILED'")}

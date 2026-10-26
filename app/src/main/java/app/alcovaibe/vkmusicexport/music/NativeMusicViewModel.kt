@@ -40,6 +40,78 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _downloadsOpen.value=true
         AudioExportRuntime.start(getApplication(),retry)
     }
+    private val _removal=MutableStateFlow(LibraryRemovalState());val removal=_removal.asStateFlow()
+    fun dismissRemoval() {
+        if(_removal.value.phase==LibraryRemovalPhase.CHECKING)cancel()
+        _removal.update{if(it.phase==LibraryRemovalPhase.SENDING)it.copy(visible=false)else LibraryRemovalState()}
+    }
+    private fun isLibraryTrack(track: NativeTrack,owner: Long): Boolean {
+        val s=_state.value
+        return s.probe?.owner==owner&&s.selected==null&&s.catalogSection==CatalogSection.LIBRARY&&s.page?.tracks?.contains(track)==true
+    }
+    fun inspectRemoval(track: NativeTrack) {
+        val s=_state.value;val owner=s.probe?.owner?:return
+        if(!s.initialized||s.busy||!isLibraryTrack(track,owner))return
+        _removal.value=LibraryRemovalState(true,LibraryRemovalPhase.CHECKING,owner,track)
+        run("remove_inspect"){g->
+            try {
+                LibraryRemovalProtocol.audioId(owner,track)
+                val row=withContext(Dispatchers.IO) {
+                    val shared=SharedAudioStore(getApplication())
+                    val rows=AudioExportStore(getApplication()).use{it.savedLibraryCopies(track)}
+                    rows.firstOrNull{it.relativePath==ExportLayout.ROOT+"Моя музыка/"&&shared.valid(it)}
+                        ?:throw MusicFailure(MusicError.INCOMPLETE)
+                }
+                active(g);musicCheck(isLibraryTrack(track,owner),MusicError.ACCESS)
+                _removal.update{it.copy(phase=LibraryRemovalPhase.CONFIRM,file=row)}
+            }catch(e: CancellationException){_removal.update{it.copy(phase=LibraryRemovalPhase.ERROR,message="Проверка файла прервана. Запрос удаления не отправлен.")};throw e}
+             catch(_: Exception){_removal.update{it.copy(phase=LibraryRemovalPhase.ERROR,
+                message="Не удалось подтвердить скачанную копию этого трека из «Моей музыки». Сначала скачай и проверь файл. Запрос удаления не отправлен.")}}
+        }
+    }
+    fun confirmRemoval() {
+        val ticket=_removal.value
+        val track=ticket.track?:return;val row=ticket.file?:return
+        if(!ticket.visible||ticket.phase!=LibraryRemovalPhase.CONFIRM||!isLibraryTrack(track,ticket.owner))return
+        run("remove_confirm"){g->
+            var attempted=false;var confirmed=false
+            try {
+                _removal.update{it.copy(phase=LibraryRemovalPhase.SENDING)}
+                val a=sessions?.current()?:access();active(g)
+                musicCheck(isLibraryTrack(track,ticket.owner),MusicError.ACCESS)
+                LibraryTrackRemoval(api){file->withContext(Dispatchers.IO){SharedAudioStore(getApplication()).valid(file)}}
+                    .remove(a,ticket.owner,track,row){active(g);musicCheck(isLibraryTrack(track,ticket.owner),MusicError.ACCESS);attempted=true}
+                confirmed=true;active(g)
+                // Offsets have shifted: discard cached pages and restart at zero, never patch counts optimistically.
+                _state.update{it.copy(probe=null,page=null,pageOffset=0)}
+                var refreshed=false
+                try {
+                    val fresh=api.library(a);active(g);musicCheck(fresh.owner==ticket.owner,MusicError.ACCESS)
+                    _state.update{it.copy(probe=fresh,page=fresh.library,pageOffset=0)};refreshed=true
+                }catch(e: CancellationException){throw e}catch(_: Exception){/* Deletion success remains known. */}
+                val message="ВК подтвердил удаление из «Моей музыки». Скачанный файл сохранён."+
+                    if(refreshed)"" else " Не удалось обновить список; нажми «Проверить музыку»."
+                _removal.update{it.copy(phase=LibraryRemovalPhase.DONE,message=message)}
+                _state.update{it.copy(message=message)}
+            }catch(e: CancellationException) {
+                if(attempted)_state.update{it.copy(probe=null,page=null,pageOffset=0)}
+                _removal.update{it.copy(phase=if(confirmed)LibraryRemovalPhase.DONE else LibraryRemovalPhase.ERROR,
+                    message=if(confirmed)"ВК подтвердил удаление. Скачанный файл сохранён; список нужно обновить."
+                        else if(attempted)"Операция прервана; результат удаления не подтверждён. Проверь список в ВК. Автоматического повтора нет. Локальный файл сохранён."
+                        else "Запрос удаления не отправлен. Скачанный файл сохранён.")}
+                throw e
+            }catch(e: Exception) {
+                if(attempted)_state.update{it.copy(probe=null,page=null,pageOffset=0)}
+                val failure=e as? MusicFailure
+                val definite=failure?.code in setOf(MusicError.ACCESS,MusicError.DENIED,MusicError.METHOD,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT)
+                _removal.update{it.copy(phase=LibraryRemovalPhase.ERROR,message=when {
+                    !attempted->"Не удалось повторно проверить доступ или сохранённый файл. Запрос удаления не отправлен."
+                    definite->"ВК отклонил удаление (${failure?.code?.name}). Скачанный файл сохранён. Обнови список через «Проверить музыку»."
+                    else->"Результат удаления не подтверждён. Проверь список в ВК или нажми «Проверить музыку». Автоматического повтора нет. Скачанный файл сохранён."
+                })}
+            }
+        }
+    }
     private var work: Job?=null
     private val authForeground=MutableStateFlow(false)
     private val authOpened=MutableStateFlow(false)
@@ -72,6 +144,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             Diagnostics.event("native_music_operation_ignored",mapOf("stage" to stage,"reason" to if(_state.value.busy)"busy" else "initializing"))
             return
         }
+        if(stage !in setOf("remove_inspect","remove_confirm"))_removal.value=LibraryRemovalState()
         val g=++generation;val id=UUID.randomUUID().toString()
         operationOwner=g
         _state.update{it.copy(busy=true,stage=stage,error=null,message=null,authIssue=null,

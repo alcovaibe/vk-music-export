@@ -56,7 +56,7 @@ internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлис�
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
-    val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById")
+    val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById", "audio.delete")
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
         token.all { it.isLetterOrDigit() && it.code < 128 || it in "_.-" } &&

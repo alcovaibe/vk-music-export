@@ -16,6 +16,7 @@ internal interface MusicApi {
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
+    suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack): Unit = throw MusicFailure(MusicError.METHOD)
     suspend fun media(access: MusicAccess, track: NativeTrack): String
     suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
         musicCheck(offset==0,MusicError.INCOMPLETE);return library(access).library
@@ -39,6 +40,8 @@ private object MusicApiPacer {
 
 internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.api(),private val sessions: MusicSessionManager?=null,
     private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) : MusicApi {
+    private val mutationClient=client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
+        .authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).build()
     private suspend fun request(access: MusicAccess, method: String, fields: Map<String,String> = emptyMap()): JsonElement {
         return sessions?.request(access){requestRaw(it,method,fields)}?:requestRaw(access,method,fields)
     }
@@ -49,11 +52,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         fields.forEach { (k,v) -> form.add(k,v) }
         val req = Request.Builder().url("https://api.vk.com/method/$method")
             .header("User-Agent",access.agent).post(form.build()).build()
-        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists"->"catalog";else->"resolve_media"}
+        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists"->"catalog";"audio.delete"->"library_remove";else->"resolve_media"}
         observe("native_music_request",mapOf("stage" to step,"phase" to "start","transport" to "native_https_api"))
         return try {
             MusicApiPacer.awaitSlot()
-            val response = client.newCall(req).readBounded(1_048_576)
+            val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
             if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
@@ -88,6 +91,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         val params = mutableMapOf("owner_id" to list.owner.toString(),"playlist_id" to list.id.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())
         list.accessKey?.let {params["access_key"]=it}
         return NativeProtocol.page(request(access,"audio.get",params))
+    }
+    override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack) {
+        val id=LibraryRemovalProtocol.audioId(owner,track)
+        // Bind the exact supplied token to the confirmed account. Never replay a mutation via sessions.request.
+        musicCheck(NativeProtocol.owner(requestRaw(access,"users.get"))==owner,MusicError.ACCESS)
+        LibraryRemovalProtocol.success(requestRaw(access,"audio.delete",mapOf("owner_id" to owner.toString(),"audio_id" to id.toString())))
     }
     override suspend fun media(access: MusicAccess,track: NativeTrack): String = NativeProtocol.media(
         request(access,"audio.getById",mapOf("audios" to track.id)),track)

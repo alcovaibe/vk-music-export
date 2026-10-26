@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -40,6 +41,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val state by model.state.collectAsState()
     val session by model.sessionState.collectAsState()
+    val removal by model.removal.collectAsState()
     var clock by remember{mutableLongStateOf(System.currentTimeMillis())}
     LaunchedEffect(Unit){while(true){clock=System.currentTimeMillis();kotlinx.coroutines.delay(30_000)}}
     val queue by AudioExportRuntime.state.collectAsState()
@@ -154,7 +156,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     page.tracks.forEachIndexed { i,track ->
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                Text("${state.pageOffset+i+1}. ${track.title}",style=MaterialTheme.typography.titleSmall)
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                    Text("${state.pageOffset+i+1}. ${track.title}",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
+                                    LibraryRemoveButton(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY,
+                                        enabled=!state.busy,onClick={model.inspectRemoval(track)})
+                                }
                                 Text(track.artist)
                                 track.album?.let{Text("Альбом: ${it.title}",style=MaterialTheme.typography.bodySmall)}
                                 if(track.restricted||track.duration==0)Text("ВК отметил ограничение или не вернул длительность")
@@ -165,6 +171,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
+    LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
 }
 
