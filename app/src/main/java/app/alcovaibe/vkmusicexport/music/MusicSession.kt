@@ -117,7 +117,10 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     private suspend fun resolve(force: Boolean,failed: MusicAccess?): MusicAccess {
         val old=withContext(io){store.read()}?:run{publish(null);throw MusicFailure(MusicError.ACCESS)}
         // Another request already refreshed the rejected token. Use that result, never refresh twice.
-        if(force&&failed!=null&&old.credentialId!=failed.credentialId){publish(old);return old}
+        if(force&&failed!=null&&old.credentialId!=failed.credentialId) {
+            musicCheck(failed.renewal?.owner!=null&&failed.renewal.owner==old.renewal?.owner,MusicError.ACCESS)
+            return resolve(false,null)
+        }
         if(old.rejected){publish(old,SessionStatus.LOGIN_REQUIRED);throw MusicFailure(MusicError.ACCESS)}
         val now=wall();val expired=old.expiresAtMs?.let{it<=now}==true
         val due=force||old.expiresAtMs?.let{it-now<=300_000}==true

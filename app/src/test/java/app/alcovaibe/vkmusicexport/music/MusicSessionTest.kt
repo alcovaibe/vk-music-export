@@ -70,6 +70,15 @@ class MusicSessionTest {
         try{m.current();fail()}catch(_: MusicFailure){}
         assertEquals(1,renewals);assertEquals(SessionStatus.LOGIN_REQUIRED,m.state.value.status)
     }
+    @Test fun lateAccessErrorCannotRetryAnOldRequestWithAnotherAccountsCredential()=runTest {
+        val old=access(expiry=now+3_600_000);val store=Store(old);var requests=0;var renewals=0
+        val other=MusicAccess("vk1.a."+"OTHER_".repeat(12),"Client/1",now+3_600_000,
+            WebRenewal(parent,99,emptyList()),credentialId="other",persisted=true)
+        val m=manager(store,{renewals++;fresh()})
+        try{m.request(old){requests++;store.value=other;throw MusicFailure(MusicError.ACCESS,5)};fail()}
+        catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
+        assertEquals(1,requests);assertEquals(0,renewals);assertSame(other,store.value)
+    }
     @Test fun transientFailureKeepsValidAccessAndUsesFiveMinuteBackoff()=runTest {
         val old=access();val store=Store(old);var calls=0;var clock=now
         val m=manager(store,{calls++;throw MusicFailure(MusicError.NETWORK)},clock={clock})
