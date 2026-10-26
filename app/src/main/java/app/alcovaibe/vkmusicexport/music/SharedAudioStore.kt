@@ -65,10 +65,10 @@ internal class SharedAudioStore(internal val context: Context) {
          catch(_: java.io.FileNotFoundException){return SavedFileCheck(SavedFileReason.MISSING)}
          catch(_: Exception){return SavedFileCheck(SavedFileReason.READ_ERROR)}
     }
-    suspend fun valid(record: PublishedAudio)=inspect(record).reason in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED)
+    suspend fun valid(record: PublishedAudio)=inspect(record).reason==SavedFileReason.OK
     suspend fun requireValid(record: PublishedAudio) {
         val check=inspect(record)
-        if(check.reason !in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED))throw SavedFileFailure(check.reason)
+        if(check.reason!=SavedFileReason.OK)throw SavedFileFailure(check.reason)
     }
     /** Query only audio owned by this package. No broad media permission or filename matching. */
     fun recoveryCandidates(record: PublishedAudio): List<PublishedAudio> = resolver.query(collection,

@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -46,7 +47,7 @@ class SavedFileRecoveryDeviceTest {
             assertEquals(SavedFileReason.HASH_CHANGED,shared.inspect(row.copy(sha256="0".repeat(64))).reason)
             app.contentResolver.update(Uri.parse(row.uri),ContentValues().apply{put(MediaStore.MediaColumns.DISPLAY_NAME,"renamed-recovery.mp3")},null,null)
             assertEquals(SavedFileReason.LOCATION_CHANGED,shared.inspect(row).reason)
-            assertTrue(shared.valid(row));assertEquals(row,store.existing(row.taskKey))
+            assertFalse(shared.valid(row));assertEquals(row,store.existing(row.taskKey))
             app.contentResolver.delete(Uri.parse(row.uri),null,null)
             assertEquals(SavedFileReason.MISSING,shared.inspect(row).reason)
         }
@@ -97,19 +98,22 @@ class SavedFileRecoveryDeviceTest {
         }
     }
     private class ProcessDeath: Error()
-    @Test fun interruptedImportAdoptsPublishedCopyWithoutChangingSourceOrRevivingHistory()=runBlocking<Unit>(Dispatchers.IO) {
-        scenario("recovery-import-interrupted"){context,dir,store,shared,rows->
+    @Test fun interruptedImportAdoptsPublishedCopyButCannotReviveForgottenRecord()=runBlocking<Unit>(Dispatchers.IO) {
+        for(forget in listOf(false,true))scenario("recovery-import-interrupted-$forget"){context,dir,store,shared,rows->
             val row=publish(store,shared,dir,task(7));rows.add(row);store.clearRecentFiles()
             val recovery=SavedFileRecovery(context,store,shared){throw ProcessDeath()}
             val preview=recovery.preview(row,Uri.parse(row.uri))
             try{recovery.confirm(preview);fail("process death")}catch(_: ProcessDeath){}
             assertEquals(row,store.existing(row.taskKey));assertTrue(shared.valid(row))
-            assertTrue(File(context.noBackupFilesDir,"saved-file-recovery/transaction.json").exists())
+            val journal=File(context.noBackupFilesDir,"saved-file-recovery/transaction.json")
+            val json=kotlinx.serialization.json.Json
+            val after=json.decodeFromString<PublishedAudio>(json.parseToJsonElement(journal.readText()).jsonObject.getValue("after").toString())
+            rows.add(after)
+            if(forget)store.forgetFile(row)
             SavedFileRecovery(context,store,shared).recover()
-            val after=store.existing(row.taskKey)!!;rows.add(after)
+            if(forget)assertNull(store.existing(row.taskKey))else assertEquals(after,store.existing(row.taskKey))
             assertNotEquals(row.uri,after.uri);assertTrue(shared.valid(after));assertTrue(shared.valid(row))
-            assertEquals(row.sha256,after.sha256);assertTrue(store.snapshot().recent.isEmpty())
-            assertFalse(File(context.noBackupFilesDir,"saved-file-recovery/transaction.json").exists())
+            assertEquals(row.sha256,after.sha256);assertTrue(store.snapshot().recent.isEmpty());assertFalse(journal.exists())
         }
     }
     @Test fun modifiedTagsNeedExplicitConfirmationAndAudioMismatchIsRejected()=runBlocking<Unit>(Dispatchers.IO) {
