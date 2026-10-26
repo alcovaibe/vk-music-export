@@ -79,6 +79,14 @@ class MusicSessionTest {
         try{m.current();fail()}catch(e: MusicFailure){assertEquals(MusicError.NETWORK,e.code)}
         assertEquals(2,calls);assertSame(old,store.value)
     }
+    @Test fun malformedRenewalOfExpiredAccessPausesInsteadOfSkippingTheDownloadQueue()=runTest {
+        val store=Store(access(now-1));var calls=0
+        val m=manager(store,{calls++;throw MusicFailure(MusicError.RESPONSE)})
+        repeat(2) {
+            try{m.current();fail()}catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
+        }
+        assertEquals(1,calls);assertEquals(token,store.value!!.token)
+    }
     @Test fun deniedOrDifferentAccountRenewalNeverOverwritesThePreviousToken()=runTest {
         for(denied in listOf(true,false)) {
             val old=access(now-1);val store=Store(old)

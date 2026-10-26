@@ -56,7 +56,6 @@ class UpdateUiDeviceTest {
             controller=UpdateController(scope,object: UpdatePreferences {
                 override var lastAttempt=System.currentTimeMillis()
                 override var deferred=0
-                override var automatic=true
             },object: UpdateService {
                 override suspend fun latest()=UpdateRelease("99.0.0",2_000_000_000,36,UpdateAsset(100,"a".repeat(64)))
                 override suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit): File=error("No download")

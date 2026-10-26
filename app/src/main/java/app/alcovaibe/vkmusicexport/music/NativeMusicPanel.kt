@@ -123,7 +123,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     },Modifier.testTag("vk_access_lifetime"),style=MaterialTheme.typography.bodySmall)
                     Text(if(session.renewable)"Включена автоматическая попытка продления. Если ВК отклонит её, понадобится новый вход."
                         else "Автопродление недоступно для этого входа. Новый вход через Chrome может подключить его.",style=MaterialTheme.typography.bodySmall)
-                    if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ по сети. Действующий токен сохранён; приложение повторит попытку позже.",style=MaterialTheme.typography.bodySmall)
+                    if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ. Прежние данные сохранены; приложение повторит попытку позже.",style=MaterialTheme.typography.bodySmall)
                 }
                 Button(enabled=state.initialized&&!state.busy,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
                     Text(if(state.configured)"Изменить доступ ВК" else "Настроить доступ ВК")

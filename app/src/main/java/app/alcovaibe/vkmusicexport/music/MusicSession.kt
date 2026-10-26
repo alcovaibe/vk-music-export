@@ -146,14 +146,17 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
         }catch(e: CancellationException){publish(old);throw e}
          catch(e: Exception){
             val failure=e as? MusicFailure?:MusicFailure(MusicError.RESPONSE)
-            lastFailure=failure
+            // An unusable expired credential must pause the queue, never fail every track as a parser error.
+            val retryFailure=if(failure.code in setOf(MusicError.NETWORK,MusicError.HTTP,MusicError.RATE_LIMIT,
+                MusicError.TLS,MusicError.TIMEOUT,MusicError.STORAGE))failure else MusicFailure(MusicError.ACCESS)
+            lastFailure=retryFailure
             val blocked=failure.code==MusicError.ACCESS||failure.code==MusicError.DENIED
             if(blocked)withContext(io){store.replace(old,old.withSession(blocked=true,rejected=force))}
             val remaining=withContext(io){store.read()}
             if(remaining==null||remaining.credentialId!=old.credentialId){publish(remaining);throw MusicFailure(MusicError.ACCESS)}
             publish(remaining,if(blocked)SessionStatus.LOGIN_REQUIRED else SessionStatus.RETRY)
             event(if(blocked)"reconnect_required" else "retry_later")
-            if(expired||force)throw failure
+            if(expired||force)throw retryFailure
             return remaining
         }
     }
