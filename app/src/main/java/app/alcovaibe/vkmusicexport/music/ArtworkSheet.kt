@@ -18,7 +18,7 @@ internal data class ArtworkState(val visible: Boolean=false,val running: Boolean
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit,onDismiss: ()->Unit) {
+internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit,onDismiss: ()->Unit,onFind: (String)->Unit={}) {
     ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("artwork_sheet")) {
             Text("Обложки сохранённых треков",style=MaterialTheme.typography.titleLarge)
@@ -32,18 +32,20 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
                 if(state.running||state.message!=null)item {
                     Text("Обработано: ${state.processed}/${state.total}",Modifier.testTag("artwork_count"))
                     Text("Готовых файлов пропущено: ${state.readySkipped}")
-                    Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не передал обложку: ${state.noCover}\nТрек недоступен: ${state.unavailable} · ошибки: ${state.failed}")
+                    Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не передал обложку: ${state.noCover}\nНе найдены по ID: ${state.unavailable} · ошибки: ${state.failed}")
                 }else item {Text("Готовые обложки пропускаются. Изменённые или недоступные файлы не перезаписываются. На время обработки приостанови скачивание и оставь приложение открытым.")}
                 state.message?.let{item {Text(it,Modifier.testTag("artwork_result"))}}
                 for(reason in ArtworkSkipReason.entries) {
                     val rows=state.skipped.filter{it.reason==reason}
                     if(rows.isNotEmpty()) {
-                        item {Text(if(reason==ArtworkSkipReason.NO_COVER)"ВК не передал обложку (${rows.size})" else "Треки недоступны (${rows.size})",style=MaterialTheme.typography.titleSmall)}
+                        item {Text(if(reason==ArtworkSkipReason.NO_COVER)"ВК не передал обложку (${rows.size})" else "Не найдены по сохранённому ID (${rows.size})",style=MaterialTheme.typography.titleSmall)}
                         items(rows,key={"skip_${it.item}"}){row->
                             Column(Modifier.testTag("artwork_skip_${row.item}")) {
                                 Text(row.title,style=MaterialTheme.typography.titleSmall)
                                 Text(row.artist,style=MaterialTheme.typography.bodyMedium)
                                 Text(row.reason.label,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                if(row.reason==ArtworkSkipReason.TRACK_UNAVAILABLE&&row.taskKey.isNotEmpty())OutlinedButton(
+                                    enabled=!state.running,onClick={onFind(row.taskKey)},modifier=Modifier.testTag("find_artwork_${row.item}")){Text("Найти обложку в ВК")}
                             }
                         }
                     }

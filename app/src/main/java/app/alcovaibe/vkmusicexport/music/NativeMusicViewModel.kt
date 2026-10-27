@@ -25,7 +25,8 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
-    private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome): AndroidViewModel(application) {
+    private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
+    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
@@ -73,7 +74,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                                  catch(e: Exception) {
                                     val unavailable=(e as? MusicFailure)?.code==MusicError.UNAVAILABLE&&diagnostic.step==ArtworkStep.RESOLVE_COVER
                                     if(unavailable) {
-                                        _artwork.update{it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.title,ArtworkSkipReason.TRACK_UNAVAILABLE))};diagnostic.result("UNAVAILABLE",e)
+                                        _artwork.update{it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.title,ArtworkSkipReason.TRACK_UNAVAILABLE,row.taskKey))};diagnostic.result("UNAVAILABLE",e)
                                     }else {
                                         val issue=artworkIssue(index+1,row.displayName,diagnostic.step,e,row.track.artist,row.track.title)
                                         _artwork.update{it.copy(issues=it.issues+issue)}
@@ -94,6 +95,108 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }catch(e: CancellationException){outcome="INTERRUPTED";_artwork.update{it.copy(message="Обработка прервана. Оставь музыкальный экран открытым для продолжения. Готовые обложки будут пропущены.")};throw e}
              catch(e: Exception){diagnostic.result("STOPPED",e);_artwork.update{it.copy(message="Обработка остановлена (${(e as? MusicFailure)?.code?.name?:"STORAGE"}). Уже готовые файлы сохранены; при незавершённой записи резервная копия остаётся до восстановления.")}}
             finally{_artwork.update{it.copy(running=false,current=null)};diagnostic.summary(outcome,_artwork.value)}
+        }
+    }
+    private val _artworkLookup=MutableStateFlow(ArtworkLookupState());val artworkLookup=_artworkLookup.asStateFlow()
+    private fun lookupNow()=System.nanoTime()/1_000_000
+    private fun lookupUpdate(id: String,block:(ArtworkLookupState)->ArtworkLookupState){_artworkLookup.update{if(it.id==id)block(it)else it}}
+    fun showArtworkLookup(taskKey: String) {
+        if(!_state.value.initialized||_state.value.busy||_artwork.value.running||
+            _artwork.value.skipped.none{it.taskKey==taskKey&&it.reason==ArtworkSkipReason.TRACK_UNAVAILABLE})return
+        val id=UUID.randomUUID().toString()
+        _artworkLookup.value=ArtworkLookupState(visible=true,id=id,phase=LookupPhase.OPENING)
+        lookupWork("open",id){g->
+            AudioExportRuntime.editSaved(getApplication()) {
+                AudioExportStore(getApplication()).use{store->
+                    val shared=SharedAudioStore(getApplication());ArtworkRepair(getApplication(),store,shared).recover()
+                    val row=store.existing(taskKey)?:throw MusicFailure(MusicError.INCOMPLETE)
+                    musicCheck(!row.coverEmbedded,MusicError.INCOMPLETE);shared.requireValid(row);active(g)
+                    lookupUpdate(id){it.copy(phase=LookupPhase.READY,target=row,query=(row.track.artist+" "+row.track.title).take(500))}
+                }
+            }
+        }
+    }
+    fun dismissArtworkLookup(){if(_artworkLookup.value.busy)cancel();_artworkLookup.value=ArtworkLookupState()}
+    fun artworkLookupQuery(value: String) {
+        if(_artworkLookup.value.busy)return
+        _artworkLookup.update{it.copy(query=value.take(500),results=null,choice=null,credentialId="",phase=LookupPhase.READY,message=null)}
+    }
+    fun findArtworkReplacement(offset: Int=0) {
+        val s=_artworkLookup.value
+        if(!s.visible||s.target==null||s.busy||_state.value.busy)return
+        _artworkLookup.update{it.copy(phase=LookupPhase.SEARCHING,choice=null,message=null)}
+        lookupWork("search",s.id){g->
+            val a=sessions?.current()?:access()
+            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)}
+            val service=ArtworkLookup(api,source={error("Search never loads images")},guard=::guard)
+            val page=service.find(a,s.query,offset)
+            lookupUpdate(s.id){it.copy(phase=LookupPhase.READY,results=page,resultsAt=lookupNow(),credentialId=a.credentialId,
+                message=if(page.matches.isEmpty())if(page.byLink)"ВК не вернул запись по этой ссылке." else "ВК не нашёл вариантов. Измени запрос или вставь ссылку на отдельную песню." else "Выбери запись и посмотри её обложку перед подтверждением.")}
+            Diagnostics.event("audio_artwork_lookup",mapOf("operation_id" to s.id,"phase" to "results","by_link" to page.byLink,"count" to page.matches.size,"offset" to page.offset))
+        }
+    }
+    fun previewArtworkReplacement(match: ArtworkMatch) {
+        val s=_artworkLookup.value;val row=s.target?:return
+        if(!s.visible||s.busy||_state.value.busy||match !in s.results?.matches.orEmpty()||!match.selectable)return
+        _artworkLookup.update{it.copy(phase=LookupPhase.PREVIEWING,choice=null,message=null)}
+        lookupWork("preview",s.id){g->
+            val a=sessions?.current()?:access()
+            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId&&s.credentialId==a.credentialId,MusicError.ACCESS)
+                if(lookupNow()-s.resultsAt>=10*60*1000)throw ArtworkLookupFailure(LookupReason.EXPIRED)}
+            val service=ArtworkLookup(api,source={selected->
+                lookupImages?.invoke(selected)?:ArtworkLoader(object: MusicApi by api {override suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack)=selected.candidates},
+                    onAttempt={attempt->Diagnostics.event("audio_artwork_lookup_candidate",mapOf("operation_id" to s.id,"candidate" to attempt.candidate,
+                        "total_candidates" to attempt.total,"origin" to attempt.origin.name,"size" to attempt.size,"hop" to attempt.hop,"outcome" to attempt.outcome.name,"http_status" to attempt.httpStatus))})
+            },guard=::guard)
+            val choice=service.preview(a,row,match)
+            lookupUpdate(s.id){it.copy(phase=LookupPhase.CONFIRM,choice=choice,message=null)}
+        }
+    }
+    fun backArtworkReplacement(){if(!_artworkLookup.value.busy)_artworkLookup.update{it.copy(phase=LookupPhase.READY,choice=null,message=null)}}
+    fun confirmArtworkReplacement() {
+        val s=_artworkLookup.value;val choice=s.choice?:return
+        if(!s.visible||s.phase!=LookupPhase.CONFIRM||_state.value.busy)return
+        _artworkLookup.update{it.copy(phase=LookupPhase.APPLYING,message=null)}
+        lookupWork("apply",s.id){g->
+            val a=sessions?.current()?:access()
+            suspend fun guard(){active(g);musicCheck(authForeground.value&&vault.read()?.credentialId==a.credentialId&&a.credentialId==choice.credentialId,MusicError.ACCESS)}
+            val service=ArtworkLookup(api,source={error("Confirmed image already loaded")},guard=::guard)
+            val changed=service.apply(a,choice){row,image->
+                AudioExportRuntime.editSaved(getApplication()) {
+                    AudioExportStore(getApplication()).use{store->
+                        val repair=ArtworkRepair(getApplication(),store,SharedAudioStore(getApplication()),beforeWrite=::guard)
+                        repair.add(row,ArtworkSource{_,_->image}){guard();a}
+                    }
+                }
+            }
+            active(g);AudioExportRuntime.refresh()
+            _artwork.update{old->
+                val removed=old.skipped.count{it.taskKey==choice.target.taskKey}
+                old.copy(skipped=old.skipped.filterNot{it.taskKey==choice.target.taskKey},missing=(old.missing-removed).coerceAtLeast(0),
+                    added=old.added+if(changed)1 else 0,existing=old.existing+if(changed)0 else 1)
+            }
+            lookupUpdate(s.id){it.copy(phase=LookupPhase.DONE,choice=null,results=null,
+                message=if(changed)"Выбранная обложка добавлена. Аудиоданные, имя и папка сохранены." else "В файле уже есть обложка. Замена не выполнялась.")}
+            Diagnostics.event("audio_artwork_lookup",mapOf("operation_id" to s.id,"phase" to "applied","added" to changed))
+        }
+    }
+    private fun lookupWork(step: String,id: String,block:suspend(Int)->Unit) {
+        run("cover_lookup_$step"){g->
+            try{withContext(Dispatchers.IO){block(g)}}
+            catch(e: CancellationException){lookupUpdate(id){it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Выбери обложку заново.")};throw e}
+            catch(e: Exception){
+                val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
+                val message=(e as? ArtworkLookupFailure)?.reason?.label?:when {
+                    step=="search"&&code in setOf(MusicError.METHOD,MusicError.DENIED)->"ВК не разрешил этот запрос. Можно попробовать HTTPS-ссылку на отдельную песню."
+                    e is ArtworkFetchFailure->artworkIssue(0,"",ArtworkStep.FETCH_COVER,e).reason
+                    e is SavedFileFailure->e.reason.label
+                    code==MusicError.ACCESS->"Доступ ВК изменился или отклонён. Выполни поиск заново; при необходимости подключись через Chrome."
+                    else->code.label
+                }
+                lookupUpdate(id){it.copy(phase=LookupPhase.READY,choice=null,message=message)}
+                Diagnostics.event("audio_artwork_lookup",mapOf("operation_id" to id,"phase" to step,"outcome" to "failed","code" to code.name,
+                    "reason" to (e as? ArtworkLookupFailure)?.reason?.name,"vk_code" to (e as? MusicFailure)?.remoteCode))
+            }
         }
     }
     private val _duplicates=MutableStateFlow(DuplicatesState());val duplicates=_duplicates.asStateFlow()
@@ -348,8 +451,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             Diagnostics.event("native_music_operation_ignored",mapOf("stage" to stage,"reason" to if(_state.value.busy)"busy" else "initializing"))
             return
         }
+        if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
         if(!stage.startsWith("duplicates_"))_duplicates.value=DuplicatesState()
         if(stage !in setOf("remove_inspect","remove_confirm"))_removal.value=LibraryRemovalState()
+        val lookupRunId=_artworkLookup.value.id.takeIf{stage.startsWith("cover_lookup_")}
         val duplicateRunId=_duplicates.value.scanId.takeIf{stage.startsWith("duplicates_")}
         val g=++generation;val id=UUID.randomUUID().toString()
         operationOwner=g
@@ -389,6 +494,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "failed","code" to error.name,"vk_code" to (e as? MusicFailure)?.remoteCode))
                 }
             }finally {
+                if(lookupRunId!=null)lookupUpdate(lookupRunId){if(it.busy)it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Повтори поиск.") else it}
                 // Cancellation can happen while waiting for the shared gate, before block() starts.
                 if(duplicateRunId!=null)_duplicates.update{if(it.scanId==duplicateRunId&&it.busy)
                     it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message="Проверка прервана до завершения. Для продолжения нужен новый поиск.") else it}
@@ -641,8 +747,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("recent_clear"){g->withContext(Dispatchers.IO){active(g);AudioExportRuntime.clearRecentFiles(getApplication())}}
     }
     fun cancel()=stop("native_stop_button")
-    fun stopForWindow()=stop("native_window_closed")
+    fun stopForWindow(){_artworkLookup.value=ArtworkLookupState();stop("native_window_closed")}
     fun stopInBackground() {
+        _artworkLookup.value=ArtworkLookupState()
         _duplicates.update{it.copy(consent=null)}
         setForeground(false)
         // Every browser-auth phase survives Chrome, including code validation and music verification.

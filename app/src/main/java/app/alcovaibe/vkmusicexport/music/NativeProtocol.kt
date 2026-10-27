@@ -56,7 +56,7 @@ internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлис�
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
-    val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById", "audio.delete")
+    val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById", "audio.delete", "audio.search")
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
         token.all { it.isLetterOrDigit() && it.code < 128 || it in "_.-" } &&
@@ -149,6 +149,25 @@ internal object NativeProtocol {
         }
         musicCheck(lists.map { it.key }.distinct().size == lists.size)
         return NativeCatalog(lists,total)
+    }
+    private fun artworkMatch(o: JsonObject): ArtworkMatch {
+        val t=track(o)
+        return try{ArtworkMatch(t,artworkCandidates(JsonArray(listOf(o)),t))}
+        catch(e: MusicFailure){ArtworkMatch(t,emptyList(),e.code)}
+    }
+    fun artworkSearch(response: JsonElement,offset: Int): ArtworkMatches = parse {
+        val o=response as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
+        val total=count(o);val items=o["items"] as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
+        musicCheck(items.size<=ArtworkQuery.PAGE_SIZE&&items.size<=total&&offset+items.size<=total,MusicError.RESPONSE)
+        val matches=items.map{artworkMatch(it.jsonObject)}
+        musicCheck(matches.map{it.track.id}.distinct().size==matches.size,MusicError.RESPONSE)
+        ArtworkMatches(matches,total,offset)
+    }
+    fun artworkRecord(response: JsonElement,id: String): ArtworkMatch? = parse {
+        val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
+        if(items.isEmpty())return@parse null
+        musicCheck(items.size==1,MusicError.RESPONSE)
+        artworkMatch(items[0].jsonObject).also{musicCheck(it.track.id==id,MusicError.RESPONSE)}
     }
     fun artwork(response: JsonElement,expected: NativeTrack): String? = artworkCandidates(response,expected).firstOrNull()?.url
     fun artworkCandidates(response: JsonElement,expected: NativeTrack): List<ArtworkCandidate> = parse {

@@ -20,6 +20,8 @@ internal interface MusicApi {
     suspend fun artwork(access: MusicAccess,track: NativeTrack): String? = null
     suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack): List<ArtworkCandidate> =
         artwork(access,track)?.let{listOf(ArtworkCandidate(it,ArtworkOrigin.UNSPECIFIED))}?:emptyList()
+    suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches=throw MusicFailure(MusicError.METHOD)
+    suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch?=throw MusicFailure(MusicError.METHOD)
     suspend fun media(access: MusicAccess, track: NativeTrack): String
     suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
         musicCheck(offset==0,MusicError.INCOMPLETE);return library(access).library
@@ -55,13 +57,15 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         fields.forEach { (k,v) -> form.add(k,v) }
         val req = Request.Builder().url("https://api.vk.com/method/$method")
             .header("User-Agent",access.agent).post(form.build()).build()
-        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists"->"catalog";"audio.delete"->"library_remove";else->"resolve_media"}
+        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists"->"catalog";"audio.delete"->"library_remove";"audio.search"->"cover_search";else->"resolve_media"}
         observe("native_music_request",mapOf("stage" to step,"phase" to "start","transport" to "native_https_api"))
         return try {
             MusicApiPacer.awaitSlot()
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
+            // A search permission denial must not renew/reject an otherwise valid music session.
+            if(response.status==403&&method=="audio.search")throw MusicFailure(MusicError.DENIED)
             if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
             musicCheck(response.status==200,MusicError.HTTP)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes))}
@@ -100,6 +104,16 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         // Bind the exact supplied token to the confirmed account. Never replay a mutation via sessions.request.
         musicCheck(NativeProtocol.owner(requestRaw(access,"users.get",emptyMap()))==owner,MusicError.ACCESS)
         LibraryRemovalProtocol.success(requestRaw(access,"audio.delete",mapOf("owner_id" to owner.toString(),"audio_id" to id.toString())))
+    }
+    override suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches {
+        val text=ArtworkQuery.text(query)
+        musicCheck(!ArtworkQuery.isLink(text)&&offset>=0&&offset<ArtworkQuery.MAX_RESULTS&&offset%ArtworkQuery.PAGE_SIZE==0,MusicError.RESPONSE)
+        return NativeProtocol.artworkSearch(request(access,"audio.search",mapOf("q" to text,"count" to ArtworkQuery.PAGE_SIZE.toString(),
+            "offset" to offset.toString(),"auto_complete" to "0","search_own" to "0","sort" to "2")),offset)
+    }
+    override suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch? {
+        musicCheck(Regex("-?[1-9][0-9]*_[1-9][0-9]*").matches(id),MusicError.RESPONSE)
+        return NativeProtocol.artworkRecord(request(access,"audio.getById",mapOf("audios" to id)),id)
     }
     private data class CoverHint(val token: String,val result: Result<List<ArtworkCandidate>>)
     private val coverHints=object: LinkedHashMap<String,CoverHint>(4,.75f,true){override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,CoverHint>?)=size>8}

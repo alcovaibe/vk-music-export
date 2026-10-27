@@ -43,6 +43,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
     val artwork by model.artwork.collectAsState()
+    val lookup by model.artworkLookup.collectAsState()
     val duplicates by model.duplicates.collectAsState()
     val savedFiles by model.savedFiles.collectAsState()
     val savedFilePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
@@ -195,7 +196,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         onSelect={row->model.selectSavedFile(row);savedFilePicker.launch(arrayOf("audio/*"))},
         onConfirm=model::confirmSavedFile,onForget=model::requestForgetFile,onConfirmForget=model::confirmForgetFile,
         onBack=model::backSavedFiles,onStop=model::cancel,onDismiss=model::dismissSavedFiles)
-    if(artwork.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork)
+    if(artwork.visible&&!lookup.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork,model::showArtworkLookup)
+    if(lookup.visible)ArtworkLookupSheet(lookup,model::artworkLookupQuery,model::findArtworkReplacement,model::previewArtworkReplacement,
+        model::confirmArtworkReplacement,model::backArtworkReplacement,model::cancel,model::dismissArtworkLookup)
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
 }
 

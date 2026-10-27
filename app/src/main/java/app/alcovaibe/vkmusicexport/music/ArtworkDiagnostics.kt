@@ -7,9 +7,9 @@ internal enum class ArtworkStep { INITIALIZE,RECOVERY,VERIFY_FILE,BACKUP,READ_TA
 internal enum class ArtworkFetchReason { HTTP_STATUS,REDIRECT_LIMIT,REDIRECT_LOCATION_MISSING,REDIRECT_UNSAFE }
 internal class ArtworkFetchFailure(val httpStatus: Int,val fetchReason: ArtworkFetchReason,code: MusicError=MusicError.HTTP,val candidatesTried: Int=1): MusicFailure(code)
 internal enum class ArtworkSkipReason(val label: String) {
-    NO_COVER("ВК не передал ссылку на обложку."),TRACK_UNAVAILABLE("ВК не вернул трек для текущего доступа.")
+    NO_COVER("ВК не передал ссылку на обложку."),TRACK_UNAVAILABLE("ВК не вернул запись по сохранённому ID. Она могла быть удалена из твоей библиотеки.")
 }
-internal data class ArtworkSkip(val item: Int,val artist: String,val title: String,val reason: ArtworkSkipReason)
+internal data class ArtworkSkip(val item: Int,val artist: String,val title: String,val reason: ArtworkSkipReason,val taskKey: String="")
 internal data class ArtworkIssue(val item: Int,val name: String,val step: ArtworkStep,val code: MusicError,val reason: String,
     val artist: String="",val title: String="",val httpStatus: Int?=null,val fetchReason: ArtworkFetchReason?=null)
 internal fun artworkIssue(item: Int,name: String,step: ArtworkStep,error: Exception,artist: String="",title: String=""): ArtworkIssue {
