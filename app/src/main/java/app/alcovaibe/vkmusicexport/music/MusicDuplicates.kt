@@ -16,7 +16,7 @@ internal fun interface DuplicateHasher {
 }
 internal enum class DuplicateStatus(val label: String) { PENDING("Ожидает решения"),DELETED("Удалён из ВК"),SKIPPED("Пропущен"),UNKNOWN("Результат не подтверждён") }
 internal data class MusicDuplicate(val keep: NativeTrack,val remove: NativeTrack,val signature: DuplicateSignature,val status: DuplicateStatus=DuplicateStatus.PENDING)
-internal data class DuplicateProblem(val track: NativeTrack,val reason: String)
+internal data class DuplicateProblem(val track: NativeTrack,val reason: String,val error: MusicError?=null)
 internal data class DuplicateReport(val owner: Long,val credentialId: String,val tracks: Int,val checked: Int,
     val duplicates: List<MusicDuplicate>,val problems: List<DuplicateProblem>)
 internal data class DuplicateProgress(val stage: String,val done: Int=0,val total: Int=0,val track: NativeTrack?=null,val bytes: Long=0,val reused: Int=0)
@@ -64,7 +64,6 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
             guard();progress(DuplicateProgress("Проверяем SHA-256 аудиоданных",index,candidates.size,track,reused=reused))
             if(track.id in repeated)continue
             if(!own(owner,track)){problems.add(DuplicateProblem(track,"Эта запись не поддерживает безопасное удаление из своего профиля по текущему протоколу."));continue}
-            if(track.restricted||track.duration<=0){problems.add(DuplicateProblem(track,"Трек недоступен для проверки аудиоданных."));continue}
             try {
                 val cached=hasher.cached(track)
                 signatures[track.id]=checked(cached?:hasher.signature(access,track));checkedCount++
@@ -74,7 +73,7 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
             catch(e: kotlinx.coroutines.CancellationException){throw e}
             catch(e: MusicFailure){
                 if(e.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.DENIED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT,MusicError.STORAGE))throw e
-                problems.add(DuplicateProblem(track,"SHA-256 не подтверждён: ${e.code.label}"))
+                problems.add(DuplicateProblem(track,(e as? TrackUnavailable)?.issue?.label?:"SHA-256 не подтверждён: ${e.code.label}",e.code))
             }
         }
         guard();val (_,after)=read(access,owner,"Проверяем, что список не изменился")
@@ -111,11 +110,11 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
     }
 }
 
-internal enum class DuplicatePhase { INTRO,SCANNING,READY,DELETING,BLOCKED }
+internal enum class DuplicatePhase { INTRO,QUEUED,SCANNING,READY,DELETING,BLOCKED }
 internal data class DuplicatesState(val visible: Boolean=false,val phase: DuplicatePhase=DuplicatePhase.INTRO,val scanId: String="",
     val report: DuplicateReport?=null,val progress: DuplicateProgress=DuplicateProgress(""),val consent: DuplicateConsent?=null,val message: String?=null,
     val savedChecks: Int=0) {
-    val busy get()=phase in setOf(DuplicatePhase.SCANNING,DuplicatePhase.DELETING)
+    val busy get()=phase in setOf(DuplicatePhase.QUEUED,DuplicatePhase.SCANNING,DuplicatePhase.DELETING)
     val found get()=report?.duplicates?.size?:0
     val removed get()=report?.duplicates?.count{it.status==DuplicateStatus.DELETED}?:0
     val skipped get()=report?.duplicates?.count{it.status==DuplicateStatus.SKIPPED}?:0

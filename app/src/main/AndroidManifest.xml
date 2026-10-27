@@ -17,6 +17,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.VKMusicExport">
         <service android:name=".music.AudioExportJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+        <service android:name=".music.DuplicateCheckJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+        <receiver android:name=".music.DuplicateCheckPauseReceiver" android:exported="false" />
         <receiver android:name=".music.AudioExportPauseReceiver" android:exported="false" />
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.diagnostics" android:exported="false" android:grantUriPermissions="true">

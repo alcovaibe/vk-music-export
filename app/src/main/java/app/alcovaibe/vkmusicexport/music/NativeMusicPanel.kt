@@ -46,6 +46,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val lookup by model.artworkLookup.collectAsState()
     val duplicates by model.duplicates.collectAsState()
     val savedFiles by model.savedFiles.collectAsState()
+    val availability by model.availability.collectAsState()
+    val backgroundCheck=duplicates.phase in setOf(DuplicatePhase.QUEUED,DuplicatePhase.SCANNING)
     val savedFilePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri==null)model.cancelSavedFileSelection()else model.previewSavedFile(uri)
     }
@@ -53,7 +55,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     LaunchedEffect(Unit){while(true){clock=System.currentTimeMillis();kotlinx.coroutines.delay(30_000)}}
     val queue by AudioExportRuntime.state.collectAsState()
     val queueWorking=queue.status in setOf("RUNNING","QUEUED")
-    val canPrepare=!state.busy&&!queue.unfinished&&!queueWorking
+    val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
     var notifications by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
     var configure by rememberSaveable {mutableStateOf(false)}
@@ -76,12 +78,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Один трек может сохраняться в нескольких папках: это отдельные копии и дополнительное место. В папки альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
                 if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
                 Text("Новые файлы сохраняются с обложкой, если ВК её отдаёт. Звук не перекодируется.",style=MaterialTheme.typography.bodySmall)
-                OutlinedButton(enabled=state.initialized&&!state.busy&&!queueWorking,onClick=model::showArtwork,
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showArtwork,
                     modifier=Modifier.testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
-                OutlinedButton(enabled=state.initialized&&!state.busy&&!queueWorking,onClick=model::showSavedFiles,
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showSavedFiles,
                     modifier=Modifier.testTag("saved_file_recovery")){Text("Проверить сохранённые файлы")}
                 if(queue.recent.isNotEmpty()) {
-                    RecentFilesHeading(enabled=!state.busy,onClear=model::clearRecentFiles)
+                    RecentFilesHeading(enabled=!state.busy&&!backgroundCheck,onClear=model::clearRecentFiles)
                     queue.recent.forEach{row->
                         Text("${row.displayName}\n${row.relativePath}",style=MaterialTheme.typography.bodySmall)
                         Text(if(row.coverEmbedded)"С обложкой" else "Без добавленной обложки",style=MaterialTheme.typography.labelSmall)
@@ -100,7 +102,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
                 Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
                 Text("Это внутренний протокол ВК. Веб-сессия может иметь права шире музыки, а музыкальный метод может быть недоступен. Новый доступ сохраняется только после успешной проверки музыки.",style=MaterialTheme.typography.bodySmall)
-                if(state.stage!="browser_auth")Button(enabled=state.initialized&&!state.busy,onClick=model::authenticate) {
+                if(state.stage!="browser_auth")Button(enabled=state.initialized&&!state.busy&&!backgroundCheck,onClick=model::authenticate) {
                     Text(if(state.configured)"Подключить ВК заново через Chrome" else "Подключить ВК через Chrome")
                 }
                 state.authPhase?.let{Text(it.label,Modifier.testTag("native_auth_phase"))}
@@ -128,12 +130,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         else "Автопродление недоступно для этого входа. Новый вход через Chrome может подключить его.",style=MaterialTheme.typography.bodySmall)
                     if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ. Прежние данные сохранены; приложение повторит попытку позже.",style=MaterialTheme.typography.bodySmall)
                 }
-                Button(enabled=state.initialized&&!state.busy,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
+                Button(enabled=state.initialized&&!state.busy&&!backgroundCheck,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
                     Text(if(state.configured)"Изменить доступ ВК" else "Настроить доступ ВК")
                 }
                 if(state.configured) {
-                    OutlinedButton(enabled=!state.busy,onClick=model::checkAccess){Text("Проверить музыку")}
-                    TextButton(enabled=!state.busy&&!queueWorking,onClick=model::forget){Text("Удалить доступ ВК")}
+                    OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
+                    TextButton(enabled=!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::forget){Text("Удалить доступ ВК")}
                 }
                 state.message?.let{Text(it)}
                 state.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
@@ -148,14 +150,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
                 }
                 if(duplicates.scanId.isNotEmpty()&&!duplicates.visible)OutlinedButton(
-                    enabled=!state.busy||duplicates.busy,onClick=model::showDuplicates,modifier=Modifier.testTag("reopen_duplicates")) {
+                    enabled=!state.busy&&!backgroundCheck||duplicates.busy,onClick=model::showDuplicates,modifier=Modifier.testTag("reopen_duplicates")) {
                     Text("Дубликаты: процесс и результат")
                 }
                 state.probe?.let {
                     HorizontalDivider()
-                    MusicCatalogPanel(state,canPrepare,model::section,model::select,model::catalogPage,model::refreshCatalog,
+                    MusicCatalogPanel(state.copy(busy=state.busy||backgroundCheck),canPrepare,model::section,model::select,model::catalogPage,model::refreshCatalog,
                         onLibrary={albums->model.section(CatalogSection.LIBRARY);model.prepare(libraryAlbums=albums)},
-                        onCategory={model.prepare(catalogKind=it)},onClassify=model::classify,onDuplicates=model::showDuplicates)
+                        onCategory={model.prepare(catalogKind=it)},onClassify=model::classify,onDuplicates=model::showDuplicates,onUnavailable=model::showAvailability)
                     Text("Подготовку списков дождись на этом экране. После создания очереди можно свернуть приложение; прогресс доступен кнопкой скачивания вверху.",style=MaterialTheme.typography.bodySmall)
                 }
                 state.page?.let { page ->
@@ -168,8 +170,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         else Button(enabled=canPrepare,onClick={model.prepare()}){Text(if(selectedKind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        TextButton(enabled=!state.busy&&state.pageOffset>0,onClick={model.page(-1)}){Text("Предыдущие треки")}
-                        TextButton(enabled=!state.busy&&page.tracks.isNotEmpty()&&state.pageOffset+page.tracks.size<page.count,onClick={model.page(1)}){Text("Следующие треки")}
+                        TextButton(enabled=!state.busy&&!backgroundCheck&&state.pageOffset>0,onClick={model.page(-1)}){Text("Предыдущие треки")}
+                        TextButton(enabled=!state.busy&&!backgroundCheck&&page.tracks.isNotEmpty()&&state.pageOffset+page.tracks.size<page.count,onClick={model.page(1)}){Text("Следующие треки")}
                     }
                     page.tracks.forEachIndexed { i,track ->
                         ElevatedCard(Modifier.fillMaxWidth()) {
@@ -177,12 +179,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                                     Text("${state.pageOffset+i+1}. ${track.title}",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
                                     LibraryRemoveButton(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY,
-                                        enabled=!state.busy,onClick={model.inspectRemoval(track)})
+                                        enabled=!state.busy&&!backgroundCheck,onClick={model.inspectRemoval(track)})
                                 }
                                 Text(track.artist)
                                 track.album?.let{Text("Альбом: ${it.title}",style=MaterialTheme.typography.bodySmall)}
                                 if(track.restricted||track.duration==0)Text("ВК отметил ограничение или не вернул длительность")
-                                TextButton(enabled=canPrepare&&selectedKind!=PlaylistKind.UNKNOWN&&!track.restricted&&track.duration>0,onClick={model.download(track,state.pageOffset+i+1)}){Text("Скачать этот трек")}
+                                TextButton(enabled=canPrepare&&selectedKind!=PlaylistKind.UNKNOWN,onClick={model.download(track,state.pageOffset+i+1)}){Text("Скачать этот трек")}
                             }
                         }
                     }
@@ -190,7 +192,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}
     }
     if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
-        model::cancelDuplicateRemoval,model::skipDuplicate,model::cancel,model::dismissDuplicates)
+        model::cancelDuplicateRemoval,model::skipDuplicate,model::pauseDuplicateCheck,model::dismissDuplicates)
+    if(availability.visible)AvailabilitySheet(availability,model::checkUnavailableTracks,model::cancel,model::dismissAvailability)
     LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
     if(savedFiles.visible)SavedFilesSheet(savedFiles,{model.checkSavedFiles()},{model.checkSavedFiles(true)},
         onSelect={row->model.selectSavedFile(row);savedFilePicker.launch(arrayOf("audio/*"))},

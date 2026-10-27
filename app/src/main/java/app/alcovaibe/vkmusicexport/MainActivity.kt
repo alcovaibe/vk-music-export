@@ -2,6 +2,7 @@ package app.alcovaibe.vkmusicexport
 
 import app.alcovaibe.vkmusicexport.diagnostics.*
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,11 +36,18 @@ private fun musicIcon() = ImageVector.vectorResource(R.drawable.ic_music_note)
 class MainActivity : ComponentActivity() {
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
+    private fun openNotification(intent: Intent?) {
+        if(intent?.getBooleanExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA,false)==true){
+            nativeMusic.openDuplicateNotification();intent.removeExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA)
+        }
+    }
+    override fun onNewIntent(intent: Intent){super.onNewIntent(intent);setIntent(intent);openNotification(intent)}
     override fun onResume(){super.onResume();nativeMusic.setForeground(true)}
     override fun onPause(){nativeMusic.setForeground(false);super.onPause()}
     override fun onStop(){nativeMusic.stopInBackground();super.onStop()}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openNotification(intent)
         enableEdgeToEdge()
         setContent {
             SideEffect {
@@ -69,6 +77,8 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
     val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
     val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
     val musicState by nativeMusic.state.collectAsState()
+    val duplicates by nativeMusic.duplicates.collectAsState()
+    LaunchedEffect(duplicates.visible){if(duplicates.visible)screen="native"}
     app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,screen!="native"&&!downloadsOpen)
     if(screen!="native")Scaffold(
         modifier=Modifier.testTag("home_screen"),containerColor=MaterialTheme.colorScheme.background,
@@ -99,7 +109,7 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
     }
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,screen=="native",
         onDismiss={screen=null})
-    if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy,musicState.error,
+    if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy||duplicates.busy,musicState.error,
         onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
         onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads)
 }

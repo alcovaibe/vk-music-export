@@ -172,6 +172,7 @@ class DuplicateResumeDeviceTest {
         val tracks=(1..3).map(::duplicateTrack);val calls=mutableListOf<String>();var reject=true;var downloads=0;var deletes=0
         val api=object: MusicApi by duplicateApi() {
             override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(tracks,tracks.size))
+            override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,media(access,track))
             override suspend fun media(access: MusicAccess,track: NativeTrack): String {
                 calls.add(track.id)
                 if(track==tracks[1]&&reject)throw MusicFailure(MusicError.ACCESS,5)

@@ -196,7 +196,7 @@ class MusicExportDeviceTest {
             }
         }finally{store?.close();cleanup(rows);base.deleteRecursively()}
     }
-    @Test fun systemUidtJobRunsFromVisibleActivityAndPersistsSkippedItemsWithoutCredentials()=runBlocking {
+    @Test fun systemUidtJobRunsFromVisibleActivityAndPausesBeforeResolvingRestrictedTracksWithoutCredentials()=runBlocking {
         val context=target
         ActivityScenario.launch(MainActivity::class.java).use {scenario->
             scenario.onActivity{} // Activity must be visible when scheduling a user-initiated job.
@@ -206,8 +206,9 @@ class MusicExportDeviceTest {
                 AudioExportRuntime.replace(context,listOf(ExportLayout.task(track(40).copy(restricted=true),listOf("Моя музыка"),1)))
                 AudioExportRuntime.start(context)
             }
-            withTimeout(20000){while(AudioExportRuntime.state.value.status !in setOf("FINISHED_WITH_ERRORS","FINISHED"))delay(100)}
-            assertEquals(1,AudioExportRuntime.state.value.failed);assertEquals(0,AudioExportRuntime.state.value.pending)
+            withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED")delay(100)}
+            assertEquals(MusicError.ACCESS,AudioExportRuntime.state.value.error)
+            assertEquals(0,AudioExportRuntime.state.value.failed);assertEquals(1,AudioExportRuntime.state.value.pending)
             withContext(Dispatchers.IO){while(AudioExportRuntime.active.get())delay(50);AudioExportRuntime.clear(context)}
         }
     }
