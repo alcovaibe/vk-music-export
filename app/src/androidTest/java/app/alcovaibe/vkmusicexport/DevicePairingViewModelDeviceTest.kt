@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,6 +26,25 @@ class DevicePairingViewModelDeviceTest {
 
     @Test fun codeRetryAndSuperAppExchangeReplaceCredentialOnlyAfterMusicSucceeds()=exercise(false)
     @Test fun exchangedSuperAppTokenAndDeniedMusicKeepPreviousEncryptedCredential()=exercise(true)
+
+    @Test fun journalSecretCheckIgnoresDigitsInsideNumericTimingsButRejectsSecretValues() {
+        val timing=Json.parseToJsonElement("""{"elapsed_ns":111111183947222222,"wall_ms":1793111183947,"events":[{"data":{"phase":"CONNECTED"}}]}""")
+        for(code in listOf("111111","183947","222222"))assertFalse(containsSecret(timing,code))
+        // Parse escaped JSON strings too; raw substring matching would miss this value.
+        assertTrue(containsSecret(Json.parseToJsonElement("""{"events":[{"data":{"value":"\u0031\u0038\u0033\u0039\u0034\u0037"}}]}"""),"183947"))
+        assertTrue(containsSecret(Json.parseToJsonElement("""{"events":[{"data":{"value":183947}}]}"""),"183947"))
+        assertTrue(containsSecret(Json.parseToJsonElement("""{"events":[{"data":{"value":"prefix183947suffix"}}]}"""),"183947"))
+        assertTrue(containsSecret(Json.parseToJsonElement("""{"data":{"credential":"$fresh"}}"""),fresh))
+        assertTrue(containsSecret(Json.parseToJsonElement("""{"data":{"183947":"unexpected key"}}"""),"183947"))
+    }
+
+    private fun containsSecret(value: JsonElement,secret: String): Boolean=when(value) {
+        is JsonObject -> value.any{(key,child)->key.contains(secret)||containsSecret(child,secret)}
+        is JsonArray -> value.any{containsSecret(it,secret)}
+        // Timings/counters can coincidentally contain a six-digit code. A numeric
+        // value equal to the code still fails, as do occurrences in any string.
+        is JsonPrimitive -> if(value.isString)value.content.contains(secret) else value.content==secret
+    }
 
     private fun exercise(denied: Boolean) {
         val vault=MusicAccessStore(app);val store=ViewModelStore()
@@ -97,8 +117,9 @@ class DevicePairingViewModelDeviceTest {
             }else {
                 assertEquals(DeviceAuthPhase.CONNECTED,model.state.value.authPhase);assertEquals(fresh,vault.read()!!.token)
             }
-            val log=Diagnostics.export()
-            for(secret in listOf(old,fresh,anon,hash,"SUPER_APP_SECRET_FIXTURE","111111","183947","222222","SYNTHETIC_ONE_TIME_SECRET"))assertFalse(log.contains(secret))
+            val log=Json.parseToJsonElement(Diagnostics.export())
+            for((index,secret) in listOf(old,fresh,anon,hash,"SUPER_APP_SECRET_FIXTURE","111111","183947","222222","SYNTHETIC_ONE_TIME_SECRET").withIndex())
+                assertFalse("Journal contains secret fixture ${index+1}",containsSecret(log,secret))
         }finally {
             releaseValidation.complete(Unit);releaseExchange.complete(Unit);releaseMusic.complete(Unit);instrumentation.runOnMainSync{store.clear()}
             if(modelCreated)await{!model.state.value.busy}
