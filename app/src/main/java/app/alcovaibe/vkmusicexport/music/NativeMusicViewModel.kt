@@ -146,7 +146,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val service=ArtworkLookup(api,source={selected->
                 lookupImages?.invoke(selected)?:ArtworkLoader(object: MusicApi by api {override suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack)=selected.candidates},
                     onAttempt={attempt->Diagnostics.event("audio_artwork_lookup_candidate",mapOf("operation_id" to s.id,"candidate" to attempt.candidate,
-                        "origin" to attempt.origin.name,"size" to attempt.size,"outcome" to attempt.outcome.name,"http_status" to attempt.httpStatus))})
+                        "total_candidates" to attempt.total,"origin" to attempt.origin.name,"size" to attempt.size,"hop" to attempt.hop,"outcome" to attempt.outcome.name,"http_status" to attempt.httpStatus))})
             },guard=::guard)
             val choice=service.preview(a,row,match)
             lookupUpdate(s.id){it.copy(phase=LookupPhase.CONFIRM,choice=choice,message=null)}

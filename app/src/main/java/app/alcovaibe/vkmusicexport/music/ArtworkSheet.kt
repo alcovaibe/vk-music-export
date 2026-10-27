@@ -32,7 +32,7 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
                 if(state.running||state.message!=null)item {
                     Text("Обработано: ${state.processed}/${state.total}",Modifier.testTag("artwork_count"))
                     Text("Готовых файлов пропущено: ${state.readySkipped}")
-                    Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не передал обложку: ${state.noCover}\nТрек недоступен: ${state.unavailable} · ошибки: ${state.failed}")
+                    Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не передал обложку: ${state.noCover}\nНе найдены по ID: ${state.unavailable} · ошибки: ${state.failed}")
                 }else item {Text("Готовые обложки пропускаются. Изменённые или недоступные файлы не перезаписываются. На время обработки приостанови скачивание и оставь приложение открытым.")}
                 state.message?.let{item {Text(it,Modifier.testTag("artwork_result"))}}
                 for(reason in ArtworkSkipReason.entries) {
