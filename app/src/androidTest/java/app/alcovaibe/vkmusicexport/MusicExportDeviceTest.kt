@@ -117,7 +117,10 @@ class MusicExportDeviceTest {
             assertNull(chain.request().header("Authorization"));assertNull(chain.request().header("Cookie"))
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic").body(bytes.toResponseBody()).build()
         }.build()
-        val api=object: MusicApi by noApi {override suspend fun media(access: MusicAccess,track: NativeTrack): String{resolutions++;return "https://a.userapi.com/audio?signature=PRIVATE"}}
+        val api=object: MusicApi by noApi {
+            override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,media(access,track))
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String{resolutions++;return "https://a.userapi.com/audio?signature=PRIVATE"}
+        }
         try {
             val engine=AudioExportEngine(store,shared,File(base,"tmp"),api,AudioTransfer(client){type,fields->events.add(type+fields)},
                 credential={MusicAccess("SYNTHETIC_SECRET".repeat(8),"Client/1")},observe={type,fields->events.add(type+fields)})
@@ -196,7 +199,7 @@ class MusicExportDeviceTest {
             }
         }finally{store?.close();cleanup(rows);base.deleteRecursively()}
     }
-    @Test fun systemUidtJobRunsFromVisibleActivityAndPersistsSkippedItemsWithoutCredentials()=runBlocking {
+    @Test fun systemUidtJobRunsFromVisibleActivityAndPausesBeforeResolvingRestrictedTracksWithoutCredentials()=runBlocking {
         val context=target
         ActivityScenario.launch(MainActivity::class.java).use {scenario->
             scenario.onActivity{} // Activity must be visible when scheduling a user-initiated job.
@@ -206,8 +209,9 @@ class MusicExportDeviceTest {
                 AudioExportRuntime.replace(context,listOf(ExportLayout.task(track(40).copy(restricted=true),listOf("Моя музыка"),1)))
                 AudioExportRuntime.start(context)
             }
-            withTimeout(20000){while(AudioExportRuntime.state.value.status !in setOf("FINISHED_WITH_ERRORS","FINISHED"))delay(100)}
-            assertEquals(1,AudioExportRuntime.state.value.failed);assertEquals(0,AudioExportRuntime.state.value.pending)
+            withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED")delay(100)}
+            assertEquals(MusicError.ACCESS,AudioExportRuntime.state.value.error)
+            assertEquals(0,AudioExportRuntime.state.value.failed);assertEquals(1,AudioExportRuntime.state.value.pending)
             withContext(Dispatchers.IO){while(AudioExportRuntime.active.get())delay(50);AudioExportRuntime.clear(context)}
         }
     }

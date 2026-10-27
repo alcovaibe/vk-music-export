@@ -37,7 +37,6 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                 val task=store.claim()?:break
                 update(store.snapshot())
                 try {
-                    if(task.track.restricted||task.track.duration<=0)throw MusicFailure(MusicError.UNAVAILABLE)
                     val already=store.existing(task.key)
                     if(already!=null&&already.track==task.track&&shared.valid(already)) {
                         store.done(task,already);observe("audio_queue_item",mapOf("outcome" to "already_saved"));continue
@@ -59,12 +58,13 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     }
                     if(published==null) {
                         var result: TransferResult?=null
+                        var resolvedTrack=task.track
                         try {
                             for(attempt in 0..2) {
                                 try {
                                     // Read the current encrypted access for every track/retry; never persist a signed media URL.
-                                    val url=api.media(credential(),task.track)
-                                    result=transfer.download(url,task.track,temporary){progress->
+                                    val resolved=api.resolve(credential(),task.track);resolvedTrack=resolved.track
+                                    result=transfer.download(resolved.url,resolved.track,temporary){progress->
                                         val now=System.nanoTime()
                                         if(now-lastProgress>=300_000_000||progress.stage=="verifying") {
                                             lastProgress=now;AudioExportRuntime.progress(progress)
@@ -77,7 +77,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                     delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                                 }
                             }
-                            result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),task.track)
+                            result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),resolvedTrack)
                             val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
                             published=shared.publish(task,file,store.directory(task)){store.prepared(task,it)}
                         }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}

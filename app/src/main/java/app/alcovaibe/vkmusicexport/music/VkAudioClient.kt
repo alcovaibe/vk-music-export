@@ -22,6 +22,10 @@ internal interface MusicApi {
         artwork(access,track)?.let{listOf(ArtworkCandidate(it,ArtworkOrigin.UNSPECIFIED))}?:emptyList()
     suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches=throw MusicFailure(MusicError.METHOD)
     suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch?=throw MusicFailure(MusicError.METHOD)
+    suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
+        musicCheck(!track.restricted&&track.duration>0,MusicError.UNAVAILABLE)
+        return ResolvedAudio(track,media(access,track))
+    }
     suspend fun media(access: MusicAccess, track: NativeTrack): String
     suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
         musicCheck(offset==0,MusicError.INCOMPLETE);return library(access).library
@@ -122,12 +126,13 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         synchronized(coverHints){coverHints.remove(track.id)?.takeIf{it.token==access.credentialId}?.let{return it.result.getOrThrow()}}
         return NativeProtocol.artworkCandidates(request(access,"audio.getById",mapOf("audios" to track.id)),track)
     }
-    override suspend fun media(access: MusicAccess,track: NativeTrack): String {
+    override suspend fun media(access: MusicAccess,track: NativeTrack): String=resolve(access,track).url
+    override suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
         val response=request(access,"audio.getById",mapOf("audios" to track.id))
-        val url=NativeProtocol.media(response,track)
+        val resolved=NativeProtocol.resolveMedia(response,track)
         val cover=runCatching{NativeProtocol.artworkCandidates(response,track)}
         synchronized(coverHints){coverHints[track.id]=CoverHint(access.credentialId,cover)}
-        return url
+        return resolved
     }
 }
 

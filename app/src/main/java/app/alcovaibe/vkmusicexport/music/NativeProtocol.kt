@@ -190,13 +190,18 @@ internal object NativeProtocol {
         if(offered&&candidates.isEmpty())throw MusicFailure(MusicError.MEDIA_URL)
         candidates.distinctBy{it.url}
     }
-    fun media(response: JsonElement, expected: NativeTrack): String = parse {
-        val items = response as? JsonArray; musicCheck(items?.size == 1)
-        val o = items!![0].jsonObject; val actual = track(o)
-        musicCheck(actual.id == expected.id && actual.duration == expected.duration)
-        val url = (o["url"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
-            ?: throw MusicFailure(MusicError.UNAVAILABLE)
-        return MediaAddress.require(url).toString()
+    fun media(response: JsonElement,expected: NativeTrack): String=resolveMedia(response,expected).url
+    fun resolveMedia(response: JsonElement,expected: NativeTrack): ResolvedAudio = parse {
+        val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
+        if(items.isEmpty())throw TrackUnavailable(TrackAccessIssue.NOT_RETURNED)
+        musicCheck(items.size==1)
+        val o=items[0].jsonObject;val actual=track(o)
+        musicCheck(actual.id==expected.id&&(expected.duration<=0||actual.duration==expected.duration))
+        if(actual.restricted)throw TrackUnavailable(TrackAccessIssue.RESTRICTED)
+        if(actual.duration<=0)throw TrackUnavailable(TrackAccessIssue.NO_DURATION)
+        val url=(o["url"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotBlank()}
+            ?:throw TrackUnavailable(TrackAccessIssue.NO_STREAM)
+        ResolvedAudio(actual,MediaAddress.require(url).toString())
     }
 
 }

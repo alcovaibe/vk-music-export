@@ -17,8 +17,8 @@ internal class DuplicateAudioHasher(context: Context,private val api: MusicApi,
         var result: TransferResult?=null
         try {
             progress(track,AudioProgress("resolve_media"))
-            val url=api.media(access,track)
-            result=transfer.download(url,track,directory){progress(track,it)}
+            val resolved=api.resolve(access,track)
+            result=transfer.download(resolved.url,resolved.track,directory){progress(track,it)}
             val ctx=currentCoroutineContext()
             progress(track,AudioProgress("payload_hash",result.file.length()))
             val digest=EmbeddedArtwork.payloadDigest(result.file,result.media.extension){ctx.ensureActive()}

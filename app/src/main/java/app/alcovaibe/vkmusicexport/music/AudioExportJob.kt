@@ -37,13 +37,17 @@ internal object AudioExportRuntime {
         catch(_: Exception){mutable.update{it.copy(status="PAUSED",error=MusicError.STORAGE)};throw MusicFailure(MusicError.STORAGE)}
     }
     suspend fun replace(context: Context,tasks: List<AudioExportTask>,sourceIssues: Int=0) {
+        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
         initialize(context);controls.withLock {
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
+            musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
             database.replace(tasks.distinctBy{it.key},sourceIssues);refresh()
         }
     }
     suspend fun start(context: Context,retryFailed: Boolean=false) {
+        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
         initialize(context);controls.withLock {
+        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
         if(active.get()||state.value.status=="QUEUED")return
         if(retryFailed)database.retryFailed()
         if(!database.snapshot().unfinished){refresh();return}
@@ -65,6 +69,7 @@ internal object AudioExportRuntime {
         }
     }
     suspend fun clear(context: Context) {
+        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
         initialize(context);controls.withLock {
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
             context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
@@ -72,14 +77,17 @@ internal object AudioExportRuntime {
         }
     }
     fun progress(value: AudioProgress){mutable.update{it.copy(progress=value)}}
-    suspend fun <T> editSaved(context: Context,block: suspend()->T): T {
+    suspend fun <T> editSaved(context: Context,duplicateCheck: Boolean=false,block: suspend()->T): T {
+        musicCheck(duplicateCheck||!DuplicateCheckRuntime.transferring,MusicError.BUSY)
         initialize(context)
         return controls.withLock {
+            musicCheck(duplicateCheck||!DuplicateCheckRuntime.transferring,MusicError.BUSY)
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
             block()
         }
     }
     suspend fun clearRecentFiles(context: Context) {
+        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
         initialize(context);controls.withLock {database.clearRecentFiles();refresh()}
     }
     @Synchronized fun refresh(){

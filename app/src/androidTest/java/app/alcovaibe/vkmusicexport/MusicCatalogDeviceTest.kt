@@ -107,7 +107,14 @@ class MusicCatalogViewModelDeviceTest {
             }
             override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
             override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
-                fetched.add(list.id);return NativePage(listOf(track),1)
+                fetched.add(list.id)
+                if(list.id==102L) {
+                    // Metadata uses the injected API. Make the synthetic credential unusable
+                    // before handing the real UIDT queue over, so it cannot contact VK.
+                    val store=MusicAccessStore(context);val old=store.read()!!
+                    assertTrue(store.replace(old,old.withSession(rejected=true)))
+                }
+                return NativePage(listOf(track),1)
             }
             override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No music network allowed")
         }
@@ -131,9 +138,10 @@ class MusicCatalogViewModelDeviceTest {
             assertEquals(2,MusicCatalog.lists(model.state.value.catalog,CatalogSection.ALBUMS,model.state.value.catalogKinds).size)
             ui.runOnUiThread{model.prepare(catalogKind=PlaylistKind.ALBUM)}
             ui.waitUntil(10000){!model.state.value.busy&&model.downloadsOpen.value}
-            withTimeout(20000){while(AudioExportRuntime.state.value.unfinished||AudioExportRuntime.active.get())delay(50)}
+            withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED"||AudioExportRuntime.active.get())delay(50)}
             assertEquals(listOf(101L,102L),fetched);assertEquals(2,AudioExportRuntime.state.value.total)
-            assertEquals(2,AudioExportRuntime.state.value.failed)
+            assertEquals(MusicError.ACCESS,AudioExportRuntime.state.value.error)
+            assertEquals(0,AudioExportRuntime.state.value.failed);assertEquals(2,AudioExportRuntime.state.value.pending)
             withContext(Dispatchers.IO){AudioExportStore(context).use{store->
                 store.readableDatabase.rawQuery("SELECT payload FROM tasks",null).use{c->while(c.moveToNext())assertTrue(c.getString(0).contains("Альбомы"))}
             }}

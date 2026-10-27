@@ -25,6 +25,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                     state.progress.track?.let{Text("${it.title}\n${it.artist}")}
                     if(state.progress.bytes>0)Text("Получено: ${state.progress.bytes/1024} КиБ")
                 }
+                if(state.phase in setOf(DuplicatePhase.QUEUED,DuplicatePhase.SCANNING))item{Text("Проверка и временная загрузка продолжаются в фоне. Прогресс и пауза доступны в уведомлении. Android может остановить задачу; готовые проверки сохранятся.",Modifier.testTag("duplicates_background"),style=MaterialTheme.typography.bodySmall)}
                 if(state.savedChecks>0)item{Text("Сохранено проверок: ${state.savedChecks} · использовано повторно: ${state.progress.reused}",Modifier.testTag("duplicates_checkpoint"),style=MaterialTheme.typography.bodySmall)}
                 state.message?.let{item{Text(it,Modifier.testTag("duplicates_result"))}}
                 val consent=state.consent
@@ -76,7 +77,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                 TextButton(onClick=onCancelConfirm){Text("Отмена")}
             }else Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick=onDismiss){Text(if(state.busy)"Свернуть" else "Закрыть")}
-                if(state.busy)OutlinedButton(onClick=onStop){Text("Остановить")}
+                if(state.busy)OutlinedButton(onClick=onStop){Text("Пауза")}
                 else Button(onClick=onScan,modifier=Modifier.weight(1f).testTag("scan_duplicates")){Text(if(state.savedChecks>0)"Продолжить проверку" else if(state.report==null)"Начать поиск" else "Новый поиск")}
             }
         }

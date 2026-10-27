@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSection: (CatalogSection)->Unit,
     onSelect: (NativePlaylist)->Unit,onCatalogPage: (Int)->Unit,onRefresh: ()->Unit,
-    onLibrary: (Boolean)->Unit,onCategory: (PlaylistKind)->Unit,onClassify: (NativePlaylist,PlaylistKind)->Unit,onDuplicates: ()->Unit={}) {
+    onLibrary: (Boolean)->Unit,onCategory: (PlaylistKind)->Unit,onClassify: (NativePlaylist,PlaylistKind)->Unit,onDuplicates: ()->Unit={},onUnavailable: (()->Unit)?=null) {
     val catalog=state.catalog
     val unknown=MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,state.catalogKinds)
     val sections=listOf(CatalogSection.LIBRARY,CatalogSection.PLAYLISTS,CatalogSection.ALBUMS)+
@@ -27,6 +27,7 @@ internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSec
         Text("Моя музыка: ${state.probe?.library?.count?:0} позиций",style=MaterialTheme.typography.titleMedium)
         Button(enabled=canPrepare,onClick={onLibrary(false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
         OutlinedButton(enabled=canPrepare,onClick=onDuplicates,modifier=Modifier.fillMaxWidth().testTag("clean_duplicates")){Text("Очистить дубликаты")}
+        onUnavailable?.let{check->OutlinedButton(enabled=!state.busy,onClick=check,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}}
         OutlinedButton(enabled=canPrepare,onClick={onLibrary(true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
         Text("Группы по альбомам содержат только песни из «Моей музыки». Это не полные альбомы ВК. Сохранённые альбомы каталога открываются во вкладке «Альбомы».",style=MaterialTheme.typography.bodySmall)
     }else {

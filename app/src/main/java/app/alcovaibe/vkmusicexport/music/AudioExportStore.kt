@@ -171,6 +171,10 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     }
     @Synchronized fun failed(task: AudioExportTask,error: MusicError){writableDatabase.execSQL("UPDATE tasks SET state='FAILED',error=? WHERE task_key=?",arrayOf(error.name,task.key))}
     @Synchronized fun releaseRunning(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING' WHERE state='RUNNING'")}
+    @Synchronized fun unavailableTracks(): List<NativeTrack> = readableDatabase.rawQuery(
+        "SELECT payload FROM tasks WHERE state='FAILED' AND error IN ('UNAVAILABLE','DENIED') ORDER BY ordinal",null).use{c->buildList{
+            while(c.moveToNext())add(json.decodeFromString<AudioExportTask>(c.getString(0)).track)
+        }}.distinctBy{it.id}
     @Synchronized fun retryFailed(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE state='FAILED'")}
     @Synchronized fun clearQueue(){writableDatabase.delete("tasks",null,null);status("EMPTY");put("source_issues","0");put("covered_count","0")}
     @Synchronized fun catalogKinds(account: Long): Map<String,PlaylistKind> {
