@@ -44,6 +44,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
         if(request!=null||saved>0)state.update{it.copy(scanId=request?.id?:"",savedChecks=saved,phase=DuplicatePhase.BLOCKED,
             message="Сохранённые проверки доступны. Продолжи поиск; старые согласия на удаление не восстанавливаются.")}
     }
+    fun discard(){file.delete();DuplicateScanCache(context).clear();state.value=DuplicatesState()}
     suspend fun prepare(): String {
         musicCheck(!state.value.busy,MusicError.BUSY)
         val access=sessions?.current()?:credentials.read()?:throw MusicFailure(MusicError.ACCESS)

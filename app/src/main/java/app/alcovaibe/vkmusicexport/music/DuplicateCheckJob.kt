@@ -24,6 +24,12 @@ internal object DuplicateCheckRuntime {
         DuplicateCheckTask(app,VkAudioClient(sessions=MusicSessions.get(app)),MusicAccessStore(app),MusicSessions.get(app),mutable)
     }.also{task=it}
     fun initialize(context: Context){task(context).restore()}
+    fun forget(context: Context){
+        musicCheck(!transferring,MusicError.BUSY)
+        context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
+        task(context).discard()
+        context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+    }
     suspend fun start(context: Context) {
         var id: String?=null
         try {

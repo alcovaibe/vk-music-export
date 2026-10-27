@@ -486,7 +486,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     private fun run(stage: String,block: suspend (Int)->Unit) {
-        if(DuplicateCheckRuntime.state.value.busy&&stage!="duplicates_delete"){
+        if(DuplicateCheckRuntime.transferring&&stage!="duplicates_delete"){
             _state.update{it.copy(error=MusicError.BUSY)};return
         }
         if(!_state.value.initialized||_state.value.busy){
@@ -813,7 +813,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(_state.value.busy)return
         Diagnostics.button("native_music_forget_access")
         run("forget") {g->
-            withContext(Dispatchers.IO){vault.delete();DuplicateScanCache(getApplication()).clear()};active(g);sessions?.reload()
+            withContext(Dispatchers.IO){vault.delete();DuplicateCheckRuntime.forget(getApplication())};active(g);sessions?.reload()
             _state.value=NativeMusicState(initialized=true,busy=true,stage="forget",message="Доступ ВК удалён с устройства.")
         }
     }

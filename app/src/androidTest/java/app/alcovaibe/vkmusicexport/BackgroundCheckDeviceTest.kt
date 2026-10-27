@@ -101,6 +101,8 @@ class BackgroundCheckDeviceTest {
             scheduled.pause(newId);assertEquals(DuplicatePhase.QUEUED,scheduled.state.value.phase)
             credentials.value=MusicAccess("b".repeat(64),"Synthetic")
             scheduled.execute(stale);assertEquals(DuplicatePhase.BLOCKED,scheduled.state.value.phase);assertEquals(2,downloads.get())
+            scheduled.discard();assertEquals(DuplicatePhase.INTRO,scheduled.state.value.phase)
+            assertEquals(0,DuplicateScanCache(context).count());assertFalse(File(context.noBackupFilesDir,"duplicate-job.json").exists())
         }finally{dir.deleteRecursively()}
     }
     @Test fun systemUidtJobHasSeparatePrivateNotificationAndCanRunFromVisibleActivity()=runBlocking<Unit> {
