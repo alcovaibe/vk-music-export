@@ -113,7 +113,9 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     suspend fun continueRead(supplied: MusicAccess): MusicAccess=mutex.withLock {
         val stored=withContext(io){store.read()}?:throw MusicFailure(MusicError.ACCESS)
         if(stored.credentialId!=supplied.credentialId&&renewedReads[supplied.credentialId]!=stored.credentialId)throw MusicReadChanged()
-        resolve(false,null)
+        val current=resolve(false,null)
+        if(current.credentialId!=supplied.credentialId&&renewedReads[supplied.credentialId]!=current.credentialId)throw MusicReadChanged()
+        current
     }
     private fun publish(a: MusicAccess?,status: SessionStatus?=null) {
         mutable.value=MusicSessionState(a?.expiresAtMs,a?.renewal!=null&&!a.renewalBlocked,a?.lastVerifiedAtMs,

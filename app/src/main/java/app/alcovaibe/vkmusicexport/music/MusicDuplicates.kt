@@ -37,7 +37,7 @@ internal class DuplicateConsent(val owner: Long,val credentialId: String,val dup
 internal class MusicDuplicates(private val api: MusicApi,private val hasher: DuplicateHasher,
     private val guard: suspend()->Unit={},private val progress:(DuplicateProgress)->Unit={},private val pageDelayMs: Long=400) {
     private suspend fun read(access: MusicAccess,owner: Long?=null,stage: String): Pair<Long,List<NativeTrack>> {
-        guard();val proof=api.library(access)
+        progress(DuplicateProgress(stage));guard();val proof=api.library(access)
         musicCheck(proof.owner>0&&(owner==null||proof.owner==owner),MusicError.ACCESS)
         val page=MusicPagination.tracks({offset->
             guard();if(offset==0)proof.library else {delay(pageDelayMs);guard();api.libraryPage(access,proof.owner,offset)}

@@ -241,6 +241,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             try {
                 withContext(Dispatchers.IO){AudioExportRuntime.editSaved(getApplication()){
                     musicCheck(!AudioExportRuntime.state.value.unfinished,MusicError.BUSY)
+                    if(consent==null)checkpoint=DuplicateScanCache(getApplication())
                     val a=sessions?.current()?:access()
                     suspend fun guard(){
                         active(g)
@@ -249,7 +250,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                         else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
                         active(g);stage=previousStage
                     }
-                    if(consent==null)checkpoint=DuplicateScanCache(getApplication())
                     DuplicateAudioHasher(getApplication(),api,checkpoint=checkpoint,progress={track,p->
                         stage=when(p.stage){"resolve_media"->"RESOLVE_MEDIA";"payload_hash"->"AUDIO_HASH";"verifying"->"AUDIO_FORMAT";else->"AUDIO_TRANSFER"}
                         val label=when(p.stage){"resolve_media"->"Получаем ссылку ВК";"payload_hash"->"Считаем SHA-256 аудиоданных";"verifying"->"Проверяем аудиоформат";else->"Загружаем временную копию для SHA-256"}

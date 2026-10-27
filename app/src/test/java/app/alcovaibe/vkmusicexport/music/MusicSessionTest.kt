@@ -127,12 +127,27 @@ class MusicSessionTest {
             WebRenewal(parent,12,emptyList()),credentialId="renewed-$renewals",persisted=true)},clock={clock})
         assertEquals(initial.credentialId,m.continueRead(initial).credentialId)
         repeat(3){clock+=400_000;m.current();assertEquals("renewed-${it+1}",m.continueRead(initial).credentialId)}
-        assertEquals(3,renewals)
+        assertEquals(3,renewals);assertNotEquals(initial.credentialId,store.value!!.credentialId) // The former fixed-ID guard rejected this verified renewal.
         store.value=access(expiry=clock+600_000,id="manual-new-login")
         try{m.continueRead(initial);fail("Manual login must invalidate the old read")}
         catch(e: MusicFailure){assertTrue(e is MusicReadChanged)}
         store.value=null
         try{m.continueRead(initial);fail("Sign-out must invalidate the read")}catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
+    }
+    @Test fun loginReplacementBetweenContinuationCheckAndResolveCannotCrossTheReadBoundary()=runTest {
+        for(owner in listOf(12L,99L)) {
+            val initial=access(expiry=now+3_600_000);var reads=0
+            val replacement=MusicAccess("vk1.a."+"OTHER_SECRET_".repeat(8),"Client/1",now+3_600_000,
+                WebRenewal(parent,owner,emptyList()),credentialId="manual",persisted=true)
+            val store=object: MusicCredentialStore {
+                override fun read(): MusicAccess=if(++reads==1)initial else replacement
+                override fun replace(expected: MusicAccess,next: MusicAccess): Boolean=error("No replacement")
+            }
+            val m=MusicSessionManager(store,object: MusicRenewer{override suspend fun renew(access: MusicAccess): MusicAccess=error("No renewal")},
+                {error("No verification")},{now},io=Dispatchers.Unconfined)
+            try{m.continueRead(initial);fail("Late login replacement must invalidate the read")}
+            catch(e: MusicFailure){assertTrue(e is MusicReadChanged)}
+        }
     }
     @Test fun duplicateScanSurvivesRenewalBetweenTracksAndNeverMutates()=runTest {
         var clock=now;val initial=access(expiry=now+600_000);val store=Store(initial);var renewals=0;var hashes=0
