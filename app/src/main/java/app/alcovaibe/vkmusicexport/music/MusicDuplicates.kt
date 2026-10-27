@@ -9,13 +9,17 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class DuplicateSignature(val codec: String,val sha256: String)
-internal fun interface DuplicateHasher { suspend fun signature(access: MusicAccess,track: NativeTrack): DuplicateSignature }
+internal fun interface DuplicateHasher {
+    suspend fun signature(access: MusicAccess,track: NativeTrack): DuplicateSignature
+    fun beginScan(owner: Long,tracks: List<NativeTrack>) {}
+    fun cached(track: NativeTrack): DuplicateSignature?=null
+}
 internal enum class DuplicateStatus(val label: String) { PENDING("Ожидает решения"),DELETED("Удалён из ВК"),SKIPPED("Пропущен"),UNKNOWN("Результат не подтверждён") }
 internal data class MusicDuplicate(val keep: NativeTrack,val remove: NativeTrack,val signature: DuplicateSignature,val status: DuplicateStatus=DuplicateStatus.PENDING)
 internal data class DuplicateProblem(val track: NativeTrack,val reason: String)
 internal data class DuplicateReport(val owner: Long,val credentialId: String,val tracks: Int,val checked: Int,
     val duplicates: List<MusicDuplicate>,val problems: List<DuplicateProblem>)
-internal data class DuplicateProgress(val stage: String,val done: Int=0,val total: Int=0,val track: NativeTrack?=null,val bytes: Long=0)
+internal data class DuplicateProgress(val stage: String,val done: Int=0,val total: Int=0,val track: NativeTrack?=null,val bytes: Long=0,val reused: Int=0)
 
 internal object DuplicateNames {
     private fun normalize(value: String)=Normalizer.normalize(value,Normalizer.Form.NFKC)
@@ -33,7 +37,7 @@ internal class DuplicateConsent(val owner: Long,val credentialId: String,val dup
 internal class MusicDuplicates(private val api: MusicApi,private val hasher: DuplicateHasher,
     private val guard: suspend()->Unit={},private val progress:(DuplicateProgress)->Unit={},private val pageDelayMs: Long=400) {
     private suspend fun read(access: MusicAccess,owner: Long?=null,stage: String): Pair<Long,List<NativeTrack>> {
-        guard();val proof=api.library(access)
+        progress(DuplicateProgress(stage));guard();val proof=api.library(access)
         musicCheck(proof.owner>0&&(owner==null||proof.owner==owner),MusicError.ACCESS)
         val page=MusicPagination.tracks({offset->
             guard();if(offset==0)proof.library else {delay(pageDelayMs);guard();api.libraryPage(access,proof.owner,offset)}
@@ -47,6 +51,7 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
     }
     suspend fun scan(access: MusicAccess): DuplicateReport {
         val (owner,tracks)=read(access,stage="Читаем мою музыку")
+        guard();hasher.beginScan(owner,tracks)
         val problems=mutableListOf<DuplicateProblem>()
         val byId=tracks.groupBy{it.id}
         val repeated=byId.filterValues{it.size>1}.keys
@@ -54,13 +59,18 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
         val unique=tracks.distinctBy{it.id}
         val groups=unique.groupBy(DuplicateNames::key).values.filter{it.size>1}
         val candidates=groups.flatten()
-        val signatures=mutableMapOf<String,DuplicateSignature>();var checkedCount=0
+        val signatures=mutableMapOf<String,DuplicateSignature>();var checkedCount=0;var reused=0
         for((index,track)in candidates.withIndex()) {
-            guard();progress(DuplicateProgress("Проверяем SHA-256 аудиоданных",index,candidates.size,track))
+            guard();progress(DuplicateProgress("Проверяем SHA-256 аудиоданных",index,candidates.size,track,reused=reused))
             if(track.id in repeated)continue
             if(!own(owner,track)){problems.add(DuplicateProblem(track,"Эта запись не поддерживает безопасное удаление из своего профиля по текущему протоколу."));continue}
             if(track.restricted||track.duration<=0){problems.add(DuplicateProblem(track,"Трек недоступен для проверки аудиоданных."));continue}
-            try {signatures[track.id]=checked(hasher.signature(access,track));checkedCount++}
+            try {
+                val cached=hasher.cached(track)
+                signatures[track.id]=checked(cached?:hasher.signature(access,track));checkedCount++
+                if(cached!=null)reused++
+                progress(DuplicateProgress("Проверяем SHA-256 аудиоданных",index+1,candidates.size,track,reused=reused))
+            }
             catch(e: kotlinx.coroutines.CancellationException){throw e}
             catch(e: MusicFailure){
                 if(e.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.DENIED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT,MusicError.STORAGE))throw e
@@ -103,7 +113,8 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
 
 internal enum class DuplicatePhase { INTRO,SCANNING,READY,DELETING,BLOCKED }
 internal data class DuplicatesState(val visible: Boolean=false,val phase: DuplicatePhase=DuplicatePhase.INTRO,val scanId: String="",
-    val report: DuplicateReport?=null,val progress: DuplicateProgress=DuplicateProgress(""),val consent: DuplicateConsent?=null,val message: String?=null) {
+    val report: DuplicateReport?=null,val progress: DuplicateProgress=DuplicateProgress(""),val consent: DuplicateConsent?=null,val message: String?=null,
+    val savedChecks: Int=0) {
     val busy get()=phase in setOf(DuplicatePhase.SCANNING,DuplicatePhase.DELETING)
     val found get()=report?.duplicates?.size?:0
     val removed get()=report?.duplicates?.count{it.status==DuplicateStatus.DELETED}?:0

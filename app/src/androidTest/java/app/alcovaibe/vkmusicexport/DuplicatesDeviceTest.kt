@@ -65,6 +65,16 @@ class DuplicatesUiDeviceTest {
         ui.onNodeWithTag("confirm_duplicate").performClick()
         ui.runOnIdle{assertEquals(listOf("12_2","12_3"),sent);assertEquals(0,state.remaining);assertEquals(2,state.removed)}
     }
+    @Test fun pausedScanShowsSavedChecksAndExplicitResumeWithoutAnyDeletion() {
+        var resumed=0;var deletes=0
+        val state=DuplicatesState(visible=true,phase=DuplicatePhase.BLOCKED,savedChecks=7,
+            progress=DuplicateProgress("",reused=3),message="Проверка приостановлена. Готовые проверки сохранены.")
+        ui.setContent{MusicTheme{DuplicatesSheet(state,{resumed++},{deletes++},{deletes++},{},{},{},{})}}
+        ui.onNodeWithTag("duplicates_checkpoint").assertTextEquals("Сохранено проверок: 7 · использовано повторно: 3")
+        ui.onNodeWithTag("confirm_duplicate").assertDoesNotExist()
+        ui.onNodeWithText("Продолжить проверку").performClick()
+        ui.runOnIdle{assertEquals(1,resumed);assertEquals(0,deletes)}
+    }
     @Test fun cleanupButtonFollowsDownloadAllAndExistsOnlyInMyMusic() {
         var state by mutableStateOf(NativeMusicState(initialized=true,probe=NativeProbe(12,NativePage(emptyList(),0))))
         var opened=0
@@ -139,5 +149,92 @@ class ArtworkRetryDeviceTest {
             assertEquals(1,result.readySkipped);assertEquals(0,result.total);assertEquals(0,result.processed);assertEquals(0,result.failed)
             withContext(Dispatchers.IO){AudioExportStore(application).use{assertEquals(row,it.savedFiles().single())}}
         }finally{instrumentation.runOnMainSync{holder.clear()};dir.deleteRecursively()}
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+class DuplicateResumeDeviceTest {
+    private val instrumentation=InstrumentationRegistry.getInstrumentation()
+    private val app=instrumentation.targetContext
+    private fun context(dir: File)=object: ContextWrapper(app) {
+        override fun getCacheDir()=File(dir,"cache").apply{mkdirs()}
+        override fun getNoBackupFilesDir()=File(dir,"private").apply{mkdirs()}
+    }
+    private val access=MusicAccess("a".repeat(64),"Synthetic")
+    private fun client(onRequest: ()->Unit={}): OkHttpClient=NetworkClients.media().newBuilder().addInterceptor{chain->
+        onRequest()
+        val data=instrumentation.context.assets.open("native-audio/tone.mp3").use{it.readBytes()}
+        Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
+            .header("Content-Type","audio/mpeg").body(data.toResponseBody()).build()
+    }.build()
+    @Test fun accessFailureResumesAfterRecreationWithoutRedownloadingCompletedTracksButRemovalIsFresh()=runBlocking<Unit>(Dispatchers.IO) {
+        val dir=File(app.cacheDir,"duplicate-resume-access").apply{deleteRecursively();mkdirs()};val context=context(dir)
+        val tracks=(1..3).map(::duplicateTrack);val calls=mutableListOf<String>();var reject=true;var downloads=0;var deletes=0
+        val api=object: MusicApi by duplicateApi() {
+            override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(tracks,tracks.size))
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String {
+                calls.add(track.id)
+                if(track==tracks[1]&&reject)throw MusicFailure(MusicError.ACCESS,5)
+                return duplicateApi().media(access,track)
+            }
+            override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack){deletes++}
+        }
+        try {
+            val cache=DuplicateScanCache(context)
+            DuplicateAudioHasher(context,api,AudioTransfer(client{downloads++},observe={_,_->}),cache).use{hasher->
+                try{MusicDuplicates(api,hasher,pageDelayMs=0).scan(access);fail("Expected access failure")}
+                catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
+            }
+            assertEquals(1,cache.count());assertEquals(1,downloads)
+            assertTrue(File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().any{it.extension=="mp3"})
+            assertFalse(File(context.cacheDir,"duplicate-check").exists())
+            // Simulate a new process/object and reclamation of optional temporary audio.
+            File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().filter{it.extension=="mp3"}.forEach{it.delete()}
+            reject=false;var reused=0
+            DuplicateAudioHasher(context,api,AudioTransfer(client{downloads++},observe={_,_->}),DuplicateScanCache(context)).use{hasher->
+                val engine=MusicDuplicates(api,hasher,progress={reused=maxOf(reused,it.reused)},pageDelayMs=0)
+                val report=engine.scan(access)
+                assertEquals(3,report.checked);assertEquals(2,report.duplicates.size);assertEquals(1,reused)
+                assertEquals(listOf("12_1","12_2","12_2","12_3"),calls);assertEquals(3,downloads);assertEquals(0,deletes)
+                engine.remove(access,DuplicateConsent(12,access.credentialId,report.duplicates.first()))
+                assertEquals(listOf("12_1","12_2"),calls.takeLast(2));assertEquals(5,downloads);assertEquals(1,deletes)
+            }
+        }finally{dir.deleteRecursively()}
+    }
+    @Test fun checkpointIsBoundToAccountSnapshotAndExpiryAndCorruptionNeverCreatesMatches() {
+        val dir=File(app.cacheDir,"duplicate-resume-binding").apply{deleteRecursively();mkdirs()};val context=context(dir)
+        var now=1_800_000_000_000L;val tracks=(1..2).map(::duplicateTrack);val signature=DuplicateSignature("mp3","a".repeat(64))
+        fun save(cache: DuplicateScanCache,track: NativeTrack){cache.save(track,signature,File(context.cacheDir,"verified.output").apply{writeBytes(ByteArray(16))})}
+        try {
+            var cache=DuplicateScanCache(context,{now},audioLimit=8)
+            cache.begin(12,tracks);save(cache,tracks[0]);assertEquals(signature,cache.get(tracks[0]))
+            assertTrue(File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().none{it.extension=="mp3"})
+            cache=DuplicateScanCache(context,{now});cache.begin(12,tracks);assertEquals(signature,cache.get(tracks[0]))
+            cache.begin(13,tracks);assertEquals(0,cache.count());assertNull(cache.get(tracks[0]))
+            cache.begin(12,tracks);save(cache,tracks[0]);cache.begin(12,tracks.reversed());assertEquals(0,cache.count())
+            save(cache,tracks[0]);now+=24L*60*60*1000
+            cache=DuplicateScanCache(context,{now});cache.begin(12,tracks);assertEquals(0,cache.count())
+            save(cache,tracks[0]);File(context.noBackupFilesDir,"duplicate-scan/checks.json").writeText("{broken")
+            cache=DuplicateScanCache(context,{now});cache.begin(12,tracks);assertEquals(0,cache.count());assertNull(cache.get(tracks[0]))
+            save(cache,tracks[0]);cache.clear();assertFalse(File(context.noBackupFilesDir,"duplicate-scan").exists())
+        }finally{dir.deleteRecursively()}
+    }
+    @Test fun cancellationDuringProcessingDoesNotCheckpointPartialTrackOrLeaveTransferFiles()=runBlocking<Unit>(Dispatchers.IO) {
+        val dir=File(app.cacheDir,"duplicate-resume-cancel").apply{deleteRecursively();mkdirs()};val context=context(dir)
+        val tracks=(1..2).map(::duplicateTrack);val cache=DuplicateScanCache(context);val started=CompletableDeferred<Unit>();var downloads=0
+        try {
+            val processor=AudioProcessor{_,_,_,_->started.complete(Unit);awaitCancellation()}
+            DuplicateAudioHasher(context,duplicateApi(),AudioTransfer(client{downloads++},processor,observe={_,_->}),cache).use{hasher->
+                hasher.beginScan(12,tracks)
+                val job=launch{hasher.signature(access,tracks[0])}
+                withTimeout(15000){started.await()};job.cancelAndJoin()
+                assertEquals(0,cache.count());assertNull(cache.get(tracks[0]))
+                assertTrue(File(context.cacheDir,"duplicate-check").listFiles().orEmpty().isEmpty())
+            }
+            DuplicateAudioHasher(context,duplicateApi(),AudioTransfer(client{downloads++},observe={_,_->}),DuplicateScanCache(context)).use{hasher->
+                hasher.beginScan(12,tracks);assertNull(hasher.cached(tracks[0]));hasher.signature(access,tracks[0])
+            }
+            assertEquals(2,downloads);assertEquals(1,DuplicateScanCache(context).count())
+        }finally{dir.deleteRecursively()}
     }
 }

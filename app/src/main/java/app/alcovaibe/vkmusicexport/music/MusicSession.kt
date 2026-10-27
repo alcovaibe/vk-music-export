@@ -68,6 +68,7 @@ internal interface MusicCredentialStore {
     fun replace(expected: MusicAccess,next: MusicAccess): Boolean
 }
 internal interface MusicRenewer { suspend fun renew(access: MusicAccess): MusicAccess }
+internal class MusicReadChanged: MusicFailure(MusicError.ACCESS)
 
 /** Reissues through the very same fixed web_token exchange used during pairing. No guessed OAuth grant. */
 internal class VkMusicRenewer(private val base: OkHttpClient=NetworkClients.api(),
@@ -107,6 +108,15 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     private val mutable=MutableStateFlow(MusicSessionState());val state=mutable.asStateFlow()
     private var attemptedId: String?=null;private var attemptedAt=0L
     private var lastFailure: MusicFailure?=null
+    // Read-only operations may follow verified renewals, never an unrelated save/new login.
+    private val renewedReads=mutableMapOf<String,String>()
+    suspend fun continueRead(supplied: MusicAccess): MusicAccess=mutex.withLock {
+        val stored=withContext(io){store.read()}?:throw MusicFailure(MusicError.ACCESS)
+        if(stored.credentialId!=supplied.credentialId&&renewedReads[supplied.credentialId]!=stored.credentialId)throw MusicReadChanged()
+        val current=resolve(false,null)
+        if(current.credentialId!=supplied.credentialId&&renewedReads[supplied.credentialId]!=current.credentialId)throw MusicReadChanged()
+        current
+    }
     private fun publish(a: MusicAccess?,status: SessionStatus?=null) {
         mutable.value=MusicSessionState(a?.expiresAtMs,a?.renewal!=null&&!a.renewalBlocked,a?.lastVerifiedAtMs,
             status?:when{a==null->SessionStatus.UNKNOWN;a.rejected->SessionStatus.LOGIN_REQUIRED;a.expiresAtMs?.let{it<=wall()}==true->SessionStatus.LOGIN_REQUIRED;
@@ -145,6 +155,9 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             val next=fresh.withSession(verifiedAt=wall())
             currentCoroutineContext().ensureActive()
             if(!withContext(io){store.replace(old,next)})throw MusicFailure(MusicError.ACCESS)
+            renewedReads.entries.forEach{if(it.value==old.credentialId)it.setValue(next.credentialId)}
+            if(renewedReads.size>=64)renewedReads.clear()
+            renewedReads[old.credentialId]=next.credentialId
             publish(next);event("verified");return next
         }catch(e: CancellationException){publish(old);throw e}
          catch(e: Exception){

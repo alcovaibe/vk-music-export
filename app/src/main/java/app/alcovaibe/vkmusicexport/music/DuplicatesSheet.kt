@@ -25,6 +25,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                     state.progress.track?.let{Text("${it.title}\n${it.artist}")}
                     if(state.progress.bytes>0)Text("Получено: ${state.progress.bytes/1024} КиБ")
                 }
+                if(state.savedChecks>0)item{Text("Сохранено проверок: ${state.savedChecks} · использовано повторно: ${state.progress.reused}",Modifier.testTag("duplicates_checkpoint"),style=MaterialTheme.typography.bodySmall)}
                 state.message?.let{item{Text(it,Modifier.testTag("duplicates_result"))}}
                 val consent=state.consent
                 if(consent!=null) {
@@ -39,7 +40,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                     }
                 }else {
                     item {
-                        Text("Сначала ищем совпадения названия и исполнителя, затем временно скачиваем эти записи и сравниваем SHA-256 аудиоданных без тегов и обложек. Проверка использует интернет и свободное место. В папке Music ничего не меняется.",style=MaterialTheme.typography.bodySmall)
+                        Text("Сначала ищем совпадения названия и исполнителя, затем временно скачиваем эти записи и сравниваем SHA-256 аудиоданных без тегов и обложек. Проверка использует интернет и свободное место. Готовые проверки сохраняются на 24 часа и используются повторно, если библиотека не изменилась. Незавершённый трек загружается заново. В папке Music ничего не меняется.",style=MaterialTheme.typography.bodySmall)
                         Text("Одна проверенная запись в каждой группе остаётся. Каждое удаление подтверждается отдельно; общего удаления всех записей нет.",style=MaterialTheme.typography.bodySmall)
                     }
                     state.report?.let{report->
@@ -73,10 +74,10 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                     Text("Удалить эту запись из ВК")
                 }
                 TextButton(onClick=onCancelConfirm){Text("Отмена")}
-            }else Row(Modifier.padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            }else Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick=onDismiss){Text(if(state.busy)"Свернуть" else "Закрыть")}
                 if(state.busy)OutlinedButton(onClick=onStop){Text("Остановить")}
-                else Button(onClick=onScan,modifier=Modifier.testTag("scan_duplicates")){Text(if(state.report==null)"Начать поиск" else "Новый поиск")}
+                else Button(onClick=onScan,modifier=Modifier.weight(1f).testTag("scan_duplicates")){Text(if(state.savedChecks>0)"Продолжить проверку" else if(state.report==null)"Начать поиск" else "Новый поиск")}
             }
         }
     }
