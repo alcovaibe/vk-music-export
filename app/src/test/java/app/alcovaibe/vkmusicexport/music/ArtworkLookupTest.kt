@@ -119,4 +119,33 @@ class ArtworkLookupTest {
         }.build()
         fails(MusicError.DENIED){VkAudioClient(client){_,_->}.searchArtwork(access,"Artist song",0)};assertEquals(1,calls)
     }
+    @Test fun searchHttp403DoesNotRenewRejectOrReplaceTheWorkingMusicCredential()=runBlocking {
+        val now=1_800_000_000_000L
+        val stable=MusicAccess("a".repeat(64),"Synthetic",now+3_600_000,WebRenewal("b".repeat(64),12,emptyList()),
+            lastVerifiedAtMs=now,credentialId="stable",persisted=true)
+        var replacements=0;var renewals=0;var searchCalls=0
+        val store=object: MusicCredentialStore {
+            var value=stable
+            override fun read()=value
+            override fun replace(expected: MusicAccess,next: MusicAccess): Boolean {replacements++;value=next;return true}
+        }
+        val sessions=MusicSessionManager(store,object: MusicRenewer {
+            override suspend fun renew(access: MusicAccess): MusicAccess {renewals++;throw MusicFailure(MusicError.ACCESS)}
+        },verify={error("No renewal verification expected")},wall={now},io=Dispatchers.Unconfined)
+        val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+            val path=chain.request().url.encodedPath
+            val (status,body)=when {
+                path.endsWith("audio.search")->{searchCalls++;403 to "Forbidden"}
+                path.endsWith("users.get")->200 to """{"response":[{"id":12}]}"""
+                else->200 to """{"response":{"count":0,"items":[]}}"""
+            }
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(status).message("Synthetic").body(body.toResponseBody()).build()
+        }.build()
+        val api=VkAudioClient(client,sessions){_,_->}
+        fails(MusicError.DENIED){api.searchArtwork(stable,"Artist song",0)}
+        assertEquals(12L,api.library(stable).owner)
+        assertEquals(1,searchCalls);assertEquals(0,renewals);assertEquals(0,replacements)
+        assertSame(stable,store.read());assertFalse(store.read().rejected);assertEquals(SessionStatus.VALID,sessions.state.value.status)
+    }
+
 }

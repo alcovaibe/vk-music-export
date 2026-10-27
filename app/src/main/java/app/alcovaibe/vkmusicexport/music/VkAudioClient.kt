@@ -64,6 +64,8 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
+            // A search permission denial must not renew/reject an otherwise valid music session.
+            if(response.status==403&&method=="audio.search")throw MusicFailure(MusicError.DENIED)
             if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
             musicCheck(response.status==200,MusicError.HTTP)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes))}
