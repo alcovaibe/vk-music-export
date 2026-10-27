@@ -200,7 +200,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     private val _duplicates=MutableStateFlow(DuplicatesState());val duplicates=_duplicates.asStateFlow()
-    fun showDuplicates(){if(_state.value.initialized&&(!_state.value.busy||_duplicates.value.busy))_duplicates.update{it.copy(visible=true)}}
+    fun showDuplicates(){
+        if(!_state.value.initialized||_state.value.busy&&!_duplicates.value.busy)return
+        _duplicates.update{it.copy(visible=true)}
+        if(_duplicates.value.busy)return
+        viewModelScope.launch {
+            val saved=withContext(Dispatchers.IO){runCatching{DuplicateScanCache(getApplication()).count()}.getOrDefault(0)}
+            _duplicates.update{it.copy(savedChecks=saved)}
+        }
+    }
     fun dismissDuplicates(){_duplicates.update{it.copy(visible=false,consent=null)}}
     fun requestDuplicateRemoval(row: MusicDuplicate) {
         val s=_duplicates.value;val report=s.report?:return
@@ -215,7 +223,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun findDuplicates() {
         if(!_state.value.initialized||_state.value.busy)return
         val id=UUID.randomUUID().toString()
-        _duplicates.value=DuplicatesState(visible=true,phase=DuplicatePhase.SCANNING,scanId=id)
+        _duplicates.value=DuplicatesState(visible=true,phase=DuplicatePhase.SCANNING,scanId=id,savedChecks=_duplicates.value.savedChecks)
         duplicateWork(id,null)
     }
     fun confirmDuplicateRemoval() {
@@ -227,23 +235,39 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private fun duplicateWork(id: String,consent: DuplicateConsent?) {
         run(if(consent==null)"duplicates_scan" else "duplicates_delete"){g->
-            var attempted=false
+            var attempted=false;var stage="PREPARING";var reused=0
+            var checkpoint: DuplicateScanCache?=null
             fun update(block:(DuplicatesState)->DuplicatesState){_duplicates.update{if(it.scanId==id)block(it)else it}}
             try {
                 withContext(Dispatchers.IO){AudioExportRuntime.editSaved(getApplication()){
                     musicCheck(!AudioExportRuntime.state.value.unfinished,MusicError.BUSY)
                     val a=sessions?.current()?:access()
-                    suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)}
-                    DuplicateAudioHasher(getApplication(),api,progress={track,p->
-                        update{it.copy(progress=it.progress.copy(stage="Загружаем временную копию для SHA-256",track=track,bytes=p.bytes))}
+                    suspend fun guard(){
+                        active(g)
+                        val previousStage=stage;stage="SESSION_GUARD"
+                        if(consent==null&&sessions!=null)sessions.continueRead(a)
+                        else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
+                        active(g);stage=previousStage
+                    }
+                    if(consent==null)checkpoint=DuplicateScanCache(getApplication())
+                    DuplicateAudioHasher(getApplication(),api,checkpoint=checkpoint,progress={track,p->
+                        stage=when(p.stage){"resolve_media"->"RESOLVE_MEDIA";"payload_hash"->"AUDIO_HASH";"verifying"->"AUDIO_FORMAT";else->"AUDIO_TRANSFER"}
+                        val label=when(p.stage){"resolve_media"->"Получаем ссылку ВК";"payload_hash"->"Считаем SHA-256 аудиоданных";"verifying"->"Проверяем аудиоформат";else->"Загружаем временную копию для SHA-256"}
+                        update{it.copy(progress=it.progress.copy(stage=label,track=track,bytes=p.bytes))}
                     }).use{hasher->
-                        val service=MusicDuplicates(api,hasher,guard=::guard,progress={p->update{it.copy(progress=p)}})
+                        val service=MusicDuplicates(api,hasher,guard=::guard,progress={p->
+                            stage=if(p.track!=null)"AUDIO_HASH" else "LIBRARY_READ"
+                            reused=maxOf(reused,p.reused)
+                            update{it.copy(progress=p.copy(reused=reused),savedChecks=checkpoint?.count()?:it.savedChecks)}
+                        })
                         if(consent==null) {
-                            val report=service.scan(a);guard()
-                            update{it.copy(phase=DuplicatePhase.READY,report=report,
+                            val scanned=service.scan(a);guard()
+                            val current=if(sessions!=null)sessions.continueRead(a)else a
+                            val report=scanned.copy(credentialId=current.credentialId)
+                            update{it.copy(phase=DuplicatePhase.READY,report=report,savedChecks=checkpoint?.count()?:0,
                                 message=if(report.duplicates.isEmpty())"Подтверждённых дубликатов не найдено." else "Для удаления каждого дубликата требуется отдельное подтверждение.")}
                             Diagnostics.event("audio_duplicates_scan",mapOf("scan_id" to id,"tracks" to report.tracks,"checked" to report.checked,
-                                "duplicates" to report.duplicates.size,"problems" to report.problems.size))
+                                "duplicates" to report.duplicates.size,"problems" to report.problems.size,"reused" to reused))
                         }else {
                             service.remove(a,consent){
                                 guard();musicCheck(authForeground.value,MusicError.BUSY);attempted=true
@@ -261,16 +285,23 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }catch(e: CancellationException){
                 update{it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message=if(attempted)
                     "Операция прервана после начала запроса. Результат не подтверждён. Автоматического повтора нет; нужен новый поиск."
-                    else "Поиск или проверка прерваны. Ничего не отправлено на удаление; повтори поиск.",
+                    else if(consent==null)"Проверка приостановлена. Готовые проверки сохранены; продолжи после возвращения. Незавершённый трек проверим заново."
+                    else "Проверка перед удалением прервана. Удаление не отправлено; нужен новый поиск.",savedChecks=checkpoint?.count()?:it.savedChecks,
                     report=it.report?.let{r->r.copy(duplicates=r.duplicates.map{d->if(attempted&&d.remove.id==consent?.duplicate?.remove?.id)d.copy(status=DuplicateStatus.UNKNOWN)else d})})}
                 Diagnostics.event("audio_duplicates_delete",mapOf("scan_id" to id,"outcome" to if(attempted)"UNKNOWN" else "CANCELLED"));throw e
             }catch(e: Exception){
                 val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
+                val reason=when{e is MusicReadChanged->"Сохранённый доступ изменился."
+                    code==MusicError.ACCESS->"Не удалось подтвердить действующий доступ ВК. Проверь вход."
+                    else->code.label}
                 update{it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message=if(attempted)
                     "Удаление не подтверждено (${code.name}). Не повторяем запрос автоматически. Проверь результат новым поиском."
-                    else "Проверка остановлена: ${code.label} Нужен новый поиск; удаление не отправлено.",
+                    else if(consent==null)"Проверка приостановлена: $reason Готовые проверки сохранены. После восстановления доступа или сети нажми «Продолжить проверку». Удаление не отправлено."
+                    else "Проверка перед удалением остановлена: ${code.label} Нужен новый поиск; удаление не отправлено.",savedChecks=checkpoint?.count()?:it.savedChecks,
                     report=it.report?.let{r->r.copy(duplicates=r.duplicates.map{d->if(attempted&&d.remove.id==consent?.duplicate?.remove?.id)d.copy(status=DuplicateStatus.UNKNOWN)else d})})}
-                Diagnostics.event("audio_duplicates_failure",mapOf("scan_id" to id,"code" to code.name,"mutation_started" to attempted))
+                Diagnostics.event("audio_duplicates_failure",mapOf("scan_id" to id,"code" to code.name,"vk_code" to (e as? MusicFailure)?.remoteCode,
+                    "stage" to stage,"origin" to if(e is MusicReadChanged)"LOCAL_CREDENTIAL_CHANGED" else "REQUEST_OR_CHECK",
+                    "saved_checks" to (checkpoint?.count()?:0),"reused" to reused,"mutation_started" to attempted))
             }
         }
     }
@@ -497,7 +528,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 if(lookupRunId!=null)lookupUpdate(lookupRunId){if(it.busy)it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Повтори поиск.") else it}
                 // Cancellation can happen while waiting for the shared gate, before block() starts.
                 if(duplicateRunId!=null)_duplicates.update{if(it.scanId==duplicateRunId&&it.busy)
-                    it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message="Проверка прервана до завершения. Для продолжения нужен новый поиск.") else it}
+                    it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message="Проверка прервана до завершения. Готовые проверки сохранены; поиск можно продолжить.") else it}
                 if(operationOwner==g){
                     operationOwner=null;work=null
                     authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
@@ -769,7 +800,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(_state.value.busy)return
         Diagnostics.button("native_music_forget_access")
         run("forget") {g->
-            withContext(Dispatchers.IO){vault.delete()};active(g);sessions?.reload()
+            withContext(Dispatchers.IO){vault.delete();DuplicateScanCache(getApplication()).clear()};active(g);sessions?.reload()
             _state.value=NativeMusicState(initialized=true,busy=true,stage="forget",message="Доступ ВК удалён с устройства.")
         }
     }

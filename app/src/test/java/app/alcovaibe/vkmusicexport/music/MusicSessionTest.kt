@@ -121,6 +121,36 @@ class MusicSessionTest {
         val candidate=MusicAccess("vk1.a."+"CANDIDATE_".repeat(8),"Client/1")
         assertEquals(candidate.token,m.request(candidate){it.token});assertEquals(1,calls)
     }
+    @Test fun longReadCanFollowMultipleVerifiedRenewalsButNotManualLoginOrSignOut()=runTest {
+        var clock=now;val initial=access(expiry=now+600_000);val store=Store(initial);var renewals=0
+        val m=manager(store,{renewals++;MusicAccess("vk1.a."+"NEW_${renewals}_".repeat(12),"Client/1",clock+600_000,
+            WebRenewal(parent,12,emptyList()),credentialId="renewed-$renewals",persisted=true)},clock={clock})
+        assertEquals(initial.credentialId,m.continueRead(initial).credentialId)
+        repeat(3){clock+=400_000;m.current();assertEquals("renewed-${it+1}",m.continueRead(initial).credentialId)}
+        assertEquals(3,renewals)
+        store.value=access(expiry=clock+600_000,id="manual-new-login")
+        try{m.continueRead(initial);fail("Manual login must invalidate the old read")}
+        catch(e: MusicFailure){assertTrue(e is MusicReadChanged)}
+        store.value=null
+        try{m.continueRead(initial);fail("Sign-out must invalidate the read")}catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
+    }
+    @Test fun duplicateScanSurvivesRenewalBetweenTracksAndNeverMutates()=runTest {
+        var clock=now;val initial=access(expiry=now+600_000);val store=Store(initial);var renewals=0;var hashes=0
+        val m=manager(store,{renewals++;fresh()},clock={clock})
+        val tracks=(1..3).map{NativeTrack("12_$it","Synthetic song","Synthetic artist",1)}
+        val api=object: MusicApi {
+            override suspend fun library(access: MusicAccess)=m.request(access){NativeProbe(12,NativePage(tracks,tracks.size))}
+            override suspend fun media(access: MusicAccess,track: NativeTrack)=error("Injected hasher")
+            override suspend fun catalog(access: MusicAccess,owner: Long)=error("Unused")
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=error("Unused")
+            override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack)=error("No mutation in discovery")
+        }
+        val engine=MusicDuplicates(api,DuplicateHasher{_,_->hashes++;if(hashes==1){clock+=400_000;m.current()};DuplicateSignature("mp3","a".repeat(64))},
+            guard={m.continueRead(initial)},pageDelayMs=0)
+        val report=engine.scan(initial)
+        assertEquals(3,hashes);assertEquals(2,report.duplicates.size);assertEquals(1,renewals)
+        assertEquals("fresh",m.continueRead(initial).credentialId)
+    }
     @Test fun actualReissueClientPostsOnlyToLoginAndPreservesExpiryWithoutLeakingSecrets()=runTest {
         val requests=mutableListOf<Request>()
         val client=NetworkClients.api().newBuilder().addInterceptor {chain->
