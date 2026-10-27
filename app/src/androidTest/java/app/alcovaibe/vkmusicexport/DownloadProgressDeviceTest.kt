@@ -95,17 +95,18 @@ class DownloadProgressEntryDeviceTest {
             androidx.test.espresso.Espresso.pressBack()
             ui.onNodeWithTag("downloads_sheet").assertDoesNotExist()
             ui.onNodeWithTag("native_music_screen").assertExists()
-            // A synthetic unavailable item exercises the real UIDT launch without a VK account or music API request.
+            // A synthetic formerly-restricted item exercises UIDT. Without credentials a fresh
+            // resolution must pause before any VK request, rather than silently skip the old flag.
             ui.runOnUiThread{model.download(NativeTrack("12_99999","CI unavailable","CI",1,restricted=true),1)}
             ui.waitUntil(10000){model.downloadsOpen.value&&!model.state.value.busy}
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             ui.onNodeWithTag("downloads_dismiss").performClick()
-            withTimeout(20000){while(AudioExportRuntime.state.value.unfinished||AudioExportRuntime.active.get())delay(50)}
-            assertEquals("FINISHED_WITH_ERRORS",AudioExportRuntime.state.value.status)
-            assertEquals(1,AudioExportRuntime.state.value.failed)
+            withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED"||AudioExportRuntime.active.get())delay(50)}
+            assertEquals(MusicError.ACCESS,AudioExportRuntime.state.value.error)
+            assertEquals(0,AudioExportRuntime.state.value.failed);assertEquals(1,AudioExportRuntime.state.value.pending)
             assertFalse(model.downloadsOpen.value)
             ui.onNodeWithTag("open_music_downloads").performClick()
-            ui.onNodeWithTag("downloads_status").assertTextEquals("Готово с пропусками")
+            ui.onNodeWithTag("downloads_status").assertTextEquals("Приостановлено")
             ui.onNodeWithTag("downloads_dismiss").performClick()
         }finally {
             ui.runOnUiThread{model.dismissDownloads()}
