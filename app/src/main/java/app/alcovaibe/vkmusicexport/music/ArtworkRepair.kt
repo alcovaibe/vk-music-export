@@ -18,6 +18,7 @@ internal fun fileSha256(file: File): String {
 /** One durable transaction, outside cache. A failed restore retains the backup and blocks further editing. */
 internal class ArtworkRepair(context: Context,private val store: AudioExportStore,private val shared: SharedAudioStore,
     private val onStep:(ArtworkStep)->Unit={},
+    private val beforeWrite:suspend()->Unit={},
     private val replace: suspend(PublishedAudio,File)->Unit=shared::overwrite) {
     private val dir=File(context.noBackupFilesDir,"artwork-repair").apply{mkdirs()}
     private val backup=File(dir,"original.audio")
@@ -66,6 +67,7 @@ internal class ArtworkRepair(context: Context,private val store: AudioExportStor
             try{stream.write(json.encodeToString(Edit(row,after)).toByteArray());journal.finishWrite(stream)}catch(e: Exception){journal.failWrite(stream);throw e}
             // Cancellation may occur during a write, so restoration and checkpoint completion cannot be cancellable.
             try {
+                beforeWrite()
                 onStep(ArtworkStep.REPLACE_FILE)
                 replace(row,tagged)
                 onStep(ArtworkStep.VERIFY_WRITTEN)
