@@ -103,6 +103,20 @@ class BackgroundCheckDeviceTest {
             scheduled.execute(stale);assertEquals(DuplicatePhase.BLOCKED,scheduled.state.value.phase);assertEquals(2,downloads.get())
             scheduled.discard();assertEquals(DuplicatePhase.INTRO,scheduled.state.value.phase)
             assertEquals(0,DuplicateScanCache(context).count());assertFalse(File(context.noBackupFilesDir,"duplicate-job.json").exists())
+            // A verified renewal while the accepted job waits for network is still the same read.
+            val now=1_800_000_000_000L;var clock=now
+            val renewal=WebRenewal("p".repeat(64),12,emptyList())
+            credentials.value=MusicAccess("a".repeat(64),"Synthetic",now+600_000,renewal,credentialId="before-wait",persisted=true)
+            val sessions=MusicSessionManager(credentials,object: MusicRenewer {
+                override suspend fun renew(access: MusicAccess)=MusicAccess("b".repeat(64),"Synthetic",clock+3_600_000,
+                    renewal,credentialId="after-wait",persisted=true)
+            },{NativeProbe(12,NativePage(rows,2))},{clock},io=Dispatchers.Unconfined)
+            val queued=DuplicateCheckTask(context,api,credentials,sessions,hasherFactory={cache,progress->DuplicateAudioHasher(context,api,transfer(downloads),cache,progress)})
+            val queuedId=queued.prepare();clock+=400_000;sessions.current()
+            assertEquals("after-wait",credentials.value!!.credentialId)
+            queued.execute(queuedId);assertEquals(DuplicatePhase.READY,queued.state.value.phase)
+            assertEquals("after-wait",queued.state.value.report!!.credentialId)
+            queued.discard()
         }finally{dir.deleteRecursively()}
     }
     @Test fun systemUidtJobHasSeparatePrivateNotificationAndCanRunFromVisibleActivity()=runBlocking<Unit> {

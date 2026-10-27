@@ -16,6 +16,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
     val state: MutableStateFlow<DuplicatesState> = MutableStateFlow(DuplicatesState()),
     private val hasherFactory:(DuplicateScanCache,(NativeTrack,AudioProgress)->Unit)->DuplicateAudioHasher={cache,progress->
         DuplicateAudioHasher(context,api,checkpoint=cache,progress=progress)}) {
+    @Volatile private var scheduledAccess: MusicAccess?=null
     private val file=AtomicFile(File(context.noBackupFilesDir,"duplicate-job.json"))
     private data class Request(val id: String,val credential: String,val phase: String)
     private fun read(): Request?=synchronized(lock) {
@@ -44,11 +45,12 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
         if(request!=null||saved>0)state.update{it.copy(scanId=request?.id?:"",savedChecks=saved,phase=DuplicatePhase.BLOCKED,
             message="Сохранённые проверки доступны. Продолжи поиск; старые согласия на удаление не восстанавливаются.")}
     }
-    fun discard(){file.delete();DuplicateScanCache(context).clear();state.value=DuplicatesState()}
+    fun discard(){scheduledAccess=null;file.delete();DuplicateScanCache(context).clear();state.value=DuplicatesState()}
     suspend fun prepare(): String {
         musicCheck(!state.value.busy,MusicError.BUSY)
         val access=sessions?.current()?:credentials.read()?:throw MusicFailure(MusicError.ACCESS)
         val id=UUID.randomUUID().toString()
+        scheduledAccess=access
         write(Request(id,access.credentialId,"QUEUED"))
         state.value=DuplicatesState(visible=true,phase=DuplicatePhase.QUEUED,scanId=id,savedChecks=DuplicateScanCache(context).count(),
             progress=DuplicateProgress("Ожидаем сеть и запуск Android"))
@@ -65,9 +67,11 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
         val cache=DuplicateScanCache(context);var stage="SESSION";var reused=0
         fun update(block:(DuplicatesState)->DuplicatesState){state.update{if(it.scanId==id&&it.phase==DuplicatePhase.SCANNING)block(it)else it}}
         try {
-            val initial=credentials.read()?:throw MusicFailure(MusicError.ACCESS)
-            // A restored process cannot prove an old automatic-renewal chain: require explicit resume if its ID changed.
-            musicCheck(initial.credentialId==request.credential,MusicError.ACCESS)
+            // Preserve the read lease in this process while Android waits for network. A new process
+            // cannot prove the old renewal chain and must require explicit resume if the ID changed.
+            val initial=scheduledAccess?.takeIf{it.credentialId==request.credential}
+                ?:credentials.read()?.also{musicCheck(it.credentialId==request.credential,MusicError.ACCESS)}
+                ?:throw MusicFailure(MusicError.ACCESS)
             val access=sessions?.continueRead(initial)?:initial
             suspend fun guard(){
                 currentCoroutineContext().ensureActive()
