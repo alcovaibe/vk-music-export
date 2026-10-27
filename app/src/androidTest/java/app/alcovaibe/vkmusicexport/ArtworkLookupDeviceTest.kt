@@ -57,8 +57,9 @@ class ArtworkLookupUiDeviceTest {
         ui.onNodeWithTag("artwork_lookup_list").performScrollToNode(hasTestTag("artwork_lookup_image"))
         ui.onNodeWithTag("artwork_lookup_image").assertIsDisplayed();ui.onNodeWithTag("confirm_artwork_choice").assertIsDisplayed()
         ui.runOnIdle{assertEquals(1,searches);assertEquals(1,previews);assertEquals(0,writes)}
-        ui.waitForIdle()
-        val inst=InstrumentationRegistry.getInstrumentation();val bitmap=inst.uiAutomation.takeScreenshot()
+        ui.mainClock.advanceTimeBy(500);ui.waitForIdle()
+        val inst=InstrumentationRegistry.getInstrumentation();inst.waitForIdleSync();inst.uiAutomation.waitForIdle(300,5000)
+        val bitmap=inst.uiAutomation.takeScreenshot()
         val file=File(inst.targetContext.getExternalFilesDir(null),"screenshots/artwork-choice.png").apply{parentFile!!.mkdirs()}
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
         for(command in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/artwork-choice.png"))

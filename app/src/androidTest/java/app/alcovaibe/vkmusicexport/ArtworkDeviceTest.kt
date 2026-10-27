@@ -110,7 +110,7 @@ class ArtworkDeviceTest {
         for(mode in listOf("partial","complete","io-error")) {
             val (context,dir)=isolated("artwork-recovery-$mode");var store=AudioExportStore(context);val shared=SharedAudioStore(context);var row: PublishedAudio?=null
             try {
-                val task=ExportLayout.task(track(3),listOf("Моя музыка","Artwork recovery CI"),1);store.replace(listOf(task))
+                val task=ExportLayout.task(track(3),listOf("Моя музыка","Artwork recovery CI $mode"),1);store.replace(listOf(task))
                 val input=fixture(dir,"mp3")
                 val saved=shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){store.prepared(task,it)};row=saved;store.done(task,saved)
                 val repair=ArtworkRepair(context,store,shared){record,file->
