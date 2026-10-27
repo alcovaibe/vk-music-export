@@ -105,6 +105,8 @@ class BackgroundCheckDeviceTest {
     }
     @Test fun systemUidtJobHasSeparatePrivateNotificationAndCanRunFromVisibleActivity()=runBlocking<Unit> {
         val scheduler=app.getSystemService(JobScheduler::class.java);val notifications=app.getSystemService(NotificationManager::class.java)
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+            "pm grant ${app.packageName} android.permission.POST_NOTIFICATIONS")).use{it.readBytes()}
         val id=UUID.randomUUID().toString();val info=DuplicateCheckRuntime.job(app,id)
         assertTrue(info.isUserInitiated);assertNotEquals(AudioExportRuntime.JOB_ID,info.id)
         val service=app.packageManager.getServiceInfo(ComponentName(app,DuplicateCheckJob::class.java),PackageManager.ComponentInfoFlags.of(0))
