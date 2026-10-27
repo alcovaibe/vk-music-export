@@ -117,7 +117,10 @@ class MusicExportDeviceTest {
             assertNull(chain.request().header("Authorization"));assertNull(chain.request().header("Cookie"))
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic").body(bytes.toResponseBody()).build()
         }.build()
-        val api=object: MusicApi by noApi {override suspend fun media(access: MusicAccess,track: NativeTrack): String{resolutions++;return "https://a.userapi.com/audio?signature=PRIVATE"}}
+        val api=object: MusicApi by noApi {
+            override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,media(access,track))
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String{resolutions++;return "https://a.userapi.com/audio?signature=PRIVATE"}
+        }
         try {
             val engine=AudioExportEngine(store,shared,File(base,"tmp"),api,AudioTransfer(client){type,fields->events.add(type+fields)},
                 credential={MusicAccess("SYNTHETIC_SECRET".repeat(8),"Client/1")},observe={type,fields->events.add(type+fields)})
