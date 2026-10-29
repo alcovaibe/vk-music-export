@@ -1,6 +1,8 @@
 package app.alcovaibe.vkmusicexport.music
 
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioCompletenessTest {
@@ -13,5 +15,11 @@ class AudioCompletenessTest {
         AudioCompleteness.requireComplete(180_120,180,180.1)
         AudioCompleteness.requireComplete(1_223,1,1.2)
         AudioCompleteness.requireComplete(179_900,180,null)
+    }
+    @Test fun cachedPreviewAndChangedCatalogueDurationCannotBeReused() {
+        assertFalse(AudioCompleteness.matchesCatalogue(30_000,180))
+        assertFalse(AudioCompleteness.matchesCatalogue(180_000,300))
+        assertFalse(AudioCompleteness.matchesCatalogue(0,180))
+        assertTrue(AudioCompleteness.matchesCatalogue(180_120,180))
     }
 }

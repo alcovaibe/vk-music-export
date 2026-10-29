@@ -18,7 +18,13 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
     }
     private suspend fun reconcile() {
         for((task,row) in store.prepared()) {
-            if(shared.valid(row))store.done(task,row) else{shared.removePending(row.uri);store.clearPrepared(task.key)}
+            if(AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration)&&shared.valid(row))store.done(task,row)
+            else{shared.removePending(row.uri);store.clearPrepared(task.key)}
+        }
+        // Older builds could accept a complete preview manifest as a complete catalogue track.
+        // Keep those public files, but report them as incomplete and offer an explicit retry.
+        for((task,state)in store.taskRows())if(state=="DONE")store.existing(task.key)?.let{row->
+            if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration))store.failed(task,MusicError.INCOMPLETE)
         }
         shared.removeAbandonedPending()
     }
@@ -46,7 +52,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     }
                     var published: PublishedAudio?=null
                     for(copy in store.copies(task.track)) {
-                        if(!shared.valid(copy))continue
+                        if(!AudioCompleteness.matchesCatalogue(copy.durationMs,task.track.duration)||!shared.valid(copy))continue
                         if(copy.coverEmbedded)published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
                         else {
                             val local=File(temporary,"local-copy.audio")

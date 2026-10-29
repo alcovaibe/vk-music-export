@@ -185,12 +185,13 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun existing(key: String): PublishedAudio?=readableDatabase.rawQuery("SELECT payload FROM files WHERE task_key=?",arrayOf(key)).use{if(it.moveToFirst())json.decodeFromString<PublishedAudio>(it.getString(0))else null}
     /** Reuse the same owned URI when adopting an old position-based identity. No filename guesses. */
     @Synchronized fun reusable(task: AudioExportTask): List<PublishedAudio> {
-        existing(task.key)?.let{return listOf(it)}
+        existing(task.key)?.let{if(AudioCompleteness.matchesCatalogue(it.durationMs,task.track.duration))return listOf(it)}
         val source=task.source?:return emptyList()
         val path=directory(task)
         return readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid",arrayOf(task.track.id)).use{c->buildList{
             while(c.moveToNext()) {
                 val row=json.decodeFromString<PublishedAudio>(c.getString(0))
+                if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration))continue
                 if(row.track.duration!=task.track.duration&&task.track.duration>0)continue
                 if(row.source==source&&row.occurrence==task.occurrence||row.source==null&&row.relativePath==path)add(row)
             }
@@ -264,7 +265,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         writableDatabase.execSQL("UPDATE tasks SET prepared=NULL WHERE task_key=?",arrayOf(before.taskKey))
         put("recent_files",json.encodeToString(recent.filterNot{it.taskKey==before.taskKey}))
     }
-    @Synchronized fun failed(task: AudioExportTask,error: MusicError){writableDatabase.execSQL("UPDATE tasks SET state='FAILED',error=? WHERE task_key=?",arrayOf(error.name,task.key))}
+    @Synchronized fun failed(task: AudioExportTask,error: MusicError)=transaction {
+        val wasDone=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(task.key)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
+        if(wasDone&&existing(task.key)?.coverEmbedded==true)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)-1).coerceAtLeast(0).toString())
+        writableDatabase.execSQL("UPDATE tasks SET state='FAILED',error=? WHERE task_key=?",arrayOf(error.name,task.key))
+    }
     @Synchronized fun releaseRunning(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING' WHERE state='RUNNING'")}
     @Synchronized fun unavailableTracks(): List<NativeTrack> = readableDatabase.rawQuery(
         "SELECT payload FROM tasks WHERE state='FAILED' AND error IN ('UNAVAILABLE','DENIED') ORDER BY ordinal",null).use{c->buildList{

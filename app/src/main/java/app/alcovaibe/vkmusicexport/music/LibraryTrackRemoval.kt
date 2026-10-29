@@ -15,6 +15,7 @@ internal object LibraryRemovalProtocol {
         musicCheck(libraryCopy(owner,track,row),MusicError.INCOMPLETE)
     }
     fun libraryCopy(owner: Long,track: NativeTrack,row: PublishedAudio): Boolean = row.track==track&&
+        AudioCompleteness.matchesCatalogue(row.durationMs,track.duration)&&
         (if(row.source==null)row.relativePath==ExportLayout.ROOT+"Моя музыка/"
         else row.source==ExportSource(owner,"library","my")&&row.relativePath.startsWith(ExportLayout.ROOT))
     fun success(response: JsonElement) {

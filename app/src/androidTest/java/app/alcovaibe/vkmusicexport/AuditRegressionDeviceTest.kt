@@ -182,4 +182,31 @@ class AuditRegressionDeviceTest {
             assertTrue(SharedAudioStore(context).valid(prepared))
         }finally{erase(store);store.close();root.deleteRecursively()}
     }
+
+    @Test fun formerlyAcceptedPreviewRemainsOnDiskButIsNotReusedOrAllowedToAuthorizeDeletion()=runBlocking<Unit>(Dispatchers.IO) {
+        val (context,root)=isolated("cached-preview");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
+        var resolutions=0
+        val api=object: MusicApi {
+            override suspend fun library(access: MusicAccess): NativeProbe=error("No network")
+            override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("No network")
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No network")
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String {resolutions++;throw MusicFailure(MusicError.UNAVAILABLE)}
+        }
+        try {
+            val t=ExportLayout.task(task().track.copy(duration=180),listOf("Моя музыка"),1,ExportSource(12,"library","my"))
+            store.replace(listOf(t),account=12)
+            val row=shared.publish(t,TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200),coverEmbedded=true),store.directory(t)){}
+            store.done(t,row);assertTrue(shared.valid(row));assertEquals(1,store.snapshot().covered)
+            val engine=AudioExportEngine(store,shared,File(root,"transfer"),api,
+                credential={MusicAccess("a".repeat(64),"CI/1",accountId=12)},observe={_,_->})
+            engine.recover()
+            assertEquals(0,store.snapshot().done);assertEquals(0,store.snapshot().covered)
+            assertEquals(MusicError.INCOMPLETE,store.snapshot().failures.single().error)
+            assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status)
+            assertTrue(store.reusable(t).isEmpty());assertFalse(LibraryRemovalProtocol.libraryCopy(12,t.track,row))
+            store.retryFailed();store.status("QUEUED");engine.run{}
+            assertEquals(1,resolutions);assertEquals(0,store.snapshot().done)
+            assertEquals(row,store.existing(t.key));assertTrue(shared.valid(row))
+        }finally{erase(store);store.close();root.deleteRecursively()}
+    }
 }
