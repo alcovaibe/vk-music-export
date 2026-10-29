@@ -1,0 +1,50 @@
+name: Archive releases before 0.9.15
+on:
+  push:
+    branches: [codex/hide-old-releases]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Hide releases older than 0.9.15 and privately retain their APK artifacts
+        type: choice
+        options: [plan, hide]
+        default: plan
+permissions:
+  contents: read
+concurrency:
+  group: archive-releases
+  cancel-in-progress: false
+jobs:
+  archive:
+    if: github.repository == 'alcovaibe/vk-music-export' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/hide-old-releases')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test release tooling
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
+      - name: Hide selected releases and archive old APK artifacts
+        env:
+          APPLY: ${{ github.event_name == 'push' || inputs.mode == 'hide' }}
+        run: |
+          if [[ "$APPLY" == true ]]; then
+            python3 tools/archive-releases.py --apply
+          else
+            python3 tools/archive-releases.py
+          fi
+      - name: Verify access to retained upgrade baselines
+        run: python3 tools/download-baselines.py
+      - name: Save metadata audit (no APK or binary archives)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Release-archive-audit
+          path: release-archive-audit/*.json
+          if-no-files-found: error
+          retention-days: 30
