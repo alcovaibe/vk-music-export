@@ -41,16 +41,17 @@ class UpdateChannelTest(unittest.TestCase):
             publish_channel(self.info, self.apk)
             write.assert_not_called()
 
-    def test_channel_update_uses_file_sha_and_skips_recursive_ci(self):
+    def test_channel_update_uses_reviewable_branch_and_never_writes_main(self):
         old = channel_manifest(self.info, self.release, self.apk)
         old['release']['versionCode'] = 1080
         existing = {'sha': 'file-sha', 'content': base64.b64encode(json.dumps(old).encode()).decode()}
-        with patch('update_channel.api', side_effect=[self.release, existing]), patch('subprocess.run') as write:
+        with patch('update_channel.api', side_effect=[self.release, existing, [], {'object':{'sha':'base-sha'}}]), patch('subprocess.run') as write:
             publish_channel(self.info, self.apk)
-            payload = json.loads(write.call_args.kwargs['input'])
+            payload = json.loads(next(c.kwargs['input'] for c in write.call_args_list if 'PUT' in c.args[0]))
             self.assertEqual(payload['sha'], 'file-sha')
-            self.assertEqual(payload['branch'], 'main')
-            self.assertIn('[skip ci]', payload['message'])
+            self.assertEqual(payload['branch'], 'release/update-channel-1081')
+            self.assertIn('create', write.call_args.args[0])
+            self.assertIn('--body-file', write.call_args.args[0])
             decoded = json.loads(base64.b64decode(payload['content']))
             self.assertEqual(decoded['release']['versionCode'], 1081)
 

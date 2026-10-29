@@ -71,21 +71,17 @@ internal object AudioExportRuntime {
         if(!database.snapshot().unfinished){refresh();return}
         musicCheck(database.account()>0,MusicError.QUEUE_ACCOUNT)
         database.status("QUEUED");refresh()
-        var accepted=false
-        try {
-            // Once QUEUED is durable, resolve the scheduling result even if the Activity stops.
-            withContext(NonCancellable+Dispatchers.Main) {
-                accepted=try {
+        settleQueueScheduling(schedule={
+            withContext(Dispatchers.Main) {
                     context.getSystemService(JobScheduler::class.java).schedule(JobInfo.Builder(JOB_ID,ComponentName(context,AudioExportJob::class.java))
                         .setUserInitiated(true).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setRequiresStorageNotLow(true).build())==JobScheduler.RESULT_SUCCESS
-                }catch(_: Exception){false}
             }
-        } finally {
-            withContext(NonCancellable+Dispatchers.IO) {
+        },settled={accepted->
+            withContext(Dispatchers.IO) {
                 if(!accepted&&database.snapshot().status=="QUEUED"){database.status("PAUSED");refresh()}
                 Diagnostics.event("audio_queue_schedule",mapOf("accepted" to accepted,"transport" to "user_initiated_job"))
             }
-        }
+        })
         }
     }
     suspend fun bindAccount(context: Context,owner: Long) {

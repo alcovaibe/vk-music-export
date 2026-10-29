@@ -8,7 +8,16 @@ if [[ "$serial" != emulator-* ]]; then
 fi
 package=app.alcovaibe.vkmusicexport
 appdata=/data/user/0/$package
+rm -rf upgrade-results
 mkdir -p upgrade-results
+# Reset only the disposable fixture before installing its baseline; the upgrade itself never clears data.
+adb uninstall "$package" >/dev/null 2>&1 || true
+build_tools="$ANDROID_HOME/build-tools/36.0.0"
+expected_cert=$(openssl x509 -in config/release-certificate.pem -outform DER | sha256sum | cut -d' ' -f1)
+for apk in upgrade-input/previous.apk upgrade-input/current.apk; do
+  actual_cert=$("$build_tools/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+  [[ "$actual_cert" == "$expected_cert" ]] || exit 1
+done
 trap 'result=$?; echo "Upgrade check failed at line $LINENO (exit $result)"; adb logcat -d -b crash > upgrade-results/crash.txt || true; exit "$result"' ERR
 # adbd may close the connection while switching to root on a fresh AVD.
 root_ready=false
@@ -64,14 +73,19 @@ assert_visible() {
   return 1
 }
 adb shell am start -W -n "$package/.MainActivity"
+if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -Fq "versionCode='1087'"; then
 assert_visible before "Открыть мою музыку"
+else
+assert_visible before "VK Music"
+fi
 adb shell am force-stop "$package"
 assert_collection
 # Simulate an interrupted legacy cleanup in this disposable fixture; never alter a physical device.
-adb shell rm -f "$appdata/no_backup/legacy-audio-cleanup-v1"
-# Seed retired files only after the old APK has stopped. The new APK must remove these exact paths.
+adb shell rm -f "$appdata/no_backup/legacy-transfer-cleanup-v2"
+# Seed originals after the baseline stopped. The new APK must preserve them and import the valid indexed audio.
 adb shell "mkdir -p $appdata/files/native-audio $appdata/cache/native-audio-transfer /sdcard/Music/'VK Music Export'"
-adb shell "echo OLD_PRIVATE_AUDIO > $appdata/files/native-audio/retired.mp3; echo '[]' > $appdata/files/native-audio-index.json; echo OLD_PARTIAL > $appdata/cache/native-audio-transfer/retired.media; echo CURRENT_PUBLIC_AUDIO > /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3"
+adb push app/src/androidTest/assets/native-audio/tone.mp3 /data/local/tmp/legacy-audio.mp3
+adb shell "cp /data/local/tmp/legacy-audio.mp3 $appdata/files/native-audio/retired.mp3; echo '[]' > $appdata/files/native-audio-index.json; echo OLD_PARTIAL > $appdata/cache/native-audio-transfer/retired.media; echo CURRENT_PUBLIC_AUDIO > /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3"
 public_expected=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
 # A paused queue uses the exact v1 schema of published 0.9.1. It must survive install/restart without a network request.
 python3 - <<'PYQUEUE'
@@ -93,8 +107,14 @@ payload=json.dumps(task,ensure_ascii=False,separators=(',',':'))
 db.execute('INSERT INTO tasks(task_key,payload,state) VALUES(?,?,?)',(key,payload,'PENDING'))
 db.executemany('INSERT INTO meta VALUES(?,?)',[('status','PAUSED'),('source_issues','0'),('error','')]);db.commit();db.close()
 Path('upgrade-results/queue-expected.json').write_text(payload)
+audio=Path('app/src/androidTest/assets/native-audio/tone.mp3').read_bytes()
+legacy=[{'fileName':'retired.mp3','track':dict(task['track'],id='12_99992',title='LegacyMigrationFixture'),
+    'extension':'mp3','mime':'audio/mpeg','durationMs':1200,'bytes':len(audio),'sha256':hashlib.sha256(audio).hexdigest()}]
+Path('upgrade-results/legacy-index.json').write_text(json.dumps(legacy,ensure_ascii=False))
 PYQUEUE
 adb push upgrade-results/queue-fixture.db /data/local/tmp/queue-fixture.db
+adb push upgrade-results/legacy-index.json /data/local/tmp/legacy-index.json
+adb shell "cp /data/local/tmp/legacy-index.json $appdata/files/native-audio-index.json"
 adb shell "rm -f $appdata/no_backup/audio-export.db-wal $appdata/no_backup/audio-export.db-shm; cp /data/local/tmp/queue-fixture.db $appdata/no_backup/audio-export.db; chown -R $uid:$uid $appdata/files/native-audio $appdata/cache/native-audio-transfer $appdata/files/native-audio-index.json $appdata/no_backup/audio-export.db; restorecon -RF $appdata"
 # This is the operation owners perform: replace the installed APK, never uninstall or clear data.
 adb install -r upgrade-input/current.apk
@@ -113,12 +133,15 @@ assert_visible after "VK Music"
 assert_collection
 # Wait for the one-time IO migration, then verify the public audio and paused queue are intact.
 for attempt in $(seq 1 10); do
-  if adb shell test -f "$appdata/no_backup/legacy-audio-cleanup-v1"; then break; fi
+  if adb shell test -f "$appdata/no_backup/legacy-transfer-cleanup-v2"; then break; fi
   sleep 1
 done
-adb shell test -f "$appdata/no_backup/legacy-audio-cleanup-v1"
-adb shell test ! -e "$appdata/files/native-audio"
-adb shell test ! -e "$appdata/files/native-audio-index.json"
+adb shell test -f "$appdata/no_backup/legacy-transfer-cleanup-v2"
+adb shell test -f "$appdata/files/native-audio/retired.mp3"
+adb shell test -f "$appdata/files/native-audio-index.json"
+original_actual=$(adb shell "sha256sum $appdata/files/native-audio/retired.mp3" | cut -d' ' -f1 | tr -d '\r')
+original_expected=$(sha256sum app/src/androidTest/assets/native-audio/tone.mp3 | cut -d' ' -f1)
+[[ "$original_actual" == "$original_expected" ]]
 adb shell test ! -e "$appdata/cache/native-audio-transfer"
 public_actual=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
 [[ "$public_actual" == "$public_expected" ]]
@@ -127,16 +150,21 @@ adb shell am force-stop "$package"
 adb pull "$appdata/no_backup/audio-export.db" upgrade-results/queue-after.db >/dev/null
 if adb shell test -f "$appdata/no_backup/audio-export.db-wal"; then adb pull "$appdata/no_backup/audio-export.db-wal" upgrade-results/queue-after.db-wal >/dev/null; fi
 python3 - <<'PYQUEUECHECK'
-import sqlite3
+import hashlib, json, sqlite3, subprocess
 from pathlib import Path
 with sqlite3.connect('upgrade-results/queue-after.db') as db:
     rows=db.execute('SELECT payload,state FROM tasks').fetchall()
     assert rows==[(Path('upgrade-results/queue-expected.json').read_text(),'PENDING')], 'Queue changed during schema upgrade'
     assert db.execute("SELECT value FROM meta WHERE name='status'").fetchone()[0]=='PAUSED'
-    assert db.execute('PRAGMA user_version').fetchone()[0]==2, 'Queue schema migration did not complete'
-    assert db.execute("SELECT COUNT(*) FROM directories").fetchone()[0]==0
-Path('upgrade-results/legacy-cleanup.txt').write_text('PASS: only retired private audio removed; public Music and paused queue retained.\n')
-print('PASS: only retired private audio removed; public Music and paused queue retained.')
+    assert db.execute('PRAGMA user_version').fetchone()[0]==3, 'Queue schema migration did not complete'
+    assert db.execute("SELECT COUNT(*) FROM directories").fetchone()[0]==1
+    saved=[json.loads(row[0]) for row in db.execute('SELECT payload FROM files')]
+    assert len(saved)==1 and saved[0]['source']['kind']=='legacy_archive', 'Signed release did not import the indexed legacy audio'
+    actual=subprocess.check_output(['adb','exec-out','content','read','--uri',saved[0]['uri']])
+    expected=Path('app/src/androidTest/assets/native-audio/tone.mp3').read_bytes()
+    assert actual==expected and hashlib.sha256(actual).hexdigest()==saved[0]['sha256'], 'Migrated audio differs from original'
+Path('upgrade-results/legacy-cleanup.txt').write_text('PASS: original private audio retained and migrated; public Music and paused queue retained.\n')
+print('PASS: original private audio retained and migrated; public Music and paused queue retained.')
 PYQUEUECHECK
 adb shell am start -W -n "$package/.MainActivity"
 assert_visible restarted "VK Music"

@@ -46,6 +46,11 @@ android {
     buildFeatures { compose = true; buildConfig = true }
 }
 dependencies {
+    constraints {
+        implementation("com.google.guava:guava:33.7.2-android") {
+            because("Fix GHSA-xxph-c9ww-hj94 / CVE-2026-102554 in transitive Guava")
+        }
+    }
     implementation(libs.okhttp)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.media3.extractor)

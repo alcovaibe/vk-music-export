@@ -121,6 +121,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
                 Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
                 Text("Это внутренний протокол ВК. Веб-сессия может иметь права шире музыки, а музыкальный метод может быть недоступен. Новый доступ сохраняется только после успешной проверки музыки.",style=MaterialTheme.typography.bodySmall)
+                app.alcovaibe.vkmusicexport.LegalInformationLinks()
+                Text("Удаление данных доступа завершает только локальный вход. Для отзыва сессии используй настройки аккаунта ВК. Музыка и очередь остаются.",style=MaterialTheme.typography.bodySmall)
                 if(state.stage!="browser_auth")Button(enabled=state.initialized&&!state.busy&&!backgroundCheck,onClick=model::authenticate) {
                     Text(if(state.configured)"Подключить ВК заново через Chrome" else "Подключить ВК через Chrome")
                 }

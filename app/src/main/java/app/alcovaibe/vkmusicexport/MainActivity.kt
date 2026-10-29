@@ -141,6 +141,7 @@ private fun HomeScreen(queue: app.alcovaibe.vkmusicexport.music.ExportSnapshot,o
             Text("Открой музыкальный раздел, подключи ВК и сохраняй треки в Music/VK Music Export.",
                 style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        item {LegalInformationLinks()}
     }
 }
 

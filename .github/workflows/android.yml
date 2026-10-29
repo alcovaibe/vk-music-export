@@ -210,7 +210,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: bash tools/upgrade-check.sh
+          script: bash tools/upgrade-check-all.sh
       - name: Generate public dependency evidence
         run: |
           ./gradlew writeDependencyInventory

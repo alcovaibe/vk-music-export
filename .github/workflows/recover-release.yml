@@ -26,6 +26,7 @@ jobs:
     permissions:
       actions: read
       contents: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -64,6 +65,10 @@ jobs:
         run: python3 -m unittest discover -s tools -p 'test_release_tools.py'
       - name: Check original build tests, source commits, APK hashes, versions and pinned signature
         run: python3 tools/recover-release.py
+      - name: Download oldest supported signed upgrade baseline
+        run: |
+          gh release download v0.9.5-build.1087 --pattern 'VK-Music-Export-0.9.5-1087.apk' --dir upgrade-input --clobber
+          mv upgrade-input/VK-Music-Export-0.9.5-1087.apk upgrade-input/oldest.apk
       - name: Block stable without exact APK acceptance
         if: inputs.channel == 'stable'
         run: python3 tools/release_gate.py
@@ -81,7 +86,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: bash tools/upgrade-check.sh
+          script: bash tools/upgrade-check-all.sh
       - name: Publish tested APK with original build and verified release commits
         run: python3 tools/publish-release.py
       - name: Save release and upgrade evidence
