@@ -69,4 +69,31 @@ class TrackAvailabilityTest {
         try{AvailabilityCheck(api,pageDelayMs=0).check(access,emptyList()){_,_,_->};fail("Must pause")}
         catch(e: MusicFailure){assertEquals(5,e.remoteCode)}
     }
+
+    @Test fun denialOfOneRecordDoesNotBecomeAnExpiredAccountToken()=runBlocking<Unit> {
+        var denied=true;var calls=0
+        val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+            calls++
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(if(denied)403 else 200)
+                .message("Synthetic").body((if(denied)"PRIVATE" else "{\"response\":${response()}}").toResponseBody()).build()
+        }.build()
+        val api=VkAudioClient(client,observe={_,_->})
+        try{api.resolve(access,stale);fail("Expected record denial")}
+        catch(e: TrackUnavailable){assertEquals(TrackAccessIssue.DENIED,e.issue);assertEquals(MusicError.UNAVAILABLE,e.code)}
+        denied=false
+        assertEquals(stale.id,api.resolve(access,stale).track.id);assertEquals(2,calls)
+    }
+
+
+    @Test fun explicitAccountAndChallengeErrorsInForbiddenResponsesRemainGlobal()=runBlocking<Unit> {
+        for((remote,expected) in listOf(5 to MusicError.ACCESS,14 to MusicError.CAPTCHA,17 to MusicError.VALIDATION,6 to MusicError.RATE_LIMIT)) {
+            val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(403).message("Synthetic")
+                    .body("{\"error\":{\"error_code\":$remote}}".toResponseBody()).build()
+            }.build()
+            try{VkAudioClient(client,observe={_,_->}).resolve(access,stale);fail("Expected $remote")}
+            catch(e: MusicFailure){assertEquals(expected,e.code);assertEquals(remote,e.remoteCode)}
+        }
+    }
+
 }

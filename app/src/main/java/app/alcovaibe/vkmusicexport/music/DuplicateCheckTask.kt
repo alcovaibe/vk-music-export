@@ -92,7 +92,8 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
                 val current=sessions?.continueRead(access)?:access
                 if(!persist(id,"DONE"))throw CancellationException()
                 update{it.copy(phase=DuplicatePhase.READY,report=report.copy(credentialId=current.credentialId),savedChecks=cache.count(),
-                    message="Проверка завершена. Для удаления каждого дубликата требуется отдельное подтверждение в приложении.")}
+                    message=if(report.libraryChanged)"Поиск завершён. Библиотека изменилась: новые и изменённые записи можно проверить отдельным поиском. Удаление предлагается только для неизменившихся записей."
+                        else "Проверка завершена. Для удаления каждого дубликата требуется отдельное подтверждение в приложении.")}
                 Diagnostics.event("audio_duplicates_scan",mapOf("scan_id" to id,"tracks" to report.tracks,"checked" to report.checked,
                     "duplicates" to report.duplicates.size,"problems" to report.problems.size,"reused" to reused,"background" to true))
             }

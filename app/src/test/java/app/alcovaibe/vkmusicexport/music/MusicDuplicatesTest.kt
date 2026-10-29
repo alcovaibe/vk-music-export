@@ -115,4 +115,40 @@ class MusicDuplicatesTest {
         val report=service(api,hash={DuplicateSignature("mp3","")}).scan(access)
         assertEquals(0,report.checked);assertTrue(report.duplicates.isEmpty());assertEquals(2,report.problems.size)
     }
+
+    @Test fun reorderAtFinalValidationFinishesOnePassWithoutHashingAgain()=runBlocking<Unit> {
+        val api=Api((1..3).map{track(it)}.toMutableList());val hashes=mutableListOf<String>();var reads=0
+        val engine=MusicDuplicates(object: MusicApi by api {
+            override suspend fun library(access: MusicAccess): NativeProbe {
+                reads++;if(reads==2)api.tracks.reverse()
+                return api.library(access)
+            }
+        },DuplicateHasher{_,t->hashes.add(t.id);same},pageDelayMs=0)
+        val report=engine.scan(access)
+        assertEquals(2,reads);assertEquals(listOf("12_1","12_2","12_3"),hashes)
+        assertEquals(2,report.duplicates.size);assertFalse(report.libraryChanged);assertTrue(api.deletes.isEmpty())
+    }
+    @Test fun libraryEditsFinishWithOnlyUnchangedPairsAndDoNotRestartDiscovery()=runBlocking<Unit> {
+        val api=Api((1..4).map{track(it)}.toMutableList());var hashes=0
+        val report=service(api,hash={t->
+            hashes++
+            if(t.id=="12_4"){
+                api.tracks.removeAt(0);api.tracks[0]=api.tracks[0].copy(restricted=true);api.tracks.add(track(99))
+            }
+            same
+        }).scan(access)
+        assertEquals(4,hashes);assertTrue(report.libraryChanged)
+        assertEquals(listOf("12_4"),report.duplicates.map{it.remove.id});assertEquals("12_3",report.duplicates.single().keep.id)
+        assertEquals(2,report.problems.count{it.error==MusicError.LIBRARY_CHANGED});assertTrue(api.deletes.isEmpty())
+    }
+    @Test fun unavailableCandidateDoesNotAbortLaterCandidatesButAccountFailureDoes()=runBlocking<Unit> {
+        val api=Api((1..3).map{track(it)}.toMutableList());val calls=mutableListOf<String>()
+        val report=service(api,hash={t->calls.add(t.id);if(t.id=="12_2")throw MediaHttpFailure(403);same}).scan(access)
+        assertEquals(listOf("12_1","12_2","12_3"),calls);assertEquals(2,report.checked)
+        assertEquals("12_3",report.duplicates.single().remove.id);assertEquals(MusicError.UNAVAILABLE,report.problems.single().error)
+        calls.clear()
+        fails(MusicError.ACCESS){service(api,hash={t->calls.add(t.id);if(t.id=="12_2")throw MusicFailure(MusicError.ACCESS,5);same}).scan(access)}
+        assertEquals(listOf("12_1","12_2"),calls)
+    }
+
 }

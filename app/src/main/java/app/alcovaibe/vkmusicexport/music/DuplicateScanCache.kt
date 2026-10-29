@@ -7,7 +7,7 @@ import kotlinx.serialization.json.*
 import java.io.File
 import java.security.MessageDigest
 
-/** IO-only checkpoint of completed checks, bound to one account and an exact ordered library snapshot.
+/** IO-only checkpoint of completed checks, bound to one account and exact per-track metadata.
  * Neither tokens nor CDN URLs nor complete audio files are retained.
  * This is discovery evidence only: removal always downloads both records afresh.
  */
@@ -44,8 +44,15 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
     fun begin(owner: Long,tracks: List<NativeTrack>)=synchronized(lock) {
         musicCheck(owner>0,MusicError.ACCESS)
         val fingerprint=hash(Json.encodeToString(tracks))
-        if(this.owner!=owner||snapshot!=fingerprint||wall()<created||wall()-created>=TTL) {
-            clear();this.owner=owner;snapshot=fingerprint;created=wall();write()
+        if(this.owner!=owner||wall()<created||wall()-created>=TTL) {
+            clear();this.owner=owner;created=wall()
+        }
+        if(snapshot!=fingerprint) {
+            // Reordering or editing another record must not download every checked song again.
+            // A changed/deleted record loses only its own receipt; deletion still verifies fresh audio.
+            val current=tracks.map(::key).toHashSet()
+            receipts.keys.retainAll(current)
+            snapshot=fingerprint;write()
         }
         // Older builds retained audio without a read path. Only receipts are useful for resumption.
         directory.listFiles().orEmpty().filter{it.extension in setOf("mp3","m4a")}.forEach{it.delete()}

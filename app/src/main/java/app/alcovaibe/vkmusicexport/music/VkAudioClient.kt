@@ -68,8 +68,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
-            // A search permission denial must not renew/reject an otherwise valid music session.
-            if(response.status==403&&method=="audio.search")throw MusicFailure(MusicError.DENIED)
+            // A denial of one search/record is not proof that the account token expired.
+            if(response.status==403&&method in setOf("audio.search","audio.getById")) {
+                val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
+                if(explicit?.code in setOf(MusicError.ACCESS,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT))throw explicit!!
+                throw MusicFailure(MusicError.DENIED)
+            }
             if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
             musicCheck(response.status==200,MusicError.HTTP)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes))}
@@ -128,7 +132,8 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     }
     override suspend fun media(access: MusicAccess,track: NativeTrack): String=resolve(access,track).url
     override suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
-        val response=request(access,"audio.getById",mapOf("audios" to track.id))
+        val response=try{request(access,"audio.getById",mapOf("audios" to track.id))}
+            catch(e: MusicFailure){if(e.code==MusicError.DENIED)throw TrackUnavailable(TrackAccessIssue.DENIED,e.remoteCode);throw e}
         val resolved=NativeProtocol.resolveMedia(response,track)
         val cover=runCatching{NativeProtocol.artworkCandidates(response,track)}
         synchronized(coverHints){coverHints[track.id]=CoverHint(access.credentialId,cover)}

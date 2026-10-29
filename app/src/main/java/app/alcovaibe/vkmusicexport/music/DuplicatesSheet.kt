@@ -78,7 +78,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
             }else Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick=onDismiss){Text(if(state.busy)"Свернуть" else "Закрыть")}
                 if(state.busy)OutlinedButton(onClick=onStop){Text("Пауза")}
-                else Button(onClick=onScan,modifier=Modifier.weight(1f).testTag("scan_duplicates")){Text(if(state.savedChecks>0)"Продолжить проверку" else if(state.report==null)"Начать поиск" else "Новый поиск")}
+                else Button(onClick=onScan,modifier=Modifier.weight(1f).testTag("scan_duplicates")){Text(if(state.report!=null)"Новый поиск" else if(state.savedChecks>0)"Продолжить проверку" else "Начать поиск")}
             }
         }
     }

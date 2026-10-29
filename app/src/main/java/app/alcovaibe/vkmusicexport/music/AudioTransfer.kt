@@ -47,7 +47,7 @@ internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.m
                     musicCheck(attempt<5,MusicError.HTTP)
                     location=MediaAddress.resolve(next,r.header("Location")?:throw MusicFailure(MusicError.HTTP))
                 }else {
-                    musicCheck(r.code==200,if(r.code==429)MusicError.RATE_LIMIT else MusicError.HTTP)
+                    if(r.code!=200)throw MediaHttpFailure(r.code)
                     val body=r.body?:throw MusicFailure(MusicError.HTTP)
                     musicCheck(body.contentLength()<=max,MusicError.TOO_LARGE)
                     size=consume(r)

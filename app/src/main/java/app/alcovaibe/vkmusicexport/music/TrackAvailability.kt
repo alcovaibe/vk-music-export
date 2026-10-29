@@ -4,12 +4,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 internal enum class TrackAccessIssue(val label: String) {
+    DENIED("ВК не разрешил получить эту запись для текущего доступа."),
     NOT_RETURNED("ВК не вернул запись по этому ID для текущего доступа."),
     RESTRICTED("В свежем ответе ВК запись отмечена ограниченной. Причина и регион не установлены."),
     NO_DURATION("ВК не вернул длительность доступной записи."),
     NO_STREAM("ВК вернул запись без доступной ссылки на аудио. Причина и регион не установлены.")
 }
-internal class TrackUnavailable(val issue: TrackAccessIssue): MusicFailure(MusicError.UNAVAILABLE)
+internal class TrackUnavailable(val issue: TrackAccessIssue,remoteCode: Int?=null): MusicFailure(MusicError.UNAVAILABLE,remoteCode)
 internal class ResolvedAudio(val track: NativeTrack,val url: String) {
     override fun toString()="ResolvedAudio([metadata omitted])"
 }

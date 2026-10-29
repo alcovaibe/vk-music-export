@@ -24,3 +24,12 @@ internal fun networkFailure(error: IOException): MusicFailure {
     }
     return MusicFailure(if(kind==MusicFailureKind.TLS)MusicError.TLS else MusicError.NETWORK,kind=kind)
 }
+
+/** A media-server response belongs to this file, not to the VK account or the whole queue.
+ * Keep only the status, never the signed URL or response text. A fresh link may fix an expired URL.
+ */
+internal class MediaHttpFailure(val status: Int): MusicFailure(when(status) {
+    401,403,404,410 -> MusicError.UNAVAILABLE
+    429 -> MusicError.RATE_LIMIT
+    else -> MusicError.HTTP
+})
