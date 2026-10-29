@@ -85,7 +85,9 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                         task.track.duration.takeIf{it>0}?:resolvedTrack.duration,null)
                                     break
                                 }catch(e: MusicFailure) {
-                                    if(attempt==2||e.code !in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP))throw e
+                                    val retry=e.code in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP)||
+                                        e is MediaHttpFailure&&e.code==MusicError.UNAVAILABLE
+                                    if(attempt==2||!retry)throw e
                                     observe("audio_queue_retry",mapOf("attempt" to attempt+1,"code" to e.code.name))
                                     delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                                 }
@@ -107,7 +109,8 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     observe("audio_queue_item",mapOf("outcome" to "failed","code" to code.name,"vk_code" to failure?.remoteCode,"kind" to failure?.kind?.name))
                     if(code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.CAPTCHA,MusicError.VALIDATION,
                             MusicError.NETWORK,MusicError.HTTP,MusicError.RATE_LIMIT,MusicError.TLS,MusicError.STORAGE,MusicError.TIMEOUT,
-                            MusicError.ACCOUNT_CHANGED,MusicError.QUEUE_ACCOUNT)) {
+                            MusicError.ACCOUNT_CHANGED,MusicError.QUEUE_ACCOUNT)&&
+                            !(e is MediaHttpFailure&&code!=MusicError.RATE_LIMIT)) {
                         store.status("PAUSED",code);break
                     }
                     store.failed(task,code)

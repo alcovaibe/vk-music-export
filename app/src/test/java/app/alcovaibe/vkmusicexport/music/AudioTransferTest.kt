@@ -163,4 +163,19 @@ class AudioTransferTest {
             assertEquals(0,directory.listFiles()!!.size)
         }finally{directory.deleteRecursively()}
     }
+
+    @Test fun mediaHttpErrorsAreTrackScopedAndNeverLeavePartialFiles()=runBlocking<Unit> {
+        val directory=Files.createTempDirectory("audio-http-status").toFile()
+        try {
+            for((status,code) in listOf(401 to MusicError.UNAVAILABLE,403 to MusicError.UNAVAILABLE,
+                404 to MusicError.UNAVAILABLE,410 to MusicError.UNAVAILABLE,429 to MusicError.RATE_LIMIT,503 to MusicError.HTTP)) {
+                val transfer=AudioTransfer(client({status to "PRIVATE_RESPONSE".toByteArray()},mutableListOf()),
+                    AudioProcessor{_,_,_,_->error("No processing after HTTP failure")},observe={_,_->})
+                try{transfer.download("https://audio.userapi.com/PRIVATE",track,directory){};fail("Expected $status")}
+                catch(e: MediaHttpFailure){assertEquals(status,e.status);assertEquals(code,e.code);assertFalse(e.toString().contains("PRIVATE"))}
+                assertTrue(directory.listFiles().orEmpty().isEmpty())
+            }
+        }finally{directory.deleteRecursively()}
+    }
+
 }

@@ -18,7 +18,7 @@ internal enum class DuplicateStatus(val label: String) { PENDING("Ожидает
 internal data class MusicDuplicate(val keep: NativeTrack,val remove: NativeTrack,val signature: DuplicateSignature,val status: DuplicateStatus=DuplicateStatus.PENDING)
 internal data class DuplicateProblem(val track: NativeTrack,val reason: String,val error: MusicError?=null)
 internal data class DuplicateReport(val owner: Long,val credentialId: String,val tracks: Int,val checked: Int,
-    val duplicates: List<MusicDuplicate>,val problems: List<DuplicateProblem>)
+    val duplicates: List<MusicDuplicate>,val problems: List<DuplicateProblem>,val libraryChanged: Boolean=false)
 internal data class DuplicateProgress(val stage: String,val done: Int=0,val total: Int=0,val track: NativeTrack?=null,val bytes: Long=0,val reused: Int=0)
 
 internal object DuplicateNames {
@@ -72,12 +72,21 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
             }
             catch(e: kotlinx.coroutines.CancellationException){throw e}
             catch(e: MusicFailure){
-                if(e.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.DENIED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT,MusicError.STORAGE))throw e
+                if(e.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT,MusicError.STORAGE))throw e
                 problems.add(DuplicateProblem(track,(e as? TrackUnavailable)?.issue?.label?:"SHA-256 не подтверждён: ${e.code.label}",e.code))
             }
         }
         guard();val (_,after)=read(access,owner,"Проверяем, что список не изменился")
-        musicCheck(after==tracks,MusicError.LIBRARY_CHANGED)
+        // Discovery is one finite pass. A moving library must not restart hashing the entire list.
+        // Offer only records still present exactly once with the same metadata; new/changed records
+        // can be checked by an explicit next search. Removal retains its stricter fresh checks.
+        val current=after.groupBy{it.id}
+        val stable=tracks.filter{current[it.id]==listOf(it)}.map{it.id}.toHashSet()
+        signatures.keys.filter{it !in stable}.forEach{id->
+            problems.add(DuplicateProblem(byId.getValue(id).first(),"Запись изменилась или исчезла во время поиска. Удаление не предлагается.",MusicError.LIBRARY_CHANGED))
+        }
+        signatures.keys.retainAll(stable)
+        val libraryChanged=after.groupingBy{it}.eachCount()!=tracks.groupingBy{it}.eachCount()
         val duplicates=mutableListOf<MusicDuplicate>()
         for(group in groups) {
             val verified=group.filter{it.id in signatures}.groupBy{signatures.getValue(it.id)}
@@ -88,7 +97,8 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
                 problems.add(DuplicateProblem(it,"Название и исполнитель совпали, но SHA-256 аудиоданных отличается. Удаление не предлагается."))
             }
         }
-        return DuplicateReport(owner,access.credentialId,tracks.size,checkedCount,duplicates,problems)
+        progress(DuplicateProgress("Поиск завершён",candidates.size,candidates.size,reused=reused))
+        return DuplicateReport(owner,access.credentialId,tracks.size,checkedCount,duplicates,problems,libraryChanged)
     }
     suspend fun remove(access: MusicAccess,consent: DuplicateConsent,beforeMutation: suspend()->Unit={}) {
         musicCheck(consent.claim(),MusicError.BUSY)

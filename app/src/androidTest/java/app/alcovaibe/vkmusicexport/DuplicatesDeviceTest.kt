@@ -212,7 +212,7 @@ class DuplicateResumeDeviceTest {
             assertTrue(File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().none{it.extension=="mp3"})
             cache=DuplicateScanCache(context,{now});cache.begin(12,tracks);assertEquals(signature,cache.get(tracks[0]))
             cache.begin(13,tracks);assertEquals(0,cache.count());assertNull(cache.get(tracks[0]))
-            cache.begin(12,tracks);save(cache,tracks[0]);cache.begin(12,tracks.reversed());assertEquals(0,cache.count())
+            cache.begin(12,tracks);save(cache,tracks[0]);cache.begin(12,tracks.reversed());assertEquals(1,cache.count());assertEquals(signature,cache.get(tracks[0]))
             save(cache,tracks[0]);now+=24L*60*60*1000
             cache=DuplicateScanCache(context,{now});cache.begin(12,tracks);assertEquals(0,cache.count())
             save(cache,tracks[0]);File(context.noBackupFilesDir,"duplicate-scan/checks.json").writeText("{broken")
