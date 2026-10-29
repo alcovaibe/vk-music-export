@@ -39,7 +39,7 @@ class PublisherTest(unittest.TestCase):
                 Path('CHANGELOG.md').write_text('## [0.3.0]\n\nVersion-specific fixes.\n')
                 env = {'GITHUB_SHA': ('b' if recovered else 'a') * 40, 'RUNNER_TEMP':td,
                        'GITHUB_STEP_SUMMARY':str(Path(td)/'summary'), 'GITHUB_REPOSITORY':'alcovaibe/vk-music-export',
-                       'RELEASE_CHANNEL':channel}
+                       'RELEASE_CHANNEL':channel, 'GITHUB_RUN_ID':'2000'}
                 if recovered:
                     env['RELEASE_SOURCE_SHA'] = 'a'*40
                     env['RELEASE_TARGET_SHA'] = 'b'*40
@@ -57,14 +57,17 @@ class PublisherTest(unittest.TestCase):
     def test_new_release_becomes_latest(self):
         calls = self.publish('v0.3.0-build.1023')
         self.assertIn('--latest=true', calls[-1])
-        self.assertTrue(any(x.endswith('build-info.json') for x in calls[-1]))
-        self.assertTrue(any(x.endswith('upgrade-check.txt') for x in calls[-1]))
+        self.assertEqual(calls[-1][4:calls[-1].index('--target')],
+                         ['release-output/VK-Music-Export-0.3.0-1024.apk', 'release-output/SHA256SUMS.txt'])
+        self.assertIn('/actions/runs/2000', self.release_notes)
 
     def test_rc_never_becomes_latest_or_changes_stable_channel(self):
         calls = self.publish(channel='rc')
         self.assertIn('--prerelease', calls[-1])
         self.assertIn('--latest=false', calls[-1])
         self.assertIn('v0.3.0-build.1024-rc', calls[-1])
+        self.assertEqual(calls[-1][4:calls[-1].index('--target')],
+                         ['release-output/VK-Music-Export-0.3.0-1024.apk', 'release-output/SHA256SUMS.txt'])
 
     def test_old_recovery_cannot_downgrade_latest(self):
         calls = self.publish('v0.3.0-build.1025')
@@ -79,14 +82,15 @@ class PublisherTest(unittest.TestCase):
 
     def test_release_provides_license_and_exact_apk_source(self):
         call = self.publish(recovered=True)[-1]
-        self.assertIn('release-output/LICENSE', call)
-        self.assertIn('release-output/NOTICE', call)
+        self.assertNotIn('release-output/LICENSE', call)
+        self.assertNotIn('release-output/NOTICE', call)
+        self.assertIn('включены в APK и архив исходников', self.release_notes)
         self.assertIn('GPL-3.0-or-later', self.release_notes)
         self.assertIn('/archive/' + 'a'*40 + '.tar.gz', self.release_notes)
         self.assertNotIn('/archive/' + 'b'*40 + '.tar.gz', self.release_notes)
 
     def test_missing_license_blocks_publication(self):
-        with self.assertRaisesRegex(AssertionError, 'Public release evidence is incomplete'):
+        with self.assertRaisesRegex(AssertionError, 'Release evidence is incomplete'):
             self.publish(include_legal=False)
 
 class EmulatorDialogTest(unittest.TestCase):
