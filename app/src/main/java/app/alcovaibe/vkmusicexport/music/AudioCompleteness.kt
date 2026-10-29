@@ -5,8 +5,8 @@ import kotlin.math.max
 
 /** The manifest describes the received representation, not proof of a complete catalogue track. */
 internal object AudioCompleteness {
-    fun matchesCatalogue(durationMs: Long,catalogueSeconds: Int): Boolean = try {
-        requireComplete(durationMs,catalogueSeconds,null);true
+    fun matchesCatalogue(durationMs: Long,catalogueSeconds: Int,verifiedFallbackSeconds: Int=0): Boolean = try {
+        requireComplete(durationMs,if(catalogueSeconds>0)catalogueSeconds else verifiedFallbackSeconds,null);true
     }catch(_: MusicFailure){false}
 
     fun requireComplete(durationMs: Long, catalogueSeconds: Int, hlsSeconds: Double?) {

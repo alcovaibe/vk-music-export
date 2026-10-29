@@ -21,5 +21,8 @@ class AudioCompletenessTest {
         assertFalse(AudioCompleteness.matchesCatalogue(180_000,300))
         assertFalse(AudioCompleteness.matchesCatalogue(0,180))
         assertTrue(AudioCompleteness.matchesCatalogue(180_120,180))
+        assertTrue(AudioCompleteness.matchesCatalogue(1223,0,1))
+        assertFalse(AudioCompleteness.matchesCatalogue(30_000,180,30))
+        assertFalse(AudioCompleteness.matchesCatalogue(30_000,0,180))
     }
 }

@@ -18,13 +18,13 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
     }
     private suspend fun reconcile() {
         for((task,row) in store.prepared()) {
-            if(AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration)&&shared.valid(row))store.done(task,row)
+            if(AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration,row.track.duration)&&shared.valid(row))store.done(task,row)
             else{shared.removePending(row.uri);store.clearPrepared(task.key)}
         }
         // Older builds could accept a complete preview manifest as a complete catalogue track.
         // Keep those public files, but report them as incomplete and offer an explicit retry.
         for((task,state)in store.taskRows())if(state=="DONE")store.existing(task.key)?.let{row->
-            if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration))store.failed(task,MusicError.INCOMPLETE)
+            if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration,row.track.duration))store.failed(task,MusicError.INCOMPLETE)
         }
         shared.removeAbandonedPending()
     }
@@ -52,7 +52,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     }
                     var published: PublishedAudio?=null
                     for(copy in store.copies(task.track)) {
-                        if(!AudioCompleteness.matchesCatalogue(copy.durationMs,task.track.duration)||!shared.valid(copy))continue
+                        if(!AudioCompleteness.matchesCatalogue(copy.durationMs,task.track.duration,copy.track.duration)||!shared.valid(copy))continue
                         if(copy.coverEmbedded)published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
                         else {
                             val local=File(temporary,"local-copy.audio")
@@ -80,7 +80,8 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                         }
                                     }
                                     result=downloaded
-                                    AudioCompleteness.requireComplete(downloaded.media.durationMs,task.track.duration,null)
+                                    AudioCompleteness.requireComplete(downloaded.media.durationMs,
+                                        task.track.duration.takeIf{it>0}?:resolvedTrack.duration,null)
                                     break
                                 }catch(e: MusicFailure) {
                                     if(attempt==2||e.code !in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP))throw e
@@ -90,7 +91,9 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                             }
                             result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),resolvedTrack)
                             val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
-                            published=shared.publish(task,file,store.directory(task)){store.prepared(task,it)}
+                            // Persist the verified metadata when the queued record had no known duration.
+                            val verifiedTask=if(task.track.duration<=0)task.copy(track=resolvedTrack)else task
+                            published=shared.publish(verifiedTask,file,store.directory(task)){store.prepared(task,it)}
                         }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
                     }
                     currentCoroutineContext().ensureActive()

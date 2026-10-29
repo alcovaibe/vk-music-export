@@ -185,13 +185,13 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun existing(key: String): PublishedAudio?=readableDatabase.rawQuery("SELECT payload FROM files WHERE task_key=?",arrayOf(key)).use{if(it.moveToFirst())json.decodeFromString<PublishedAudio>(it.getString(0))else null}
     /** Reuse the same owned URI when adopting an old position-based identity. No filename guesses. */
     @Synchronized fun reusable(task: AudioExportTask): List<PublishedAudio> {
-        existing(task.key)?.let{if(AudioCompleteness.matchesCatalogue(it.durationMs,task.track.duration))return listOf(it)}
+        existing(task.key)?.let{if(AudioCompleteness.matchesCatalogue(it.durationMs,task.track.duration,it.track.duration))return listOf(it)}
         val source=task.source?:return emptyList()
         val path=directory(task)
         return readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid",arrayOf(task.track.id)).use{c->buildList{
             while(c.moveToNext()) {
                 val row=json.decodeFromString<PublishedAudio>(c.getString(0))
-                if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration))continue
+                if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration,row.track.duration))continue
                 if(row.track.duration!=task.track.duration&&task.track.duration>0)continue
                 if(row.source==source&&row.occurrence==task.occurrence||row.source==null&&row.relativePath==path)add(row)
             }
