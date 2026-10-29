@@ -71,7 +71,7 @@ def source_version(sha):
 
 def download(path, file):
     with file.open('wb') as output:
-        subprocess.run(['gh', 'api', path, '-H', 'Accept: application/octet-stream'], stdout=output, check=True)
+        subprocess.run(['gh', 'api', path, '-H', 'Accept: application/json'], stdout=output, check=True)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

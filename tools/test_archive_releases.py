@@ -78,3 +78,9 @@ class ArchiveTest(unittest.TestCase):
         self.assertEqual(mutations,[('draft',1),('artifact',9)])
         self.assertEqual(backend[1]['assets'][0]['id'],10)
         self.assertEqual(backend[1]['assets'][-1]['name'],'actions-artifact-9.zip')
+
+    def test_artifact_archive_endpoint_requests_json_redirect(self):
+        with tempfile.TemporaryDirectory() as temp,patch.object(module.subprocess,'run') as run:
+            module.download('repos/owner/repo/actions/artifacts/9/zip',Path(temp)/'archive.zip')
+            self.assertEqual(run.call_args.args[0],['gh','api','repos/owner/repo/actions/artifacts/9/zip','-H','Accept: application/json'])
+            self.assertTrue(run.call_args.kwargs['check'])
