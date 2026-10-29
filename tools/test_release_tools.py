@@ -10,15 +10,15 @@ from unittest.mock import patch
 TOOLS = Path(__file__).resolve().parent
 
 class PublisherTest(unittest.TestCase):
-    def publish(self, latest=None, existing=False, recovered=False):
+    def publish(self, latest=None, existing=False, recovered=False, channel='stable'):
         calls = []
         apk = 'VK-Music-Export-0.3.0-1024.apk'
         def gh(args, **kwargs):
             calls.append(args)
             if args[2] == 'create':
                 return subprocess.CompletedProcess(args, 0)
-            if '--json' in args and args[-1] == 'targetCommitish,assets':
-                value = {'targetCommitish': 'a' * 40, 'assets': [{'name': apk}]}
+            if '--json' in args and args[-1] == 'targetCommitish,assets,prerelease':
+                value = {'targetCommitish': 'a' * 40, 'assets': [{'name': apk}], 'prerelease':channel == 'rc'}
                 return subprocess.CompletedProcess(args, 0 if existing else 1, json.dumps(value), '')
             return subprocess.CompletedProcess(args, 0 if latest else 1, json.dumps({'tagName': latest}), '')
         with tempfile.TemporaryDirectory() as td:
@@ -30,16 +30,22 @@ class PublisherTest(unittest.TestCase):
                 (out / 'build-info.json').write_text(json.dumps({'tag':'v0.3.0-build.1024','apk':apk,
                     'commit':'a'*40,'versionName':'0.3.0','versionCode':1024}))
                 (out / 'upgrade-check.txt').write_text('PASS: data retained\n')
+                for asset in ('SHA256SUMS.txt','release-certificate.pem','sbom.cdx.json','osv.json'):
+                    (out / asset).write_text('fixture')
+                Path('CHANGELOG.md').write_text('## [0.3.0]\n\nVersion-specific fixes.\n')
                 env = {'GITHUB_SHA': ('b' if recovered else 'a') * 40, 'RUNNER_TEMP':td,
-                       'GITHUB_STEP_SUMMARY':str(Path(td)/'summary'), 'GITHUB_REPOSITORY':'alcovaibe/vk-music-export'}
+                       'GITHUB_STEP_SUMMARY':str(Path(td)/'summary'), 'GITHUB_REPOSITORY':'alcovaibe/vk-music-export',
+                       'RELEASE_CHANNEL':channel}
                 if recovered:
                     env['RELEASE_SOURCE_SHA'] = 'a'*40
                     env['RELEASE_TARGET_SHA'] = 'b'*40
                     info = json.loads((out/'build-info.json').read_text())
                     info['releaseCommit'] = 'b'*40
                     (out/'build-info.json').write_text(json.dumps(info))
-                with patch.dict(os.environ, env, clear=True), patch('subprocess.run', side_effect=gh), patch('update_channel.publish_channel'):
+                with patch.dict(os.environ, env, clear=True), patch('subprocess.run', side_effect=gh), patch('update_channel.publish_channel') as channel_update, patch('release_gate.verify_stable') as gate:
                     runpy.run_path(str(TOOLS / 'publish-release.py'))
+                    self.assertEqual(channel_update.call_count, int(channel == 'stable'))
+                    self.assertEqual(gate.call_count, int(channel == 'stable'))
             finally:
                 os.chdir(old)
         return calls
@@ -47,7 +53,14 @@ class PublisherTest(unittest.TestCase):
     def test_new_release_becomes_latest(self):
         calls = self.publish('v0.3.0-build.1023')
         self.assertIn('--latest=true', calls[-1])
-        self.assertFalse(any(x.endswith(('build-info.json', 'upgrade-check.txt')) for x in calls[-1]))
+        self.assertTrue(any(x.endswith('build-info.json') for x in calls[-1]))
+        self.assertTrue(any(x.endswith('upgrade-check.txt') for x in calls[-1]))
+
+    def test_rc_never_becomes_latest_or_changes_stable_channel(self):
+        calls = self.publish(channel='rc')
+        self.assertIn('--prerelease', calls[-1])
+        self.assertIn('--latest=false', calls[-1])
+        self.assertIn('v0.3.0-build.1024-rc', calls[-1])
 
     def test_old_recovery_cannot_downgrade_latest(self):
         calls = self.publish('v0.3.0-build.1025')

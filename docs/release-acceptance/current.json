@@ -1,0 +1,21 @@
+{
+  "status": "pending",
+  "source_commit": "",
+  "version_code": 0,
+  "apk_sha256": "",
+  "candidate_run": "",
+  "tester": "",
+  "tested_at": "",
+  "device": "",
+  "android_version": "",
+  "scenarios": {
+    "real_vk_login_and_renewal": {"status": "pending", "evidence": ""},
+    "large_library_export": {"status": "pending", "evidence": ""},
+    "screen_off_and_process_restart": {"status": "pending", "evidence": ""},
+    "network_loss_and_retry": {"status": "pending", "evidence": ""},
+    "account_switch_and_logout": {"status": "pending", "evidence": ""},
+    "upgrade_existing_archive": {"status": "pending", "evidence": ""},
+    "external_players_tags_artwork_and_playlist": {"status": "pending", "evidence": ""},
+    "duplicate_scan_and_safe_removal": {"status": "pending", "evidence": ""}
+  }
+}

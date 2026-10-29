@@ -70,3 +70,24 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
+
+dependencyLocking { lockAllConfigurations() }
+
+tasks.register("writeDependencyInventory") {
+    description = "Resolve build/test classpaths and write the exact Maven inventory for SBOM/SCA"
+    doLast {
+        val names = setOf("debugCompileClasspath", "debugRuntimeClasspath", "releaseCompileClasspath",
+            "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath", "releaseUnitTestRuntimeClasspath",
+            "debugAndroidTestRuntimeClasspath")
+        val coordinates = configurations.filter { it.isCanBeResolved && it.name in names }
+            .flatMap { configuration -> configuration.incoming.resolutionResult.allComponents.mapNotNull {
+                (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { id ->
+                    "${id.group}:${id.module}:${id.version}"
+                }
+            } }.toSortedSet()
+        check(coordinates.isNotEmpty()) { "Dependency inventory is empty" }
+        layout.buildDirectory.file("reports/dependencies/resolved.txt").get().asFile.apply {
+            parentFile.mkdirs(); writeText(coordinates.joinToString("\n", postfix = "\n"))
+        }
+    }
+}
