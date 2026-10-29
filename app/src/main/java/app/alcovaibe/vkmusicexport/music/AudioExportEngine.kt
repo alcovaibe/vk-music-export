@@ -18,7 +18,8 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
     }
     private suspend fun reconcile() {
         for((task,row) in store.prepared()) {
-            if(AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration,row.track.duration)&&shared.valid(row))store.done(task,row)
+            val finished=shared.completed(row)
+            if(AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration,row.track.duration)&&finished!=null)store.done(task,finished)
             else{shared.removePending(row.uri);store.clearPrepared(task.key)}
         }
         // Older builds could accept a complete preview manifest as a complete catalogue track.

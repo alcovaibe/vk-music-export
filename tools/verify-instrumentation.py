@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 83) -> int:
+def verify(results: Path, minimum_tests: int = 87) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')
@@ -34,6 +34,8 @@ def verify(results: Path, minimum_tests: int = 83) -> int:
         raise ValueError('Required audit regression tests did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.AccessRecoveryDeviceTest' for name, _ in executed) < 2:
         raise ValueError('Required access recovery tests did not execute')
+    if sum(name == 'app.alcovaibe.vkmusicexport.MediaFinalizationDeviceTest' for name, _ in executed) < 4:
+        raise ValueError('Required media finalization tests did not execute')
     return len(executed)
 
 

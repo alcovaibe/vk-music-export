@@ -177,4 +177,35 @@ esac
             self.assertIn('physical device', result.stderr)
             self.assertFalse(marker.exists())
 
+class UpgradeEvidenceTest(unittest.TestCase):
+    def check(self, failing):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            (root/'upgrade-input').mkdir();(root/'release-output').mkdir()
+            (root/'upgrade-input/previous.apk').write_text('stable')
+            (root/'upgrade-input/oldest.apk').write_text('oldest')
+            stub=root/'bash'
+            stub.write_text("""#!/bin/sh
+mkdir -p upgrade-results
+baseline=$(cat upgrade-input/previous.apk)
+printf 'PASS: %s fixture\\n' "$baseline" > upgrade-results/result.txt
+printf 'PASS: one baseline only\\n' > release-output/upgrade-check.txt
+if [ "$baseline" = "$FAIL_BASELINE" ]; then exit 1; fi
+""")
+            stub.chmod(0o755)
+            result=subprocess.run(['/bin/bash',str(TOOLS/'upgrade-check-all.sh')],cwd=root,
+                env=dict(os.environ,PATH=str(root)+os.pathsep+os.environ['PATH'],FAIL_BASELINE=failing),capture_output=True,text=True)
+            self.assertEqual(result.returncode,0 if not failing else 1,result.stderr)
+            self.assertEqual((root/'upgrade-input/previous.apk').read_text(),'stable')
+            self.assertTrue((root/'upgrade-results/stable/result.txt').exists())
+            self.assertEqual((root/'upgrade-results/oldest/result.txt').exists(),failing!='stable')
+            aggregate=root/'release-output/upgrade-check.txt'
+            self.assertEqual(aggregate.exists(),not bool(failing))
+            if aggregate.exists(): self.assertIn('current stable and oldest',aggregate.read_text())
+
+    def test_both_baselines_produce_one_aggregate_pass(self): self.check('')
+    def test_oldest_failure_keeps_both_reports_without_aggregate_pass(self): self.check('oldest')
+    def test_stable_failure_keeps_its_report_without_aggregate_pass(self): self.check('stable')
+
+
 if __name__ == '__main__': unittest.main()

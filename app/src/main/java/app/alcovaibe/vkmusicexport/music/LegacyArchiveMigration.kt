@@ -51,7 +51,8 @@ internal class LegacyArchiveMigration(private val context: Context,private val s
                     ExportSource(0,"legacy_archive",row.fileName+":"+row.sha256))
                 val checkpoint="legacy-import:"+task.key
                 val prior=store.checkpoint(checkpoint)?.let{runCatching{json.decodeFromString<PublishedAudio>(it)}.getOrNull()}
-                val output=if(prior!=null&&shared.valid(prior))prior else {
+                val finished=prior?.let{shared.completed(it)}
+                val output=if(finished!=null)finished.also{store.checkpoint(checkpoint,json.encodeToString(it))} else {
                     prior?.let{shared.removePending(it.uri)}
                     val covered=runCatching{EmbeddedArtwork.hasCover(input,row.extension)}.getOrDefault(false)
                     shared.publish(task,TransferResult(input,ProcessedAudio(row.extension,row.mime,row.durationMs),covered),store.directory(task)){

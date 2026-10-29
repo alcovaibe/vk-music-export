@@ -18,7 +18,20 @@ for apk in upgrade-input/previous.apk upgrade-input/current.apk; do
   actual_cert=$("$build_tools/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
   [[ "$actual_cert" == "$expected_cert" ]] || exit 1
 done
-trap 'result=$?; echo "Upgrade check failed at line $LINENO (exit $result)"; adb logcat -d -b crash > upgrade-results/crash.txt || true; exit "$result"' ERR
+failure_evidence() {
+  local result=$? line=$1
+  trap - ERR
+  echo "Upgrade check failed at line $line (exit $result)"
+  adb logcat -d -b crash > upgrade-results/crash.txt || true
+  # This script has already rejected physical devices. Keep the disposable
+  # fixture's provider metadata and journals when import stops without a crash.
+  adb shell content query --uri content://media/external_primary/audio/media --projection _id:_display_name:relative_path:owner_package_name:is_pending:_size > upgrade-results/media-provider.txt 2>&1 || true
+  adb pull "$appdata/no_backup/audio-export.db" upgrade-results/failed-export.db >/dev/null 2>&1 || true
+  adb pull "$appdata/no_backup/audio-export.db-wal" upgrade-results/failed-export.db-wal >/dev/null 2>&1 || true
+  adb pull "$appdata/no_backup/diagnostics/" upgrade-results/diagnostics/ >/dev/null 2>&1 || true
+  exit "$result"
+}
+trap 'failure_evidence "$LINENO"' ERR
 # adbd may close the connection while switching to root on a fresh AVD.
 root_ready=false
 for attempt in $(seq 1 5); do
