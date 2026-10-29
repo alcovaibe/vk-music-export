@@ -33,6 +33,10 @@ else:
     notes = Path(os.environ['RUNNER_TEMP']) / 'release-notes.md'
     notes.write_text(f"VK Music Export {info['versionName']} · сборка {info['versionCode']} · {channel}\n\n{changes}\n\n"
         f"Исходный коммит APK: `{source_sha}`.\nКоммит проверки: `{release_commit}`.\n\n"
+        'Лицензия приложения: GNU GPL версии 3 или любой более поздней версии (`GPL-3.0-or-later`).\n'
+        f"[Исходный код этой сборки](https://github.com/{os.environ['GITHUB_REPOSITORY']}/archive/{source_sha}.tar.gz), "
+        f"[инструкции сборки](https://github.com/{os.environ['GITHUB_REPOSITORY']}/blob/{source_sha}/README.md). "
+        'Тексты лицензии и уведомления правообладателя приложены как LICENSE и NOTICE.\n\n'
         'Проверки эмулятора и обновления описаны в upgrade-check.txt. '
         'Для RC ручная приёмка реального аккаунта и фоновой работы ещё обязательна перед stable.\n')
     make_latest = channel == 'stable'
@@ -42,7 +46,7 @@ else:
             match = re.search(r'-build\.(\d+)$', json.loads(latest.stdout)['tagName'])
             assert match, 'Latest release has an unknown version code'
             make_latest = info['versionCode'] > int(match[1])
-    names = (info['apk'], 'SHA256SUMS.txt', 'release-certificate.pem', 'build-info.json', 'upgrade-check.txt', 'sbom.cdx.json', 'osv.json')
+    names = (info['apk'], 'SHA256SUMS.txt', 'release-certificate.pem', 'build-info.json', 'upgrade-check.txt', 'sbom.cdx.json', 'osv.json', 'LICENSE', 'NOTICE')
     assets = [str(Path('release-output') / name) for name in names]
     assert all(Path(asset).is_file() for asset in assets), 'Public release evidence is incomplete'
     command = ['gh', 'release', 'create', tag, *assets, '--target', release_commit,

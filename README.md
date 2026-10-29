@@ -104,7 +104,7 @@ Android-приложение с публичным исходным кодом �
 
 - [Какие данные хранятся и что удаляет выход](PRIVACY.md).
 - [Сообщить об ошибке](https://github.com/alcovaibe/vk-music-export/issues/new/choose), [сообщить об уязвимости](SECURITY.md).
-- [Лицензия MIT](LICENSE), [уведомления о зависимостях](THIRD_PARTY_NOTICES.md).
+- Лицензия проекта — [GNU GPL версии 3 или любой более поздней версии](LICENSE) (`GPL-3.0-or-later`); [уведомление правообладателя](NOTICE), [лицензии зависимостей](THIRD_PARTY_NOTICES.md).
 
 ## Разработка
 
