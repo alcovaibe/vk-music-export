@@ -1,0 +1,75 @@
+name: Release artifact compatibility
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  upload-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create synthetic release evidence
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          out = Path('release-output'); out.mkdir()
+          apk = out / 'VK-Music-Export-0.0.0-1.apk'
+          apk.write_bytes(b'Synthetic transport fixture; not an installable APK.\n')
+          (out / 'build-info.json').write_text(json.dumps({'apk': apk.name, 'fixture': True}) + '\n')
+          (out / 'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest() + '  ' + apk.name + '\n')
+          Path('upgrade-results').mkdir()
+          Path('upgrade-results/fixture.txt').write_text('Synthetic upgrade evidence.\n')
+          report = Path('app/build/reports/lint-results-release.html')
+          report.parent.mkdir(parents=True)
+          report.write_text('<p>Synthetic lint evidence.</p>\n')
+          PY
+      # Keep the v4 producer to cover recovery of existing ZIP artifacts.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: VK-Music-Export-release-smoke
+          path: |
+            release-output/
+            upgrade-results/
+            app/build/reports/lint-results-release.html
+          if-no-files-found: error
+          retention-days: 1
+
+  download-fixture:
+    needs: upload-fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      # Explicit token and run-id exercise the API path used by recovery.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: VK-Music-Export-release-smoke
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Check extracted paths and unchanged evidence
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('candidate')
+          expected = {
+              'release-output/VK-Music-Export-0.0.0-1.apk',
+              'release-output/build-info.json', 'release-output/SHA256SUMS.txt',
+              'upgrade-results/fixture.txt', 'app/build/reports/lint-results-release.html',
+          }
+          assert {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()} == expected
+          out = root / 'release-output'
+          info = json.loads((out / 'build-info.json').read_text())
+          assert info == {'apk': 'VK-Music-Export-0.0.0-1.apk', 'fixture': True}
+          apk = out / info['apk']
+          assert apk.read_bytes() == b'Synthetic transport fixture; not an installable APK.\n'
+          assert (out / 'SHA256SUMS.txt').read_text() == hashlib.sha256(apk.read_bytes()).hexdigest() + '  ' + apk.name + '\n'
+          assert (root / 'upgrade-results/fixture.txt').read_text() == 'Synthetic upgrade evidence.\n'
+          assert (root / 'app/build/reports/lint-results-release.html').read_text() == '<p>Synthetic lint evidence.</p>\n'
+          print('PASS: v8 restored the legacy release artifact layout and exact bytes.')
+          PY
