@@ -36,8 +36,11 @@ else:
         'Лицензия приложения: GNU GPL версии 3 или любой более поздней версии (`GPL-3.0-or-later`).\n'
         f"[Исходный код этой сборки](https://github.com/{os.environ['GITHUB_REPOSITORY']}/archive/{source_sha}.tar.gz), "
         f"[инструкции сборки](https://github.com/{os.environ['GITHUB_REPOSITORY']}/blob/{source_sha}/README.md). "
-        'Тексты лицензии и уведомления правообладателя приложены как LICENSE и NOTICE.\n\n'
-        'Проверки эмулятора и обновления описаны в upgrade-check.txt. '
+        'Лицензия и уведомления правообладателя включены в APK и архив исходников.\n\n'
+        f"[Отчёты CI](https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/"
+        f"{info.get('verificationRun', os.environ.get('GITHUB_RUN_ID', info.get('buildRun', '')))}): "
+        'build-info, проверка обновления, SBOM, OSV, публичный сертификат и лицензии '
+        'сохраняются в артефакте VK-Music-Export-release или Verified-release. '
         'Для RC ручная приёмка реального аккаунта и фоновой работы ещё обязательна перед stable.\n')
     make_latest = channel == 'stable'
     if make_latest:
@@ -47,8 +50,9 @@ else:
             assert match, 'Latest release has an unknown version code'
             make_latest = info['versionCode'] > int(match[1])
     names = (info['apk'], 'SHA256SUMS.txt', 'release-certificate.pem', 'build-info.json', 'upgrade-check.txt', 'sbom.cdx.json', 'osv.json', 'LICENSE', 'NOTICE')
-    assets = [str(Path('release-output') / name) for name in names]
-    assert all(Path(asset).is_file() for asset in assets), 'Public release evidence is incomplete'
+    assert all((Path('release-output') / name).is_file() for name in names), 'Release evidence is incomplete'
+    # Preserve complete CI evidence; expose only installation and integrity files.
+    assets = [str(apk), str(Path('release-output') / 'SHA256SUMS.txt')]
     command = ['gh', 'release', 'create', tag, *assets, '--target', release_commit,
         '--title', f"VK Music Export {info['versionName']} · {info['versionCode']}" + (' RC' if channel == 'rc' else ''),
         '--notes-file', str(notes), '--latest=' + str(make_latest).lower()]
