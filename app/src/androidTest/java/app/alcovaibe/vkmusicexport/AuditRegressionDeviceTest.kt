@@ -10,6 +10,8 @@ import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
+import okhttp3.*
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -190,14 +192,22 @@ class AuditRegressionDeviceTest {
             override suspend fun library(access: MusicAccess): NativeProbe=error("No network")
             override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("No network")
             override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No network")
-            override suspend fun media(access: MusicAccess,track: NativeTrack): String {resolutions++;throw MusicFailure(MusicError.UNAVAILABLE)}
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("Fresh resolve is used")
+            override suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
+                resolutions++;return ResolvedAudio(track.copy(duration=1),"https://a.userapi.com/preview")
+            }
         }
         try {
             val t=ExportLayout.task(task().track.copy(duration=180),listOf("Моя музыка"),1,ExportSource(12,"library","my"))
             store.replace(listOf(t),account=12)
             val row=shared.publish(t,TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200),coverEmbedded=true),store.directory(t)){}
             store.done(t,row);assertTrue(shared.valid(row));assertEquals(1,store.snapshot().covered)
-            val engine=AudioExportEngine(store,shared,File(root,"transfer"),api,
+            val bytes=fixture(root).readBytes()
+            val client=NetworkClients.media().newBuilder().addInterceptor{chain->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic preview")
+                    .body(bytes.toResponseBody()).build()
+            }.build()
+            val engine=AudioExportEngine(store,shared,File(root,"transfer"),api,AudioTransfer(client,observe={_,_->}),
                 credential={MusicAccess("a".repeat(64),"CI/1",accountId=12)},observe={_,_->})
             engine.recover()
             assertEquals(0,store.snapshot().done);assertEquals(0,store.snapshot().covered)
@@ -206,6 +216,7 @@ class AuditRegressionDeviceTest {
             assertTrue(store.reusable(t).isEmpty());assertFalse(LibraryRemovalProtocol.libraryCopy(12,t.track,row))
             store.retryFailed();store.status("QUEUED");engine.run{}
             assertEquals(1,resolutions);assertEquals(0,store.snapshot().done)
+            assertEquals(MusicError.INCOMPLETE,store.snapshot().failures.single().error)
             assertEquals(row,store.existing(t.key));assertTrue(shared.valid(row))
         }finally{erase(store);store.close();root.deleteRecursively()}
     }

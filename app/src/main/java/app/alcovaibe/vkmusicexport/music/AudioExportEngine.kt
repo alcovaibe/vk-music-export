@@ -73,12 +73,14 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                 try {
                                     // Read the current encrypted access for every track/retry; never persist a signed media URL.
                                     val resolved=api.resolve(credential(),task.track);resolvedTrack=resolved.track
-                                    result=transfer.download(resolved.url,resolved.track,temporary){progress->
+                                    val downloaded=transfer.download(resolved.url,resolved.track,temporary){progress->
                                         val now=System.nanoTime()
                                         if(now-lastProgress>=300_000_000||progress.stage=="verifying") {
                                             lastProgress=now;AudioExportRuntime.progress(progress)
                                         }
                                     }
+                                    result=downloaded
+                                    AudioCompleteness.requireComplete(downloaded.media.durationMs,task.track.duration,null)
                                     break
                                 }catch(e: MusicFailure) {
                                     if(attempt==2||e.code !in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP))throw e
