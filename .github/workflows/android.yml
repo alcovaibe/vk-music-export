@@ -37,14 +37,10 @@ jobs:
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: CI and release automation regression tests
         run: python3 -m unittest discover -s tools -p 'test_*.py'
-      - name: Test, lint, R8 and resolve dependency verification
+      - name: Test, lint and R8 with committed dependency verification
         run: |
-          if [[ ! -f gradle/verification-metadata.xml || ! -f app/gradle.lockfile ]]; then
-            ./gradlew --write-verification-metadata sha256 --write-locks testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest writeDependencyInventory --stacktrace
-            python3 tools/dependency-bootstrap.py
-          else
-            ./gradlew testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace
-          fi
+          test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
+          ./gradlew --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace
       - name: Generate SBOM and scan resolved dependencies with OSV
         run: python3 tools/dependency-audit.py
       - name: Upload dependency evidence
@@ -117,7 +113,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           df -h /home/runner
       - name: Compile interface APKs before booting the emulator
-        run: ./gradlew assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+        run: ./gradlew --dependency-verification strict assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
       - name: Release compiler memory before booting the emulator
         run: |
           ./gradlew --stop
@@ -213,7 +209,7 @@ jobs:
           script: bash tools/upgrade-check-all.sh
       - name: Generate public dependency evidence
         run: |
-          ./gradlew writeDependencyInventory
+          ./gradlew --dependency-verification strict writeDependencyInventory
           python3 tools/dependency-audit.py
           cp dependency-reports/*.json release-output/
       - name: Publish tested RC to GitHub Releases

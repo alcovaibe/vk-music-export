@@ -6,7 +6,7 @@ build_tools="$ANDROID_HOME/build-tools/36.0.0"
 mkdir -p release-output upgrade-input
 # Download the actual current stable, plus the oldest supported upgrade baseline.
 python3 tools/download-baselines.py
-./gradlew lintRelease assembleRelease --stacktrace
+./gradlew --dependency-verification strict lintRelease assembleRelease --stacktrace
 cp app/build/outputs/apk/release/app-release.apk upgrade-input/current.apk
 expected=$(openssl x509 -in config/release-certificate.pem -outform DER | sha256sum | cut -d' ' -f1)
 for apk in upgrade-input/previous.apk upgrade-input/oldest.apk upgrade-input/current.apk; do

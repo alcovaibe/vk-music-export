@@ -36,7 +36,7 @@ adb shell wm density 294
 adb shell am force-stop com.android.launcher3
 # Do not let an old report satisfy this run if instrumentation never starts.
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
-./gradlew connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+./gradlew --dependency-verification strict connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
 result=$?
 python3 - <<'PYFAILURES'
 from pathlib import Path
