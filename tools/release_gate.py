@@ -23,6 +23,8 @@ def validate_acceptance(evidence, info, apk):
         raise ValueError('Acceptance covers another source commit')
     if evidence.get('version_code') != info['versionCode']:
         raise ValueError('Acceptance covers another APK version')
+    if evidence.get('candidate_run') != str(info.get('buildRun', '')):
+        raise ValueError('Acceptance covers another build run')
     if evidence.get('apk_sha256') != hashlib.sha256(apk.read_bytes()).hexdigest():
         raise ValueError('Acceptance does not cover this exact APK')
     for field in ('tester', 'tested_at', 'candidate_run', 'device', 'android_version'):

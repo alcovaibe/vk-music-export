@@ -16,7 +16,7 @@ class ReleaseAcceptanceTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.apk = Path(self.tmp.name)/'candidate.apk'; self.apk.write_bytes(b'test fixture')
-        self.info = {'commit':'a'*40,'versionCode':1149}
+        self.info = {'commit':'a'*40,'versionCode':1149,'buildRun':'123456'}
         self.evidence = {'status':'passed','source_commit':'a'*40,'version_code':1149,
             'apk_sha256':hashlib.sha256(self.apk.read_bytes()).hexdigest(),
             'tester':'CI fixture','tested_at':'2026-10-29','candidate_run':'123456','device':'Test device',

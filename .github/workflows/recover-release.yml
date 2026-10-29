@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      actions: read
+      actions: write
       contents: write
       pull-requests: write
     env:
@@ -72,6 +72,8 @@ jobs:
       - name: Block stable without exact APK acceptance
         if: inputs.channel == 'stable'
         run: python3 tools/release_gate.py
+      - name: Re-scan exact candidate dependencies before publication
+        run: python3 tools/dependency-audit.py --sbom release-output/sbom.cdx.json --output release-output
       - name: Enable KVM and reserve emulator disk space
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

@@ -34,6 +34,7 @@ shutil.copyfile('upgrade-input/current.apk', f'release-output/{filename}')
 Path('release-output/build-info.json').write_text(json.dumps({
     'versionName': version, 'versionCode': code, 'minSdk': 36,
     'applicationId': 'app.alcovaibe.vkmusicexport', 'commit': os.environ['GITHUB_SHA'],
+    'buildRun': os.environ['GITHUB_RUN_ID'],
     'tag': f'v{version}-build.{code}', 'apk': filename,
 }, indent=2) + '\n')
 PY

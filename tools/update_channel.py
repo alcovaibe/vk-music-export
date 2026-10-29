@@ -80,3 +80,6 @@ def publish_channel(info, apk_path):
                         'Merging this PR enables discovery by installed apps.\n')
         subprocess.run(['gh', 'pr', 'create', '--repo', REPO, '--base', 'main', '--head', branch,
                         '--title', f"Update stable channel to {info['tag']}", '--body-file', str(body)], check=True)
+    # PR events created by GITHUB_TOKEN do not trigger checks. An explicit dispatch does.
+    subprocess.run(['gh', 'workflow', 'run', 'android.yml', '--repo', REPO, '--ref', branch,
+                    '-f', 'channel=checks'], check=True)

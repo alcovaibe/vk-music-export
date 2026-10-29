@@ -87,9 +87,11 @@ adb shell "mkdir -p $appdata/files/native-audio $appdata/cache/native-audio-tran
 adb push app/src/androidTest/assets/native-audio/tone.mp3 /data/local/tmp/legacy-audio.mp3
 adb shell "cp /data/local/tmp/legacy-audio.mp3 $appdata/files/native-audio/retired.mp3; echo '[]' > $appdata/files/native-audio-index.json; echo OLD_PARTIAL > $appdata/cache/native-audio-transfer/retired.media; echo CURRENT_PUBLIC_AUDIO > /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3"
 public_expected=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
-# A paused queue uses the exact v1 schema of published 0.9.1. It must survive install/restart without a network request.
+# Exercise the baseline's real schema: oldest v1, current stable v2. No network request is needed.
+export UPGRADE_SCHEMA=2
+if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -Fq "versionCode='1087'"; then export UPGRADE_SCHEMA=1; fi
 python3 - <<'PYQUEUE'
-import hashlib, json, sqlite3
+import hashlib, json, os, sqlite3
 from pathlib import Path
 path=Path('upgrade-results/queue-fixture.db')
 db=sqlite3.connect(path)
@@ -101,6 +103,10 @@ CREATE TABLE meta(name TEXT PRIMARY KEY,value TEXT NOT NULL);
 CREATE INDEX task_states ON tasks(state,ordinal);
 CREATE INDEX file_tracks ON files(track_id);
 """)
+schema=int(os.environ['UPGRADE_SCHEMA'])
+if schema==2:
+    db.execute('CREATE TABLE directories(identity TEXT PRIMARY KEY,relative_path TEXT NOT NULL,comparison_key TEXT NOT NULL UNIQUE)')
+db.execute(f'PRAGMA user_version={schema}')
 key=hashlib.sha256(('Моя музыка'+'\0'+'12_99991'+'\0'+'1').encode()).hexdigest()
 task={'key':key,'track':{'id':'12_99991','title':'UpgradeQueueFixture','artist':'CI','duration':1,'restricted':False,'album':None},'folders':['Моя музыка'],'position':1}
 payload=json.dumps(task,ensure_ascii=False,separators=(',',':'))
@@ -137,6 +143,23 @@ for attempt in $(seq 1 10); do
   sleep 1
 done
 adb shell test -f "$appdata/no_backup/legacy-transfer-cleanup-v2"
+# Cleanup and archive migration run independently. Wait for the signed APK's actual import,
+# rather than force-stopping it as soon as its cleanup marker appears.
+migrated=false
+for attempt in $(seq 1 30); do
+  adb pull "$appdata/no_backup/audio-export.db" upgrade-results/migration-wait.db >/dev/null 2>&1 || true
+  adb pull "$appdata/no_backup/audio-export.db-wal" upgrade-results/migration-wait.db-wal >/dev/null 2>&1 || true
+  if python3 - <<'PYWAIT'
+import sqlite3
+try:
+    with sqlite3.connect('upgrade-results/migration-wait.db') as db:
+        assert db.execute('SELECT COUNT(*) FROM files').fetchone()[0]==1
+except Exception: raise SystemExit(1)
+PYWAIT
+  then migrated=true; break; fi
+  sleep 1
+done
+[[ "$migrated" == true ]]
 adb shell test -f "$appdata/files/native-audio/retired.mp3"
 adb shell test -f "$appdata/files/native-audio-index.json"
 original_actual=$(adb shell "sha256sum $appdata/files/native-audio/retired.mp3" | cut -d' ' -f1 | tr -d '\r')

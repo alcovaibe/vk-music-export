@@ -25,6 +25,7 @@ def load(folder, run_id):
     out = Path(folder) / 'release-output'
     info = json.loads((out / 'build-info.json').read_text())
     assert info['commit'] == run['head_sha']
+    assert str(info.get('buildRun', run_id)) == run_id
     assert re.fullmatch(r'VK-Music-Export-[0-9.]+-[0-9]+\.apk', info['apk'])
     apk = out / info['apk']
     expected = (out / 'SHA256SUMS.txt').read_text().strip().split()

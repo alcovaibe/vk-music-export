@@ -50,8 +50,10 @@ class UpdateChannelTest(unittest.TestCase):
             payload = json.loads(next(c.kwargs['input'] for c in write.call_args_list if 'PUT' in c.args[0]))
             self.assertEqual(payload['sha'], 'file-sha')
             self.assertEqual(payload['branch'], 'release/update-channel-1081')
-            self.assertIn('create', write.call_args.args[0])
-            self.assertIn('--body-file', write.call_args.args[0])
+            pr_call=next(c.args[0] for c in write.call_args_list if 'pr' in c.args[0])
+            self.assertIn('create', pr_call)
+            self.assertIn('--body-file', pr_call)
+            self.assertIn('channel=checks', write.call_args.args[0])
             decoded = json.loads(base64.b64decode(payload['content']))
             self.assertEqual(decoded['release']['versionCode'], 1081)
 

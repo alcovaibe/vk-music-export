@@ -72,10 +72,17 @@ def scan(items, request=query):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--inventory', default='app/build/reports/dependencies/resolved.txt')
+    parser.add_argument('--sbom', help='Re-scan an existing candidate SBOM before promotion')
     parser.add_argument('--output', default='dependency-reports')
     args = parser.parse_args()
     out = Path(args.output); out.mkdir(parents=True, exist_ok=True)
-    items = components(Path(args.inventory).read_text())
+    if args.sbom:
+        candidate = json.loads(Path(args.sbom).read_text())
+        if candidate.get('bomFormat') != 'CycloneDX' or not isinstance(candidate.get('components'), list):
+            raise ValueError('Invalid candidate SBOM')
+        items = components('\n'.join(c['group']+':'+c['name']+':'+c['version'] for c in candidate['components']))
+    else:
+        items = components(Path(args.inventory).read_text())
     (out/'sbom.cdx.json').write_text(json.dumps({'bomFormat':'CycloneDX', 'specVersion':'1.6', 'version':1,
         'components':items}, ensure_ascii=False, indent=2)+'\n')
     # Network errors propagate. A failed scanner must never report a clean result.

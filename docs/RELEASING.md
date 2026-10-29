@@ -34,8 +34,12 @@ Push в `main` и pull request выполняют проверки и не пу�
 
 После ревью коммита с evidence запустить **Verify RC or promote accepted APK to stable**, `channel=stable`, `candidate_run` — run с принятым APK, `baseline_run` — более старый подписанный run. Workflow повторно проверяет происхождение, подпись и обновление, а затем публикует **тот же APK**, не пересобирает его. Android/build inputs между исходным SHA APK и коммитом проверки должны совпадать. Любое изменение приложения, ключа, Gradle/checksum/lock требует нового RC и приёмки. Pending evidence блокирует stable.
 
+При продвижении зависимости принятого APK повторно сканируются по его SBOM.
+
 APK, SHA256SUMS, публичный сертификат, build-info, upgrade-check, SBOM и OSV-отчёт публикуются рядом в Releases. Примечания берутся только из точного раздела версии в `CHANGELOG.md`; отсутствие раздела блокирует выпуск. Предыдущий Latest не откатывается старым повтором workflow. Закрытый ключ в артефакты не попадает.
 
 ## Защита main
 
 Подготовлен `.github/main-ruleset.json`: PR с ревью, обязательные `build`/`interface`, запрет удаления/force-push, разрешение обсуждений. Администратор применяет его через Settings → Rules → Rulesets или `gh api --method POST repos/alcovaibe/vk-music-export/rulesets --input .github/main-ruleset.json`. Для личного проекта нужен второй ревьюер. Сам файл в PR не включает защиту на GitHub; состояние проверяется отдельно администратором. Бот обновления канала использует отдельный PR, поэтому защита не требует обхода main.
+
+Для PR канала в Settings → Actions должен быть разрешён пункт «Allow GitHub Actions to create and approve pull requests». Проверки его ветки запускаются явным workflow_dispatch; они не обходят требуемое ревью. Если настройка запрещена, stable APK остаётся в Releases, а рекламу новой версии в канале нужно завершить через обычный PR.

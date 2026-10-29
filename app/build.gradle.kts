@@ -80,9 +80,16 @@ dependencyLocking { lockAllConfigurations() }
 
 configurations.configureEach {
     if(name == "androidLintTool") resolutionStrategy.eachDependency {
-        if(requested.group == "com.google.guava" && requested.name == "guava") {
-            useVersion("33.7.2-jre")
-            because("GHSA-xxph-c9ww-hj94 also affects the lint tool's transitive Guava")
+        val patched = when {
+            requested.group == "com.google.guava" && requested.name == "guava" -> "33.7.2-jre"
+            requested.group == "org.apache.commons" && requested.name == "commons-lang3" -> "3.18.0"
+            requested.group == "org.apache.httpcomponents" && requested.name == "httpclient" -> "4.5.14"
+            requested.group == "org.bouncycastle" && requested.name in setOf("bcprov-jdk18on", "bcpkix-jdk18on", "bcutil-jdk18on") -> "1.85"
+            else -> null
+        }
+        if(patched != null) {
+            useVersion(patched)
+            because("Patch OSV findings in the lint tool classpath; see docs/AUDIT-FIXES.md")
         }
     }
 }
