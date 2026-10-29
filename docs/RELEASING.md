@@ -32,7 +32,7 @@ Push в `main` и pull request выполняют проверки и не пу�
 
 ## Продвижение в stable
 
-После ревью коммита с evidence запустить **Verify RC or promote accepted APK to stable**, `channel=stable`, `candidate_run` — run с принятым APK, `baseline_run` — более старый подписанный run. Workflow повторно проверяет происхождение, подпись и обновление, а затем публикует **тот же APK**, не пересобирает его. Android/build inputs между исходным SHA APK и коммитом проверки должны совпадать. Любое изменение приложения, ключа, Gradle/checksum/lock требует нового RC и приёмки. Pending evidence блокирует stable.
+После ревью коммита с evidence запустить **Verify RC or promote accepted APK to stable**, `channel=stable`, `candidate_run` — run с принятым APK. Текущий stable и старая контрольная версия скачиваются заново из публичных Releases: устаревший номер Actions run не может подменить актуальную базу обновления. Workflow повторно проверяет происхождение, подпись и обновление, а затем публикует **тот же APK**, не пересобирает его. Android/build inputs между исходным SHA APK и коммитом проверки должны совпадать. Любое изменение приложения, ключа, Gradle/checksum/lock требует нового RC и приёмки. Pending evidence блокирует stable.
 
 При продвижении зависимости принятого APK повторно сканируются по его SBOM.
 

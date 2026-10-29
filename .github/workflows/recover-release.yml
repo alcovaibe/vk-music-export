@@ -10,9 +10,6 @@ on:
       candidate_run:
         description: Android workflow run containing the newer signed APK
         required: true
-      baseline_run:
-        description: Android workflow run containing the older signed APK
-        required: true
 permissions:
   contents: read
 concurrency:
@@ -31,7 +28,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       CANDIDATE_RUN: ${{ inputs.candidate_run }}
-      BASELINE_RUN: ${{ inputs.baseline_run }}
       RELEASE_CHANNEL: ${{ inputs.channel }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -55,20 +51,12 @@ jobs:
           run-id: ${{ inputs.candidate_run }}
           github-token: ${{ github.token }}
           path: candidate
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: VK-Music-Export-release
-          run-id: ${{ inputs.baseline_run }}
-          github-token: ${{ github.token }}
-          path: baseline
       - name: Release automation regression tests
-        run: python3 -m unittest discover -s tools -p 'test_release_tools.py'
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
       - name: Check original build tests, source commits, APK hashes, versions and pinned signature
         run: python3 tools/recover-release.py
-      - name: Download oldest supported signed upgrade baseline
-        run: |
-          gh release download v0.9.5-build.1087 --pattern 'VK-Music-Export-0.9.5-1087.apk' --dir upgrade-input --clobber
-          mv upgrade-input/VK-Music-Export-0.9.5-1087.apk upgrade-input/oldest.apk
+      - name: Download actual current stable and oldest supported upgrade baseline
+        run: python3 tools/download-baselines.py
       - name: Block stable without exact APK acceptance
         if: inputs.channel == 'stable'
         run: python3 tools/release_gate.py
