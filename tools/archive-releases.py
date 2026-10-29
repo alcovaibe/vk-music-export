@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -70,8 +71,17 @@ def source_version(sha):
 
 
 def download(path, file):
-    with file.open('wb') as output:
-        subprocess.run(['gh', 'api', path, '-H', 'Accept: application/json'], stdout=output, check=True)
+    for attempt in range(3):
+        try:
+            with file.open('wb') as output:
+                subprocess.run(['gh', 'api', path, '-H', 'Accept: application/json'],
+                               stdout=output, stderr=subprocess.PIPE, check=True)
+            return
+        except subprocess.CalledProcessError as error:
+            message = (error.stderr or b'').decode(errors='replace')
+            if attempt == 2 or not re.search(r'HTTP (502|503|504)\b', message):
+                raise
+            time.sleep(2 * (attempt + 1))
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -124,6 +134,10 @@ def main(apply=False):
         cache = {}
         for artifact in pages(f'repos/{REPO}/actions/artifacts', 'artifacts'):
             if artifact['expired']:
+                continue
+            # These workflow artifacts contain reports/screenshots/metadata only.
+            if artifact['name'] in {'Android-reports', 'Dependency-evidence', 'Release-archive-audit',
+                                    'Android-interface-API-36', 'Android-interface-API-37'}:
                 continue
             sha = artifact.get('workflow_run', {}).get('head_sha')
             assert sha and re.fullmatch(r'[0-9a-f]{40}', sha), 'Artifact has no source commit'

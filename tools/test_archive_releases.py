@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -84,3 +85,20 @@ class ArchiveTest(unittest.TestCase):
             module.download('repos/owner/repo/actions/artifacts/9/zip',Path(temp)/'archive.zip')
             self.assertEqual(run.call_args.args[0],['gh','api','repos/owner/repo/actions/artifacts/9/zip','-H','Accept: application/json'])
             self.assertTrue(run.call_args.kwargs['check'])
+
+    def test_transient_download_failure_is_bounded_and_retried(self):
+        failure=subprocess.CalledProcessError(1,['gh'],stderr=b'gh: HTTP 503')
+        with tempfile.TemporaryDirectory() as temp,patch.object(module.subprocess,'run',side_effect=[failure,None]) as run,patch.object(module.time,'sleep') as sleep:
+            module.download('repos/owner/repo/actions/artifacts/9/zip',Path(temp)/'archive.zip')
+            self.assertEqual(run.call_count,2);sleep.assert_called_once_with(2)
+        with tempfile.TemporaryDirectory() as temp,patch.object(module.subprocess,'run',side_effect=failure) as run,patch.object(module.time,'sleep'):
+            with self.assertRaises(subprocess.CalledProcessError):
+                module.download('repos/owner/repo/actions/artifacts/9/zip',Path(temp)/'archive.zip')
+            self.assertEqual(run.call_count,3)
+
+    def test_access_error_is_never_retried(self):
+        failure=subprocess.CalledProcessError(1,['gh'],stderr=b'gh: HTTP 403')
+        with tempfile.TemporaryDirectory() as temp,patch.object(module.subprocess,'run',side_effect=failure) as run,patch.object(module.time,'sleep') as sleep:
+            with self.assertRaises(subprocess.CalledProcessError):
+                module.download('repos/owner/repo/actions/artifacts/9/zip',Path(temp)/'archive.zip')
+            self.assertEqual(run.call_count,1);sleep.assert_not_called()
