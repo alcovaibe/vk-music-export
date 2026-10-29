@@ -45,7 +45,7 @@ jobs:
         run: python3 tools/dependency-audit.py
       - name: Upload dependency evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Dependency-evidence
           path: |
@@ -56,7 +56,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload installable debug APK
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VK-Music-Export-debug
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -64,7 +64,7 @@ jobs:
           retention-days: 14
       - name: Upload check reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Android-reports
           path: |
@@ -132,7 +132,7 @@ jobs:
           script: bash tools/interface-check.sh ${{ matrix.api-level }}
       - name: Upload interface screenshots and reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Android-interface-API-${{ matrix.api-level }}
           path: |
@@ -220,7 +220,7 @@ jobs:
         run: python3 tools/publish-release.py
       - name: Upload release and upgrade evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VK-Music-Export-release
           path: |
