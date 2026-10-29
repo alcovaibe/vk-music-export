@@ -6,7 +6,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Only fixed codes cross the diagnostics boundary. Response text and exception messages never do. */
-internal enum class MusicError(val label: String) {
+@Serializable internal enum class MusicError(val label: String) {
     ACCESS("ВК отклонил токен. Нужен действующий пользовательский доступ к музыке."),
     DENIED("Этому доступу ВК не разрешил музыкальный метод."),
     CAPTCHA("ВК запросил капчу. Заверши проверку в своём клиенте ВК и повтори."),
@@ -25,6 +25,8 @@ internal enum class MusicError(val label: String) {
     INCOMPLETE("Загрузка или проверка длительности не завершена. Готовый файл не создан."),
     FORMAT("Формат аудио пока не поддерживается. Готовый файл не создан."),
     COLLECTION_TYPE("Сначала выбери тип подборки: плейлист или альбом."),
+    ACCOUNT_CHANGED("Очередь создана для другого аккаунта ВК. Подключи её аккаунт или создай новую очередь; готовые файлы сохранены."),
+    QUEUE_ACCOUNT("Эта очередь создана старой версией. Подтверди её привязку к текущему аккаунту перед продолжением."),
     STORAGE("Не удалось сохранить данные на устройстве."), BUSY("Другая музыкальная операция ещё выполняется.")
 }
 internal enum class MusicFailureKind { DNS, CONNECT, SOCKET, TIMEOUT, TLS, PROTOCOL, EOF, IO, MEDIA_PARSE, OTHER }
@@ -33,9 +35,11 @@ internal fun musicCheck(ok: Boolean, error: MusicError = MusicError.RESPONSE) { 
 /** Not a data class: accidental toString must not reveal a credential. */
 internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: Long?=null,
     val renewal: WebRenewal?=null,val lastVerifiedAtMs: Long?=null,val renewalBlocked: Boolean=false,
-    val credentialId: String=java.util.UUID.randomUUID().toString(),val renewalOwner: Long?=null,val persisted: Boolean=false,val rejected: Boolean=false) {
-    fun withSession(renewal: WebRenewal?=this.renewal,verifiedAt: Long?=lastVerifiedAtMs,blocked: Boolean=renewalBlocked,rejected: Boolean=this.rejected)=
-        MusicAccess(token,agent,expiresAtMs,renewal,verifiedAt,blocked,credentialId,renewalOwner,persisted,rejected)
+    val credentialId: String=java.util.UUID.randomUUID().toString(),val renewalOwner: Long?=null,val persisted: Boolean=false,val rejected: Boolean=false,
+    val accountId: Long?=renewal?.owner?:renewalOwner) {
+    fun withSession(renewal: WebRenewal?=this.renewal,verifiedAt: Long?=lastVerifiedAtMs,blocked: Boolean=renewalBlocked,rejected: Boolean=this.rejected,
+        accountId: Long?=this.accountId)=
+        MusicAccess(token,agent,expiresAtMs,renewal,verifiedAt,blocked,credentialId,renewalOwner,persisted,rejected,accountId)
     override fun toString() = "MusicAccess([redacted])"
 }
 
@@ -51,7 +55,7 @@ internal class NativePlaylist(val owner: Long, val id: Long, val title: String, 
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
 internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int)
 internal data class NativeProbe(val owner: Long, val library: NativePage)
-internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Тип не определён") }
+@Serializable internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Тип не определён") }
 
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"

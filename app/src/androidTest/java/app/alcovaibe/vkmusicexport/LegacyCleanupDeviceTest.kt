@@ -24,7 +24,7 @@ class LegacyCleanupDeviceTest {
         }
         return context to base
     }
-    @Test fun cleanupRemovesOnlyRetiredArchiveAndKeepsPublicMusicQueueCredentialsCollectionAndJournals()=runBlocking(Dispatchers.IO) {
+    @Test fun cleanupRetainsLegacyAudioAndIndexesAndKeepsPublicMusicQueueCredentialsCollectionAndJournals()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("legacy-cleanup-boundaries")
         val store=AudioExportStore(context);var published: PublishedAudio?=null
         fun write(parent: File,name: String,value: String)=File(parent,name).apply{parentFile!!.mkdirs();writeText(value)}
@@ -45,23 +45,25 @@ class LegacyCleanupDeviceTest {
             published=shared.publish(tasks[0],TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){store.prepared(tasks[0],it)}
             store.done(tasks[0],published!!)
             val operations=NativeOperationJournal(context);operations.begin("pending-native-operation")
-            assertEquals(5,LegacyAudioCleanup(context).run())
+            assertEquals(1,LegacyAudioCleanup(context).run())
             assertEquals(0,LegacyAudioCleanup(context).run())
-            assertFalse(File(context.filesDir,"native-audio").exists());assertFalse(File(context.cacheDir,"native-audio-transfer").exists())
-            assertFalse(File(context.filesDir,"native-audio-index.json").exists())
+            assertEquals("RETIRED",File(context.filesDir,"native-audio/old.mp3").readText())
+            assertFalse(File(context.cacheDir,"native-audio-transfer").exists())
+            assertEquals("RETIRED",File(context.filesDir,"native-audio-index.json").readText())
             kept.forEachIndexed{i,file->assertArrayEquals(before[i],file.readBytes())}
             assertEquals(1,store.snapshot().pending);assertEquals(1,store.snapshot().done);assertEquals("PAUSED",store.snapshot().status)
             assertTrue(shared.valid(published!!));assertTrue(operations.recover())
         }finally{published?.let{context.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();base.deleteRecursively()}
     }
-    @Test fun legacySymlinkIsUnlinkedWithoutFollowingItIntoCurrentTransferDirectory() {
+    @Test fun legacySymlinkIsPreservedAndNeverFollowedIntoCurrentTransferDirectory() {
         val (context,base)=isolated("legacy-cleanup-links")
         try {
             val active=File(context.cacheDir,"audio-export-transfer/active.media").apply{parentFile!!.mkdirs();writeText("KEEP")}
             val link=File(context.filesDir,"native-audio").toPath()
             Files.createSymbolicLink(link,active.parentFile!!.toPath())
-            assertEquals(1,LegacyAudioCleanup(context).run())
-            assertEquals("KEEP",active.readText());assertFalse(Files.isSymbolicLink(link))
+            assertEquals(0,LegacyAudioCleanup(context).run())
+            assertEquals("KEEP",active.readText());assertTrue(Files.isSymbolicLink(link))
+            assertTrue(LegacyArchiveMigration.list(context).isEmpty())
         }finally{base.deleteRecursively()}
     }
 }

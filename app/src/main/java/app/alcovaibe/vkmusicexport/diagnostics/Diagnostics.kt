@@ -94,6 +94,12 @@ object Diagnostics {
     }
     fun action(name: String) = event("app_action", mapOf("action" to name))
     fun button(name: String) = event("native_button", mapOf("action" to name))
+    fun hasPreviousRun(): Boolean {
+        check(Looper.myLooper()!=Looper.getMainLooper())
+        val future=CompletableFuture<Boolean>()
+        if(!queue.offer(Item(action={future.complete(journal?.previous()!=null)}),3,TimeUnit.SECONDS))return false
+        return future.get(5,TimeUnit.SECONDS)
+    }
     fun export(previous: Boolean = false): String {
         check(Looper.myLooper() != Looper.getMainLooper())
         val future = CompletableFuture<String>()
@@ -112,9 +118,9 @@ object Diagnostics {
         }), 3, TimeUnit.SECONDS)) { "Journal busy" }
         return future.get(10, TimeUnit.SECONDS)
     }
-    fun shareFile(json: String): File {
+    fun shareFile(json: String,previous: Boolean=false): File {
         val dir = File(app.cacheDir, "diagnostic-export").apply { mkdirs() }
         // Single bounded export file, <= ~3.1 MB; retained logs <=15 MB total.
-        return File(dir, "vk-music-diagnostics.json").apply { writeText(json) }
+        return File(dir, if(previous)"vk-music-diagnostics-previous.json" else "vk-music-diagnostics.json").apply { writeText(json) }
     }
 }

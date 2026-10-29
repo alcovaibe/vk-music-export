@@ -6,10 +6,12 @@ import java.io.File
 
 internal class AudioExportEngine(private val store: AudioExportStore,private val shared: SharedAudioStore,
     private val temporary: File,private val api: MusicApi=VkAudioClient(),private val transfer: AudioTransfer=AudioTransfer(),
-    private val credential: suspend()->MusicAccess,private val artwork: ArtworkSource=ArtworkLoader(api),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) {
+    private val credential: suspend()->MusicAccess,private val artwork: ArtworkSource=ArtworkLoader(api),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)},
+    private val accountGuard: suspend()->Unit={}) {
     suspend fun recover() {
         ArtworkRepair(shared.context,store,shared).recover()
         SavedFileRecovery(shared.context,store,shared).let{it.recover();it.discard()}
+        LegacyArchiveMigration(shared.context,store,shared).migrate()
         temporary.mkdirs();temporary.listFiles()?.filter{it.isFile}?.forEach{it.delete()}
         reconcile()
         store.recoverItems()
@@ -37,9 +39,10 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                 val task=store.claim()?:break
                 update(store.snapshot())
                 try {
-                    val already=store.existing(task.key)
-                    if(already!=null&&already.track==task.track&&shared.valid(already)) {
-                        store.done(task,already);observe("audio_queue_item",mapOf("outcome" to "already_saved"));continue
+                    accountGuard()
+                    val already=store.reusable(task).firstOrNull{shared.valid(it)}
+                    if(already!=null&&already.track.id==task.track.id&&shared.valid(already)) {
+                        store.done(task,store.adopt(task,already));observe("audio_queue_item",mapOf("outcome" to "already_saved"));continue
                     }
                     var published: PublishedAudio?=null
                     for(copy in store.copies(task.track)) {
@@ -91,11 +94,18 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                     val failure=e as? MusicFailure;val code=failure?.code?:MusicError.STORAGE
                     observe("audio_queue_item",mapOf("outcome" to "failed","code" to code.name,"vk_code" to failure?.remoteCode,"kind" to failure?.kind?.name))
                     if(code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.CAPTCHA,MusicError.VALIDATION,
-                            MusicError.NETWORK,MusicError.HTTP,MusicError.RATE_LIMIT,MusicError.TLS,MusicError.STORAGE,MusicError.TIMEOUT)) {
+                            MusicError.NETWORK,MusicError.HTTP,MusicError.RATE_LIMIT,MusicError.TLS,MusicError.STORAGE,MusicError.TIMEOUT,
+                            MusicError.ACCOUNT_CHANGED,MusicError.QUEUE_ACCOUNT)) {
                         store.status("PAUSED",code);break
                     }
                     store.failed(task,code)
                 }finally{store.releaseRunning();update(store.snapshot())}
+            }
+            if(!store.snapshot().unfinished) {
+                try {SharedPlaylistStore(shared.context,store).publishAll()}
+                catch(e: CancellationException){throw e}
+                catch(e: Exception){store.sourceFailure(ExportSourceFailure(ExportSource(store.account(),"playlist_file","all"),
+                    "Файлы порядка M3U8",(e as? MusicFailure)?.code?:MusicError.STORAGE))}
             }
             val final=store.snapshot()
             if(!final.unfinished)store.status(if(final.failed>0||final.sourceIssues>0)"FINISHED_WITH_ERRORS" else "FINISHED")

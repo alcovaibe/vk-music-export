@@ -206,7 +206,8 @@ class MusicExportDeviceTest {
             withContext(Dispatchers.IO) {
                 AudioExportRuntime.initialize(context)
                 AudioExportRuntime.clear(context)
-                AudioExportRuntime.replace(context,listOf(ExportLayout.task(track(40).copy(restricted=true),listOf("Моя музыка"),1)))
+                AudioExportRuntime.replace(context,listOf(ExportLayout.task(track(40).copy(restricted=true),listOf("Моя музыка"),1,
+                    ExportSource(12,"library","my"))),account=12)
                 AudioExportRuntime.start(context)
             }
             withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED")delay(100)}

@@ -13,12 +13,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.*
 
-/** One menu action, always a fresh report of the current run. No clipboard or older-run selector. */
+/** Both reports are regenerated from their journal. Never substitute the new run for the previous failure. */
 @Composable
 internal fun LatestReportMenu() {
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var busy by remember{mutableStateOf(false)}
     var expanded by remember{mutableStateOf(false)}
+    var previousAvailable by remember{mutableStateOf(false)}
+    LaunchedEffect(expanded){if(expanded)previousAvailable=withContext(Dispatchers.IO){runCatching{Diagnostics.hasPreviousRun()}.getOrDefault(false)}}
     Box {
         IconButton(enabled=!busy,onClick={Diagnostics.button("report_menu");expanded=true},modifier=Modifier.testTag("home_menu")) {
             Icon(Icons.Default.MoreVert,if(busy)"Готовим JSON-отчёт" else "Меню")
@@ -40,14 +42,26 @@ internal fun LatestReportMenu() {
                     }
                 }
             })
+            if(previousAvailable)DropdownMenuItem(text={Text("Поделиться предыдущим отчётом")},
+                modifier=Modifier.testTag("share_previous_report"),onClick={
+                    expanded=false
+                    if(!busy){busy=true;scope.launch {
+                        try {
+                            val intent=withContext(Dispatchers.IO){LatestReportShare.intent(context,previous=true)}
+                            context.startActivity(Intent.createChooser(intent,"Отчёт предыдущего запуска"))
+                        }catch(e: CancellationException){throw e}
+                         catch(_: Exception){Toast.makeText(context,"Предыдущий отчёт недоступен. Готовые файлы сохранены.",Toast.LENGTH_LONG).show()}
+                        finally{busy=false}
+                    }}
+                })
         }
     }
 }
 
 internal object LatestReportShare {
     /** Call on IO. Defaults to only the latest/current run, never a previously exported file. */
-    fun intent(context: Context): Intent {
-        val file=Diagnostics.shareFile(Diagnostics.export(previous=false))
+    fun intent(context: Context,previous: Boolean=false): Intent {
+        val file=Diagnostics.shareFile(Diagnostics.export(previous=previous),previous)
         val uri=FileProvider.getUriForFile(context,"${context.packageName}.diagnostics",file)
         return Intent(Intent.ACTION_SEND).apply {
             type="application/json";putExtra(Intent.EXTRA_STREAM,uri)

@@ -47,6 +47,17 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val duplicates by model.duplicates.collectAsState()
     val savedFiles by model.savedFiles.collectAsState()
     val availability by model.availability.collectAsState()
+    val legacy by LegacyArchiveRuntime.state.collectAsState()
+    var legacySelection by remember{mutableStateOf<String?>(null)}
+    var legacyMessage by remember{mutableStateOf<String?>(null)}
+    val legacyExport=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")){uri->
+        val name=legacySelection;legacySelection=null
+        if(uri!=null&&name!=null)scope.launch {
+            try{withContext(Dispatchers.IO){LegacyArchiveMigration.export(context,name,uri)};legacyMessage="Копия сохранена. Старый файл остаётся в приложении."}
+            catch(e: kotlinx.coroutines.CancellationException){throw e}
+            catch(_: Exception){legacyMessage="Не удалось завершить копирование. Старый файл сохранён; проверь место и повтори."}
+        }
+    }
     val backgroundCheck=duplicates.phase in setOf(DuplicatePhase.QUEUED,DuplicatePhase.SCANNING)
     val savedFilePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->
         if(uri==null)model.cancelSavedFileSelection()else model.previewSavedFile(uri)
@@ -78,6 +89,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Один трек может сохраняться в нескольких папках: это отдельные копии и дополнительное место. В папки альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
                 if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
                 Text("Новые файлы сохраняются с обложкой, если ВК её отдаёт. Звук не перекодируется.",style=MaterialTheme.typography.bodySmall)
+                if(legacy.files.isNotEmpty()) {
+                    Text("Сохранения старой версии",style=MaterialTheme.typography.titleMedium)
+                    legacy.message?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
+                    legacyMessage?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
+                    legacy.files.forEach{file->
+                        TextButton(onClick={legacySelection=file.name;legacyExport.launch(file.name)}){Text("Сохранить копию: ${file.name}")}
+                    }
+                }
                 OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showArtwork,
                     modifier=Modifier.testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
                 OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showSavedFiles,
@@ -118,6 +137,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 if(!state.initialized)LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(if(state.configured)"Доступ ВК сохранён на устройстве" else "Музыкальный доступ ВК не настроен")
                 if(state.configured) {
+                    session.accountId?.let{Text("Аккаунт ВК: $it",style=MaterialTheme.typography.bodySmall)}
                     val expiry=session.expiresAtMs
                     Text(when {
                         session.status==SessionStatus.RENEWING->"Обновляем доступ ВК…"
@@ -135,8 +155,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 if(state.configured) {
                     OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
-                    TextButton(enabled=!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::forget){Text("Удалить доступ ВК")}
                 }
+                if(state.configured||state.accessDamaged)TextButton(enabled=!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::forget){Text("Удалить только данные доступа ВК")}
                 state.message?.let{Text(it)}
                 state.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
                 if(state.busy) {

@@ -27,7 +27,7 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
             val bytes=journal.openRead().use{it.readNBytes(MAX_JSON+1)}
             require(bytes.size<=MAX_JSON)
             val data=Json.parseToJsonElement(strictUtf8(bytes)).jsonObject
-            require(data.getValue("schema").jsonPrimitive.int==1)
+            require(data.getValue("schema").jsonPrimitive.int==2)
             owner=data.getValue("owner").jsonPrimitive.long
             snapshot=data.getValue("snapshot").jsonPrimitive.content
             created=data.getValue("created").jsonPrimitive.long
@@ -48,8 +48,8 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
         if(this.owner!=owner||snapshot!=fingerprint||wall()<created||wall()-created>=TTL) {
             clear();this.owner=owner;snapshot=fingerprint;created=wall();write()
         }
-        // AudioTransfer owns its transient cacheDir; these are only completed optional copies.
-        directory.listFiles().orEmpty().filter{it.extension in setOf("mp3","m4a")&&it.nameWithoutExtension !in receipts}.forEach{it.delete()}
+        // Older builds retained audio without a read path. Only receipts are useful for resumption.
+        directory.listFiles().orEmpty().filter{it.extension in setOf("mp3","m4a")}.forEach{it.delete()}
         trimAudio()
     }
     fun get(track: NativeTrack): DuplicateSignature?=synchronized(lock) {
@@ -60,9 +60,7 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
         musicCheck(owner>0&&snapshot.isNotEmpty()&&signature.codec in setOf("mp3","m4a")&&hex.matches(signature.sha256),MusicError.STORAGE)
         val id=key(track)
         musicCheck(directory.isDirectory||directory.mkdirs(),MusicError.STORAGE)
-        // A missing/evicted audio file does not erase the already verified payload digest.
-        val retained=File(directory,"$id.${signature.codec}")
-        musicCheck(audio.renameTo(retained),MusicError.STORAGE)
+        musicCheck(signature.version==2&&audio.isFile,MusicError.STORAGE)
         receipts[id]=Receipt(signature.codec,signature.sha256)
         while(receipts.size>MAX_CHECKS)receipts.remove(receipts.keys.first())
         write();trimAudio()
@@ -78,7 +76,7 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
     private fun write() {
         musicCheck(directory.isDirectory||directory.mkdirs(),MusicError.STORAGE)
         val bytes=buildJsonObject {
-            put("schema",1);put("owner",owner);put("snapshot",snapshot);put("created",created)
+            put("schema",2);put("owner",owner);put("snapshot",snapshot);put("created",created)
             putJsonObject("checks"){receipts.forEach{(key,row)->putJsonObject(key){put("codec",row.codec);put("sha256",row.sha256)}}}
         }.toString().toByteArray()
         musicCheck(bytes.size<=MAX_JSON,MusicError.STORAGE)

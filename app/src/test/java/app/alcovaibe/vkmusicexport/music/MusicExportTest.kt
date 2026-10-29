@@ -64,8 +64,9 @@ class MusicExportTest {
         assertEquals("Music/VK Music Export/Плейлисты/Солнечный день [2020]/",ExportLayout.relative(task))
         assertEquals("Music/VK Music Export/Плейлисты/Солнечный день [2020] (2)/",ExportLayout.relative(task,2))
         val legacy="""{"key":"${task.key}","track":${Json.encodeToString(t)},"folders":["Плейлисты","Солнечный день [2020] [607277757_535]"],"position":1}"""
-        assertEquals(task,Json.decodeFromString<AudioExportTask>(legacy))
-        assertEquals(task.key,ExportLayout.task(t,listOf("Плейлисты","Солнечный день [2020] [607277757_535]"),1).key)
+        val decoded=Json.decodeFromString<AudioExportTask>(legacy)
+        assertEquals(task.key,decoded.key);assertEquals(task.track,decoded.track);assertNull(decoded.source)
+        assertEquals(task.key,ExportLayout.task(t,listOf("Плейлисты","Солнечный день [2020] [607277757_535]"),1,task.source!!).key)
         for(id in listOf("album:42","-12_42")) {
             val album=ExportLayout.library(NativePage(listOf(t.copy(album=MusicAlbum(id,"Альбом [123]"))),1)).last()
             assertEquals("Music/VK Music Export/Альбомы/Альбом [123]/",ExportLayout.relative(album))

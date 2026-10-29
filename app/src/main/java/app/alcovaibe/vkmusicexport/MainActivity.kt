@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 
 private val Ink = Color(0xFF202337)
 private val Accent = Color(0xFF5B4DE8)
@@ -78,6 +79,8 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
     val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
     val musicState by nativeMusic.state.collectAsState()
     val duplicates by nativeMusic.duplicates.collectAsState()
+    val queueAccount by nativeMusic.queueAccount.collectAsState()
+    val context=LocalContext.current
     LaunchedEffect(duplicates.visible){if(duplicates.visible)screen="native"}
     app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,screen!="native"&&!downloadsOpen)
     if(screen!="native")Scaffold(
@@ -111,7 +114,13 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
         onDismiss={screen=null})
     if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy||duplicates.busy,musicState.error,
         onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
-        onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads)
+        onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads,
+        onSourceRetry=nativeMusic::retrySource,onExportReport={nativeMusic.shareExportReport(context)})
+    queueAccount?.let{owner->AlertDialog(onDismissRequest=nativeMusic::dismissQueueAccount,
+        title={Text("Привязать старую очередь?")},
+        text={Text("В старой версии аккаунт очереди не сохранялся. Сейчас проверен аккаунт ВК $owner. Подтверди, что эта очередь принадлежит ему. Готовые файлы сохранятся.")},
+        confirmButton={TextButton(onClick=nativeMusic::confirmQueueAccount){Text("Привязать и продолжить")}},
+        dismissButton={TextButton(onClick=nativeMusic::dismissQueueAccount){Text("Отмена")}})}
 }
 
 @Composable
