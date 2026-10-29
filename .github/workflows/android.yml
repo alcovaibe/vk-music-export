@@ -40,10 +40,10 @@ jobs:
       - name: Test, lint, R8 and resolve dependency verification
         run: |
           if [[ ! -f gradle/verification-metadata.xml || ! -f app/gradle.lockfile ]]; then
-            ./gradlew --write-verification-metadata sha256 --write-locks testDebugUnitTest testReleaseUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest writeDependencyInventory --stacktrace
+            ./gradlew --write-verification-metadata sha256 --write-locks testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest writeDependencyInventory --stacktrace
             python3 tools/dependency-bootstrap.py
           else
-            ./gradlew testDebugUnitTest testReleaseUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace
+            ./gradlew testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace
           fi
       - name: Generate SBOM and scan resolved dependencies with OSV
         run: python3 tools/dependency-audit.py

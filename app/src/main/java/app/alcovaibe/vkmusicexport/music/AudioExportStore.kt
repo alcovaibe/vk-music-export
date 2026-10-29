@@ -216,11 +216,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun copies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC LIMIT 8",arrayOf(track.id)).use{c->buildList{
         while(c.moveToNext()){val row=json.decodeFromString<PublishedAudio>(c.getString(0));if(row.track==track)add(row)}
     }}
-    @Synchronized fun savedLibraryCopies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery(
+    @Synchronized fun savedLibraryCopies(track: NativeTrack,owner: Long=0): List<PublishedAudio> = readableDatabase.rawQuery(
         "SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC",arrayOf(track.id)).use{c->buildList{
         while(c.moveToNext()) {
             val row=json.decodeFromString<PublishedAudio>(c.getString(0))
-            if(row.track==track&&row.relativePath==ExportLayout.ROOT+"Моя музыка/")add(row)
+            if(LibraryRemovalProtocol.libraryCopy(owner,track,row))add(row)
         }
     }}
     @Synchronized fun savedFiles(): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files ORDER BY rowid",null).use{c->buildList{

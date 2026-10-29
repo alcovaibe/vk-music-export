@@ -413,8 +413,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 LibraryRemovalProtocol.audioId(owner,track)
                 val row=withContext(Dispatchers.IO) {
                     val shared=SharedAudioStore(getApplication())
-                    val rows=AudioExportStore(getApplication()).use{it.savedLibraryCopies(track)}
-                    rows.firstOrNull{it.relativePath==ExportLayout.ROOT+"Моя музыка/"&&shared.valid(it)}
+                    val rows=AudioExportStore(getApplication()).use{it.savedLibraryCopies(track,owner)}
+                    rows.firstOrNull{shared.valid(it)}
                         ?:throw MusicFailure(MusicError.INCOMPLETE)
                 }
                 active(g);musicCheck(isLibraryTrack(track,owner),MusicError.ACCESS)

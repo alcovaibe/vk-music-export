@@ -1,0 +1,22 @@
+name: Ошибка
+description: Сообщить о проблеме без токенов и личных данных
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Версия и номер сборки
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Устройство и версия Android
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги, ожидаемый и фактический результат
+      description: Не указывайте токены, cookie и подписанные URL. Просмотрите диагностику перед приложением файла.
+    validations:
+      required: true

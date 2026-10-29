@@ -27,7 +27,7 @@ internal class LegacyArchiveMigration(private val context: Context,private val s
     private val json=Json{ignoreUnknownKeys=true;encodeDefaults=true}
     suspend fun migrate() {
         val files=list(context)
-        if(files.isEmpty())return
+        if(files.isEmpty()){LegacyArchiveRuntime.mutable.value=LegacyArchiveState();return}
         LegacyArchiveRuntime.mutable.value=LegacyArchiveState(files,message="Старые аудиофайлы сохранены. Проверяем возможность переноса.")
         var migrated=0
         try {
@@ -41,7 +41,7 @@ internal class LegacyArchiveMigration(private val context: Context,private val s
                 currentCoroutineContext().ensureActive()
                 val input=original(context,row.fileName)
                 musicCheck(row.extension in setOf("mp3","m4a")&&input.extension==row.extension&&
-                    row.mime==if(row.extension=="mp3")"audio/mpeg" else "audio/mp4",MusicError.FORMAT)
+                    row.mime==(if(row.extension=="mp3")"audio/mpeg" else "audio/mp4"),MusicError.FORMAT)
                 musicCheck(row.bytes in 1..AudioTransfer.MAX_BYTES&&row.durationMs>0&&
                     Regex("[0-9a-f]{64}").matches(row.sha256)&&input.length()==row.bytes&&fileSha256(input)==row.sha256,MusicError.INCOMPLETE)
                 val task=ExportLayout.task(row.track,listOf("Восстановленные","Из старой версии"),1,

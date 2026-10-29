@@ -19,10 +19,11 @@ class InstrumentationReportTest(unittest.TestCase):
 
     def successful_report(self):
         cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(72))
-        return f'<testsuites tests="72" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest" name="audit{i}"/>' for i in range(8))
+        return f'<testsuites tests="80" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 72)
+        self.assertEqual(self.check([self.successful_report()], '0'), 80)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -53,6 +54,11 @@ class InstrumentationReportTest(unittest.TestCase):
     def test_missing_interface_coverage_is_rejected(self):
         report = self.successful_report().replace('app.alcovaibe.vkmusicexport.InterfaceTest', 'OtherTest')
         with self.assertRaisesRegex(ValueError, 'Required interface'):
+            self.check([report])
+
+    def test_missing_audit_coverage_is_rejected(self):
+        report = self.successful_report().replace('app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest', 'OtherTest')
+        with self.assertRaisesRegex(ValueError, 'Required audit'):
             self.check([report])
 
 

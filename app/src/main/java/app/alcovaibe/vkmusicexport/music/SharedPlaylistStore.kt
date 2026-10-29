@@ -29,7 +29,7 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
         resolver.query(target(row.uri),arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
             MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),null,null,null)?.use{c->
             c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1)==row.directory&&
-                row.directory.startsWith(ExportLayout.ROOT)&&c.getInt(2)==if(pending)1 else 0
+                row.directory.startsWith(ExportLayout.ROOT)&&c.getInt(2)==(if(pending)1 else 0)
         }?:false
     }.getOrDefault(false)
     private suspend fun valid(row: Playlist): Boolean {

@@ -187,7 +187,7 @@ class DuplicateResumeDeviceTest {
                 catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
             }
             assertEquals(1,cache.count());assertEquals(1,downloads)
-            assertTrue(File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().any{it.extension=="mp3"})
+            assertTrue(File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().none{it.extension in setOf("mp3","m4a")})
             assertFalse(File(context.cacheDir,"duplicate-check").exists())
             // Simulate a new process/object and reclamation of optional temporary audio.
             File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().filter{it.extension=="mp3"}.forEach{it.delete()}
