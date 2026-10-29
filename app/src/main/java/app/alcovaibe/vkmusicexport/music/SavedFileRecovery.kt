@@ -39,9 +39,10 @@ internal class SavedFileRecovery(private val context: Context,private val store:
     suspend fun recover() {
         if(!pending())return
         val edit=json.decodeFromString<Import>(journal.openRead().use{it.readBytes().toString(Charsets.UTF_8)})
-        if(shared.valid(edit.after)) {
+        val finished=shared.completed(edit.after)
+        if(finished!=null) {
             val current=store.existing(edit.before.taskKey)
-            if(current==edit.before||current==edit.after)store.relinked(edit.before,edit.after)
+            if(current!=null&&(current==edit.before||current==edit.after||current==finished))store.relinked(current,finished)
             // A stale operation cannot restore a forgotten/replaced entry. The published copy is left on disk.
         }else shared.removePending(edit.after.uri)
         journal.delete()

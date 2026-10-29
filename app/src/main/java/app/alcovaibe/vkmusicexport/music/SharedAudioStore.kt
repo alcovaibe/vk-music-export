@@ -67,6 +67,11 @@ internal class SharedAudioStore(internal val context: Context) {
          catch(_: Exception){return SavedFileCheck(SavedFileReason.READ_ERROR)}
     }
     suspend fun valid(record: PublishedAudio)=inspect(record).reason==SavedFileReason.OK
+    /** An unfinished publication may acquire its final provider name after IS_PENDING is cleared. */
+    suspend fun completed(record: PublishedAudio): PublishedAudio? {
+        val check=inspect(record)
+        return if(check.reason==SavedFileReason.OK||check.reason==SavedFileReason.LOCATION_CHANGED)check.actual else null
+    }
     suspend fun requireValid(record: PublishedAudio) {
         val check=inspect(record)
         if(check.reason!=SavedFileReason.OK)throw SavedFileFailure(check.reason)
@@ -148,16 +153,22 @@ internal class SharedAudioStore(internal val context: Context) {
             }}
             val hash=hex(digest.digest());musicCheck(bytes==size&&(expectedHash==null||expectedHash==hash),MusicError.INCOMPLETE)
             c.ensureActive()
-            val actual=resolver.query(target,arrayOf(MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.RELATIVE_PATH),null,null,null)?.use{
+            fun location()=resolver.query(target,arrayOf(MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.RELATIVE_PATH),null,null,null)?.use{
                 if(it.moveToFirst())it.getString(0) to it.getString(1)else null
             }?:throw MusicFailure(MusicError.STORAGE)
+            val actual=location()
             val row=PublishedAudio(task.key,task.track,target.toString(),actual.first,actual.second,media.extension,media.mime,media.durationMs,bytes,hash,covered,
                 source=task.source,occurrence=task.occurrence)
             // Checkpoint before publishing: recovery can adopt a finished file after a process kill.
             prepared(row);c.ensureActive()
             musicCheck(resolver.update(target,ContentValues().apply{put(MediaStore.MediaColumns.IS_PENDING,0)},null,null)==1,MusicError.STORAGE)
             published=true
-            return row
+            // Publishing triggers a MediaProvider scan. Collision resolution can change
+            // DISPLAY_NAME here, after the pending checkpoint has already been written.
+            val finalLocation=location()
+            val finalized=row.copy(displayName=finalLocation.first,relativePath=finalLocation.second)
+            if(finalized!=row)prepared(finalized)
+            return finalized
         }finally{if(!published)runCatching{resolver.delete(target,null,null)}}
     }
     private fun hex(bytes: ByteArray)=bytes.joinToString(""){"%02x".format(it.toInt() and 255)}
