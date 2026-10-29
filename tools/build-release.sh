@@ -39,6 +39,7 @@ Path('release-output/build-info.json').write_text(json.dumps({
 }, indent=2) + '\n')
 PY
 cp config/release-certificate.pem release-output/
+cp LICENSE NOTICE release-output/
 (cd release-output && sha256sum *.apk > SHA256SUMS.txt)
 
 # Public evidence only: permits checking uploaded assets against this exact build.

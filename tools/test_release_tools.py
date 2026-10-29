@@ -10,12 +10,13 @@ from unittest.mock import patch
 TOOLS = Path(__file__).resolve().parent
 
 class PublisherTest(unittest.TestCase):
-    def publish(self, latest=None, existing=False, recovered=False, channel='stable'):
+    def publish(self, latest=None, existing=False, recovered=False, channel='stable', include_legal=True):
         calls = []
         apk = 'VK-Music-Export-0.3.0-1024.apk'
         def gh(args, **kwargs):
             calls.append(args)
             if args[2] == 'create':
+                self.release_notes = Path(args[args.index('--notes-file') + 1]).read_text()
                 return subprocess.CompletedProcess(args, 0)
             if '--json' in args and args[-1] == 'targetCommitish,assets,prerelease':
                 value = {'targetCommitish': 'a' * 40, 'assets': [{'name': apk}], 'prerelease':channel == 'rc'}
@@ -32,6 +33,9 @@ class PublisherTest(unittest.TestCase):
                 (out / 'upgrade-check.txt').write_text('PASS: data retained\n')
                 for asset in ('SHA256SUMS.txt','release-certificate.pem','sbom.cdx.json','osv.json'):
                     (out / asset).write_text('fixture')
+                if include_legal:
+                    for asset in ('LICENSE', 'NOTICE'):
+                        (out / asset).write_text('Synthetic license fixture')
                 Path('CHANGELOG.md').write_text('## [0.3.0]\n\nVersion-specific fixes.\n')
                 env = {'GITHUB_SHA': ('b' if recovered else 'a') * 40, 'RUNNER_TEMP':td,
                        'GITHUB_STEP_SUMMARY':str(Path(td)/'summary'), 'GITHUB_REPOSITORY':'alcovaibe/vk-music-export',
@@ -72,6 +76,18 @@ class PublisherTest(unittest.TestCase):
     def test_recovery_tags_verified_identical_app_sources(self):
         call = self.publish(recovered=True)[-1]
         self.assertEqual(call[call.index('--target')+1], 'b'*40)
+
+    def test_release_provides_license_and_exact_apk_source(self):
+        call = self.publish(recovered=True)[-1]
+        self.assertIn('release-output/LICENSE', call)
+        self.assertIn('release-output/NOTICE', call)
+        self.assertIn('GPL-3.0-or-later', self.release_notes)
+        self.assertIn('/archive/' + 'a'*40 + '.tar.gz', self.release_notes)
+        self.assertNotIn('/archive/' + 'b'*40 + '.tar.gz', self.release_notes)
+
+    def test_missing_license_blocks_publication(self):
+        with self.assertRaisesRegex(AssertionError, 'Public release evidence is incomplete'):
+            self.publish(include_legal=False)
 
 class EmulatorDialogTest(unittest.TestCase):
     def dialog(self, title, button):
