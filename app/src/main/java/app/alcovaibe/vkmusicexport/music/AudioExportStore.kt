@@ -90,7 +90,9 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         })
         sources.forEach{sourceFailure(it)}
         put("queue_account",account.toString())
-        put("covered_count","0");put("status",if(tasks.isEmpty())"FINISHED" else "READY");put("source_issues",sourceIssues.toString());put("error","")
+        put("covered_count","0");put("status",if(tasks.isEmpty()){
+            if(sourceIssues>0||sources.isNotEmpty())"FINISHED_WITH_ERRORS" else "FINISHED"
+        } else "READY");put("source_issues",sourceIssues.toString());put("error","")
     }
     @Synchronized fun snapshot(): ExportSnapshot {
         val counts=mutableMapOf<String,Int>()

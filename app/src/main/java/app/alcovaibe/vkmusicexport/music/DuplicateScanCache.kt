@@ -8,11 +8,10 @@ import java.io.File
 import java.security.MessageDigest
 
 /** IO-only checkpoint of completed checks, bound to one account and an exact ordered library snapshot.
- * Neither tokens nor CDN URLs are retained. Receipts survive eviction of the optional temporary audio.
+ * Neither tokens nor CDN URLs nor complete audio files are retained.
  * This is discovery evidence only: removal always downloads both records afresh.
  */
-internal class DuplicateScanCache(context: Context,private val wall: ()->Long=System::currentTimeMillis,
-    private val audioLimit: Long=256L*1024*1024) {
+internal class DuplicateScanCache(context: Context,private val wall: ()->Long=System::currentTimeMillis) {
     private val directory=File(context.noBackupFilesDir,"duplicate-scan")
     private val journal=AtomicFile(File(directory,"checks.json"))
     private data class Receipt(val codec: String,val sha256: String)
@@ -50,7 +49,6 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
         }
         // Older builds retained audio without a read path. Only receipts are useful for resumption.
         directory.listFiles().orEmpty().filter{it.extension in setOf("mp3","m4a")}.forEach{it.delete()}
-        trimAudio()
     }
     fun get(track: NativeTrack): DuplicateSignature?=synchronized(lock) {
         if(count()==0)return@synchronized null
@@ -63,15 +61,10 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
         musicCheck(signature.version==2&&audio.isFile,MusicError.STORAGE)
         receipts[id]=Receipt(signature.codec,signature.sha256)
         while(receipts.size>MAX_CHECKS)receipts.remove(receipts.keys.first())
-        write();trimAudio()
+        write()
     }
     fun clear()=synchronized(lock) {
         directory.deleteRecursively();receipts.clear();owner=0;snapshot="";created=0
-    }
-    private fun trimAudio() {
-        val files=directory.listFiles().orEmpty().filter{it.extension in setOf("mp3","m4a")}.sortedBy{it.lastModified()}
-        var bytes=files.sumOf{it.length()}
-        for(file in files){if(bytes<=audioLimit)break;val size=file.length();if(file.delete())bytes-=size}
     }
     private fun write() {
         musicCheck(directory.isDirectory||directory.mkdirs(),MusicError.STORAGE)

@@ -113,6 +113,17 @@ class AuditRegressionDeviceTest {
             val after=before.copy(position=9,folders=listOf("Плейлисты","Переименованный"),track=before.track.copy(title="Новое название"))
             store.replace(listOf(after),account=12)
             assertEquals(path,store.directory(after));assertEquals(row.uri,store.reusable(after).single().uri)
+            val noApi=object: MusicApi {
+                override suspend fun library(access: MusicAccess): NativeProbe=error("No account-B request allowed")
+                override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("No account-B request allowed")
+                override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No account-B request allowed")
+                override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No account-B request allowed")
+            }
+            store.status("QUEUED")
+            AudioExportEngine(store,shared,File(root,"transfer"),noApi,credential={error("No credential read allowed")},
+                observe={_,_->},accountGuard={throw MusicFailure(MusicError.ACCOUNT_CHANGED)}).run{}
+            assertEquals("PAUSED",store.snapshot().status);assertEquals(MusicError.ACCOUNT_CHANGED,store.snapshot().error)
+            assertEquals(1,store.snapshot().pending);assertEquals(0,store.snapshot().done)
             val adopted=store.adopt(after,row);store.done(after,adopted)
             assertEquals(row.uri,store.savedFiles().single().uri);assertTrue(shared.valid(adopted))
         }finally{erase(store);store.close();root.deleteRecursively()}
@@ -132,6 +143,8 @@ class AuditRegressionDeviceTest {
             assertEquals(1,store.snapshot().done);assertEquals(20,store.snapshot().pending)
             assertTrue(store.sourceFailures().isEmpty());assertEquals(row.uri,store.existing(tasks[0].key)!!.uri)
             try{store.bindAccount(13);fail("Cross-account binding must fail")}catch(_: MusicFailure){}
+            store.clearQueue();store.replace(emptyList(),account=12,sources=listOf(issue))
+            assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status);assertEquals(1,store.snapshot().sourceIssues)
         }finally{erase(store);store.close();root.deleteRecursively()}
     }
 
@@ -158,12 +171,15 @@ class AuditRegressionDeviceTest {
         val (context,root)=isolated("schema-two");var store=AudioExportStore(context)
         try {
             val t=task();store.replace(listOf(t),account=12);store.status("PAUSED")
+            val prepared=SharedAudioStore(context).publish(t,TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200)),store.directory(t)){store.prepared(t,it)}
             store.checkpoint("artwork-transaction","preserve-me")
             store.writableDatabase.execSQL("DROP TABLE source_failures");store.writableDatabase.version=2
             store.close();store=AudioExportStore(context)
             assertEquals(3,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
             assertEquals("PAUSED",store.snapshot().status);assertEquals("preserve-me",store.checkpoint("artwork-transaction"))
             assertTrue(store.sourceFailures().isEmpty());assertEquals(12L,store.account())
-        }finally{store.close();root.deleteRecursively()}
+            assertEquals(prepared,store.prepared().single().second)
+            assertTrue(SharedAudioStore(context).valid(prepared))
+        }finally{erase(store);store.close();root.deleteRecursively()}
     }
 }

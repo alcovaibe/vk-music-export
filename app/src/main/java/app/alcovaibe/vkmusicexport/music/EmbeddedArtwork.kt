@@ -209,10 +209,27 @@ internal object EmbeddedArtwork {
             val minf=one(media,"minf")?:throw MusicFailure(MusicError.FORMAT)
             val stbl=one(atoms(minf.data),"stbl")?:throw MusicFailure(MusicError.FORMAT)
             val table=atoms(stbl.data)
-            for(type in listOf("stsd","stts"))field(type,one(table,type)?.data?:throw MusicFailure(MusicError.FORMAT))
+            for(type in listOf("stsd","stts","stsc"))field(type,one(table,type)?.data?:throw MusicFailure(MusicError.FORMAT))
             val sizes=one(table,"stsz")?:one(table,"stz2")?:throw MusicFailure(MusicError.FORMAT)
             field(sizes.type,sizes.data)
             one(table,"ctts")?.let{field("ctts",it.data)}
+            one(table,"stss")?.let{field("stss",it.data)}
+            val chunks=one(table,"stco")?:one(table,"co64")?:throw MusicFailure(MusicError.FORMAT)
+            check(chunks.data.size>=8)
+            val count=uint(chunks.data,4);val width=if(chunks.type=="stco")4 else 8
+            check(count in 1..1_000_000&&8L+count*width==chunks.data.size.toLong())
+            val mdats=root.filter{it.type=="mdat"};check(mdats.isNotEmpty())
+            val normalized=ByteArrayOutputStream()
+            DataOutputStream(normalized).use{out->
+                repeat(count.toInt()){i->
+                    active()
+                    val offset=if(width==4)uint(chunks.data,8+i*4) else ByteBuffer.wrap(chunks.data,8+i*8,8).long
+                    val index=mdats.indexOfFirst{offset>=it.start+it.header&&offset<it.end};check(index>=0)
+                    out.writeInt(index);out.writeLong(offset-mdats[index].start-mdats[index].header)
+                }
+            }
+            // Absolute chunk offsets move when artwork/tags change; their positions within mdat do not.
+            field("chunks",normalized.toByteArray())
             val out=object: OutputStream(){override fun write(b: Int){digest.update(b.toByte())}
                 override fun write(b: ByteArray,off: Int,len: Int){digest.update(b,off,len)}}
             root.filter{it.type=="mdat"}.forEach{copy(file,out,it.start+it.header,it.end,active)}

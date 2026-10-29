@@ -46,10 +46,14 @@ class AuditRegressionTest {
         .put(type.toByteArray(Charsets.ISO_8859_1)).put(data).array()
     private fun m4a(rate: Int,config: Int): ByteArray {
         val mdhd=ByteBuffer.allocate(24).putInt(0).putInt(0).putInt(0).putInt(rate).putInt(1024).putInt(0).array()
-        val table=atom("stsd",byteArrayOf(config.toByte()))+atom("stts",byteArrayOf(0,0,0,1))+
-            atom("stsz",byteArrayOf(0,0,0,4))+atom("stco",ByteArray(8))
-        return atom("ftyp","M4A ".toByteArray())+atom("moov",atom("trak",atom("mdia",atom("mdhd",mdhd)+
-            atom("minf",atom("stbl",table)))))+atom("mdat",byteArrayOf(1,2,3,4))
+        fun moov(offset: Int): ByteArray {
+            val table=atom("stsd",byteArrayOf(config.toByte()))+atom("stts",byteArrayOf(0,0,0,1))+
+                atom("stsc",ByteBuffer.allocate(20).putInt(0).putInt(1).putInt(1).putInt(1).putInt(1).array())+
+                atom("stsz",byteArrayOf(0,0,0,4))+atom("stco",ByteBuffer.allocate(12).putInt(0).putInt(1).putInt(offset).array())
+            return atom("moov",atom("trak",atom("mdia",atom("mdhd",mdhd)+atom("minf",atom("stbl",table)))))
+        }
+        val ftyp=atom("ftyp","M4A ".toByteArray())
+        return ftyp+moov(ftyp.size+moov(0).size+8)+atom("mdat",byteArrayOf(1,2,3,4))
     }
     @Test fun identicalMdatWithDifferentDecoderConfigurationCannotMatch() {
         val directory=kotlin.io.path.createTempDirectory("decoder-signature").toFile()

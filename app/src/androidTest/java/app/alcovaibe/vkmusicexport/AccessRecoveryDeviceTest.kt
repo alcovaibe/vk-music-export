@@ -41,6 +41,7 @@ class AccessRecoveryDeviceTest {
         val old=MusicAccess("a".repeat(64),"CI/1",accountId=12)
         val started=CompletableDeferred<Unit>();var waiting=false
         withContext(Dispatchers.IO){vault.save(old)}
+        val sealed=withContext(Dispatchers.IO){File(app.noBackupFilesDir,"native-music-access.bin").readBytes()}
         val model=model(app,api{
             if(waiting){started.complete(Unit);awaitCancellation()}
             throw MusicFailure(MusicError.ACCESS)
@@ -49,11 +50,13 @@ class AccessRecoveryDeviceTest {
             await{model.state.value.initialized}
             instrumentation.runOnMainSync{model.configure("b".repeat(64),"CI/1")}
             await{!model.state.value.busy&&model.state.value.error==MusicError.ACCESS}
-            assertEquals(old,withContext(Dispatchers.IO){vault.read()})
+            assertArrayEquals(sealed,withContext(Dispatchers.IO){File(app.noBackupFilesDir,"native-music-access.bin").readBytes()})
+            assertEquals(old.credentialId,withContext(Dispatchers.IO){vault.read()!!.credentialId})
             waiting=true;instrumentation.runOnMainSync{model.configure("c".repeat(64),"CI/1")}
             withTimeout(15000){started.await()};instrumentation.runOnMainSync{model.cancel()}
             await{!model.state.value.busy}
-            assertEquals(old,withContext(Dispatchers.IO){vault.read()})
+            assertArrayEquals(sealed,withContext(Dispatchers.IO){File(app.noBackupFilesDir,"native-music-access.bin").readBytes()})
+            assertEquals(old.credentialId,withContext(Dispatchers.IO){vault.read()!!.credentialId})
         }finally{instrumentation.runOnMainSync{holder.clear()};root.deleteRecursively()}
     }
     @Test fun damagedEnvelopeAllowsFreshManualAccessAndExplicitLocalReset()=runBlocking<Unit> {

@@ -207,7 +207,7 @@ class DuplicateResumeDeviceTest {
         var now=1_800_000_000_000L;val tracks=(1..2).map(::duplicateTrack);val signature=DuplicateSignature("mp3","a".repeat(64))
         fun save(cache: DuplicateScanCache,track: NativeTrack){cache.save(track,signature,File(context.cacheDir,"verified.output").apply{writeBytes(ByteArray(16))})}
         try {
-            var cache=DuplicateScanCache(context,{now},audioLimit=8)
+            var cache=DuplicateScanCache(context,{now})
             cache.begin(12,tracks);save(cache,tracks[0]);assertEquals(signature,cache.get(tracks[0]))
             assertTrue(File(context.noBackupFilesDir,"duplicate-scan").listFiles().orEmpty().none{it.extension=="mp3"})
             cache=DuplicateScanCache(context,{now});cache.begin(12,tracks);assertEquals(signature,cache.get(tracks[0]))

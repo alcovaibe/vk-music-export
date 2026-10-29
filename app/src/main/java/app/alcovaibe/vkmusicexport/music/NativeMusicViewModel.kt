@@ -795,8 +795,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         val owner=s.probe?.owner?:return
         run("queue_one") {g->withContext(Dispatchers.IO){
             musicCheck(position>0,MusicError.RESPONSE)
-            val tasks=if(s.selected==null)listOf(ExportLayout.task(track,listOf("Моя музыка"),position,ExportSource(owner,"library","my")))
-                else ExportLayout.playlist(NativePage(listOf(track),1),s.selected,MusicCatalog.kind(s.selected,s.catalogKinds),account=owner).map{it.copy(position=position)}
+            val a=access()
+            // Count preceding occurrences too: a repeated track on page 2 must not reuse occurrence 1.
+            val page=MusicPagination.tracks({offset->active(g)
+                if(s.selected==null)api.libraryPage(a,owner,offset)else api.playlistPage(a,s.selected,offset)
+            }){n,total->_state.update{it.copy(preparing="Проверяем позицию: $n/$total")}}
+            val all=if(s.selected==null)ExportLayout.library(page,albums=false,account=owner)
+                else ExportLayout.playlist(page,s.selected,MusicCatalog.kind(s.selected,s.catalogKinds),account=owner)
+            val selected=all.singleOrNull{it.position==position&&it.track.id==track.id}?:throw MusicFailure(MusicError.LIBRARY_CHANGED)
+            val tasks=listOf(selected)
             active(g);AudioExportRuntime.replace(getApplication(),tasks,account=owner);active(g);startDownloads()
         }}
     }

@@ -78,12 +78,21 @@ dependencies {
 
 dependencyLocking { lockAllConfigurations() }
 
+configurations.configureEach {
+    if(name == "androidLintTool") resolutionStrategy.eachDependency {
+        if(requested.group == "com.google.guava" && requested.name == "guava") {
+            useVersion("33.7.2-jre")
+            because("GHSA-xxph-c9ww-hj94 also affects the lint tool's transitive Guava")
+        }
+    }
+}
+
 tasks.register("writeDependencyInventory") {
     description = "Resolve build/test classpaths and write the exact Maven inventory for SBOM/SCA"
     doLast {
         val names = setOf("debugCompileClasspath", "debugRuntimeClasspath", "releaseCompileClasspath",
             "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath", "releaseUnitTestRuntimeClasspath",
-            "debugAndroidTestRuntimeClasspath")
+            "debugAndroidTestRuntimeClasspath", "androidLintTool")
         val coordinates = configurations.filter { it.isCanBeResolved && it.name in names }
             .flatMap { configuration -> configuration.incoming.resolutionResult.allComponents.mapNotNull {
                 (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { id ->
