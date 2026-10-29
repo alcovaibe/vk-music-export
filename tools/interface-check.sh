@@ -36,8 +36,19 @@ adb shell wm density 294
 adb shell am force-stop com.android.launcher3
 # Do not let an old report satisfy this run if instrumentation never starts.
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
-./gradlew connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+./gradlew --dependency-verification strict connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
 result=$?
+python3 - <<'PYFAILURES'
+from pathlib import Path
+import xml.etree.ElementTree as ET
+for report in Path('app/build/outputs/androidTest-results/connected').rglob('TEST-*.xml'):
+    for case in ET.parse(report).getroot().iter('testcase'):
+        for tag in ('failure', 'error'):
+            error = case.find(tag)
+            if error is not None:
+                print('TEST FAILURE:', case.get('classname'), case.get('name'))
+                print((error.text or error.get('message', ''))[:12000])
+PYFAILURES
 if [[ "$result" == 0 ]]; then
   python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected
   result=$?

@@ -46,6 +46,11 @@ android {
     buildFeatures { compose = true; buildConfig = true }
 }
 dependencies {
+    constraints {
+        implementation("com.google.guava:guava:33.7.2-android") {
+            because("Fix GHSA-xxph-c9ww-hj94 / CVE-2026-102554 in transitive Guava")
+        }
+    }
     implementation(libs.okhttp)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.media3.extractor)
@@ -69,4 +74,41 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+dependencyLocking { lockAllConfigurations() }
+
+configurations.configureEach {
+    if(name == "androidLintTool") resolutionStrategy.eachDependency {
+        val patched = when {
+            requested.group == "com.google.guava" && requested.name == "guava" -> "33.7.2-jre"
+            requested.group == "org.apache.commons" && requested.name == "commons-lang3" -> "3.18.0"
+            requested.group == "org.apache.httpcomponents" && requested.name == "httpclient" -> "4.5.14"
+            requested.group == "org.bouncycastle" && requested.name in setOf("bcprov-jdk18on", "bcpkix-jdk18on", "bcutil-jdk18on") -> "1.85"
+            else -> null
+        }
+        if(patched != null) {
+            useVersion(patched)
+            because("Patch OSV findings in the lint tool classpath; see docs/AUDIT-FIXES.md")
+        }
+    }
+}
+
+tasks.register("writeDependencyInventory") {
+    description = "Resolve build/test classpaths and write the exact Maven inventory for SBOM/SCA"
+    doLast {
+        val names = setOf("debugCompileClasspath", "debugRuntimeClasspath", "releaseCompileClasspath",
+            "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath", "releaseUnitTestRuntimeClasspath",
+            "debugAndroidTestRuntimeClasspath", "androidLintTool")
+        val coordinates = configurations.filter { it.isCanBeResolved && it.name in names }
+            .flatMap { configuration -> configuration.incoming.resolutionResult.allComponents.mapNotNull {
+                (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { id ->
+                    "${id.group}:${id.module}:${id.version}"
+                }
+            } }.toSortedSet()
+        check(coordinates.isNotEmpty()) { "Dependency inventory is empty" }
+        layout.buildDirectory.file("reports/dependencies/resolved.txt").get().asFile.apply {
+            parentFile.mkdirs(); writeText(coordinates.joinToString("\n", postfix = "\n"))
+        }
+    }
 }

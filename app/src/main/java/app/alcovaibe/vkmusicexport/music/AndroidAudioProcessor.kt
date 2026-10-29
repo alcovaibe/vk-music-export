@@ -14,8 +14,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.io.*
 import java.nio.ByteBuffer
-import kotlin.math.abs
-import kotlin.math.max
 
 /** Media3 detects the actual audio PID/codec; no hard-coded TS PID and no lossy re-encoding. */
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -56,9 +54,15 @@ internal class AndroidAudioProcessor : AudioProcessor {
                     }
                 }
                 val result=audio.finish()
-                val expected=hlsSeconds?:track.duration.toDouble()
-                val tolerance=if(hlsSeconds!=null)max(0.35,expected*0.005) else max(1.1,expected*0.01)
-                musicCheck(expected>0&&abs(result.durationMs/1000.0-expected)<=tolerance,MusicError.INCOMPLETE)
+                AudioCompleteness.requireComplete(result.durationMs, track.duration, hlsSeconds)
+                if (result.extension == "m4a") {
+                    val tagged=File(output.parentFile,output.name+".metadata")
+                    try {
+                        EmbeddedArtwork.writeTextMetadata(output,tagged,track){context.ensureActive()}
+                        context.ensureActive()
+                        musicCheck(tagged.renameTo(output),MusicError.STORAGE)
+                    } finally { tagged.delete() }
+                }
                 return result
             }finally {extractor.release();audio.close()}
         }

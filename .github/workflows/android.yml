@@ -4,6 +4,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Checks only, or an explicitly requested release candidate
+        type: choice
+        options: [checks, rc]
+        default: checks
 permissions:
   contents: read
 concurrency:
@@ -14,31 +20,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Pin canonical emulator SDK tools
         run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: CI and release automation regression tests
         run: python3 -m unittest discover -s tools -p 'test_*.py'
-      - name: Test, lint and assemble
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
-      - name: Verify release lint and R8 without signing secrets
-        # Main verifies R8 in the signed release job after both emulator checks.
-        if: github.ref != 'refs/heads/main'
-        run: ./gradlew lintRelease assembleRelease --stacktrace
+      - name: Test, lint and R8 with committed dependency verification
+        run: |
+          test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
+          ./gradlew --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace
+      - name: Generate SBOM and scan resolved dependencies with OSV
+        run: python3 tools/dependency-audit.py
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Dependency-evidence
+          path: |
+            gradle/verification-metadata.xml
+            app/gradle.lockfile
+            app/build/reports/dependencies/
+            dependency-reports/
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload installable debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VK-Music-Export-debug
           path: app/build/outputs/apk/debug/app-debug.apk
@@ -46,7 +64,7 @@ jobs:
           retention-days: 14
       - name: Upload check reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Android-reports
           path: |
@@ -71,19 +89,19 @@ jobs:
             target: google_apis
             ram-size: 4096M
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Pin canonical emulator SDK tools
         run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Enable KVM
         run: |
@@ -95,13 +113,13 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           df -h /home/runner
       - name: Compile interface APKs before booting the emulator
-        run: ./gradlew assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+        run: ./gradlew --dependency-verification strict assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
       - name: Release compiler memory before booting the emulator
         run: |
           ./gradlew --stop
           free -m
       - name: Verify interface on Android
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: ${{ matrix.sdk-level }}
           target: ${{ matrix.target }}
@@ -114,7 +132,7 @@ jobs:
           script: bash tools/interface-check.sh ${{ matrix.api-level }}
       - name: Upload interface screenshots and reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Android-interface-API-${{ matrix.api-level }}
           path: |
@@ -134,36 +152,38 @@ jobs:
         run: echo 'Interface checks passed on API 36 and API 37.'
 
   release:
-    # Signing secrets are never exposed to PR code or non-main branches.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Main pushes run checks only. Stable promotion uses recover-release.yml after manual acceptance.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.channel == 'rc'
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Pin canonical emulator SDK tools
         run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Allocate increasing Android versionCode
         # Keep this workflow path and offset stable. Runs may have gaps; never reuse lower codes.
         run: echo "APP_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - name: Require committed dependency verification before signing
+        run: test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
       - name: Restore permanent signing key
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
         run: python3 tools/prepare-signing.py
-      - name: Build release and verify against installed 0.9.5
+      - name: Build RC and verify signatures against current stable and oldest supported baseline
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -179,22 +199,28 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           df -h /home/runner
       - name: Verify release upgrade and data on Android 16
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 36
           target: default
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: bash tools/upgrade-check.sh
-      - name: Publish tested APK to GitHub Releases
+          script: bash tools/upgrade-check-all.sh
+      - name: Generate public dependency evidence
+        run: |
+          ./gradlew --dependency-verification strict writeDependencyInventory
+          python3 tools/dependency-audit.py
+          cp dependency-reports/*.json release-output/
+      - name: Publish tested RC to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_CHANNEL: rc
         run: python3 tools/publish-release.py
       - name: Upload release and upgrade evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VK-Music-Export-release
           path: |

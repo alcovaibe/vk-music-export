@@ -8,7 +8,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal data class DuplicateSignature(val codec: String,val sha256: String)
+internal data class DuplicateSignature(val codec: String,val sha256: String,val version: Int=2)
 internal fun interface DuplicateHasher {
     suspend fun signature(access: MusicAccess,track: NativeTrack): DuplicateSignature
     fun beginScan(owner: Long,tracks: List<NativeTrack>) {}
@@ -46,7 +46,7 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
     }
     private fun own(owner: Long,track: NativeTrack)=runCatching{LibraryRemovalProtocol.audioId(owner,track)}.isSuccess
     private fun checked(signature: DuplicateSignature): DuplicateSignature {
-        musicCheck(signature.codec in setOf("mp3","m4a")&&signature.sha256.matches(Regex("[0-9a-f]{64}")),MusicError.FORMAT)
+        musicCheck(signature.version==2&&signature.codec in setOf("mp3","m4a")&&signature.sha256.matches(Regex("[0-9a-f]{64}")),MusicError.FORMAT)
         return signature
     }
     suspend fun scan(access: MusicAccess): DuplicateReport {

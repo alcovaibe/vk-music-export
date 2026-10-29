@@ -17,7 +17,7 @@ internal class WebRenewal(val parent: String,val owner: Long,val cookies: List<S
 }
 internal enum class SessionStatus { UNKNOWN, VALID, RENEWING, RETRY, LOGIN_REQUIRED }
 internal data class MusicSessionState(val expiresAtMs: Long?=null,val renewable: Boolean=false,
-    val lastVerifiedAtMs: Long?=null,val status: SessionStatus=SessionStatus.UNKNOWN)
+    val lastVerifiedAtMs: Long?=null,val status: SessionStatus=SessionStatus.UNKNOWN,val accountId: Long?=null)
 
 internal object MusicCredentialCodec {
     // Zero/missing is unknown, never a promise of perpetual access. VK web expires can be an epoch or duration.
@@ -35,6 +35,7 @@ internal object MusicCredentialCodec {
     }
     fun encode(a: MusicAccess): String=buildJsonObject {
         put("token",a.token);put("agent",a.agent);put("credential_id",a.credentialId)
+        a.accountId?.let{put("account_id",it)}
         a.expiresAtMs?.let{put("expires_at_ms",it)};a.lastVerifiedAtMs?.let{put("verified_at_ms",it)}
         put("renewal_blocked",a.renewalBlocked);put("access_rejected",a.rejected)
         a.renewal?.let{g->putJsonObject("web_renewal") {
@@ -57,7 +58,8 @@ internal object MusicCredentialCodec {
         }
         val a=MusicAccess(o.getValue("token").jsonPrimitive.content,o.getValue("agent").jsonPrimitive.content,
             time("expires_at_ms"),grant,time("verified_at_ms"),o["renewal_blocked"]?.jsonPrimitive?.boolean?:false,
-            o["credential_id"]?.jsonPrimitive?.content?:"legacy",persisted=true,rejected=o["access_rejected"]?.jsonPrimitive?.boolean?:false)
+            o["credential_id"]?.jsonPrimitive?.content?:"legacy",persisted=true,rejected=o["access_rejected"]?.jsonPrimitive?.boolean?:false,
+            accountId=time("account_id")?:grant?.owner)
         musicCheck(NativeProtocol.validAccess(a.token,a.agent),MusicError.INVALID_ACCESS)
         return a
     }
@@ -120,7 +122,7 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     private fun publish(a: MusicAccess?,status: SessionStatus?=null) {
         mutable.value=MusicSessionState(a?.expiresAtMs,a?.renewal!=null&&!a.renewalBlocked,a?.lastVerifiedAtMs,
             status?:when{a==null->SessionStatus.UNKNOWN;a.rejected->SessionStatus.LOGIN_REQUIRED;a.expiresAtMs?.let{it<=wall()}==true->SessionStatus.LOGIN_REQUIRED;
-                a.lastVerifiedAtMs!=null->SessionStatus.VALID;else->SessionStatus.UNKNOWN})
+                a.lastVerifiedAtMs!=null->SessionStatus.VALID;else->SessionStatus.UNKNOWN},a?.accountId)
     }
     suspend fun reload(){publish(withContext(io){store.read()})}
     suspend fun current(): MusicAccess=mutex.withLock {resolve(false,null)}
@@ -152,7 +154,7 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             musicCheck(fresh.token!=old.token||(fresh.expiresAtMs?:0)>(old.expiresAtMs?:0),MusicError.ACCESS)
             val probe=verify(fresh)
             musicCheck(probe.owner==old.renewal.owner,MusicError.ACCESS)
-            val next=fresh.withSession(verifiedAt=wall())
+            val next=fresh.withSession(verifiedAt=wall(),accountId=probe.owner)
             currentCoroutineContext().ensureActive()
             if(!withContext(io){store.replace(old,next)})throw MusicFailure(MusicError.ACCESS)
             renewedReads.entries.forEach{if(it.value==old.credentialId)it.setValue(next.credentialId)}
@@ -177,6 +179,11 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
         }
     }
     suspend fun <T> request(supplied: MusicAccess,block: suspend(MusicAccess)->T): T {
+        // A new candidate is verified on its own, even when the old encrypted envelope is corrupt.
+        if(!supplied.persisted) {
+            val saved=withContext(io){runCatching{store.read()}.getOrNull()}
+            if(saved==null||saved.credentialId!=supplied.credentialId)return block(supplied)
+        }
         val stored=withContext(io){store.read()}
         // Initial pairing is verified before saving. It must never be substituted by an old account.
         if(!supplied.persisted&&(stored==null||stored.credentialId!=supplied.credentialId))return block(supplied)

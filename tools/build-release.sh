@@ -4,13 +4,12 @@ set -euo pipefail
 : "${APP_VERSION_CODE:?A monotonic versionCode is required}"
 build_tools="$ANDROID_HOME/build-tools/36.0.0"
 mkdir -p release-output upgrade-input
-# Verify the actual owner-installed release, not a newly rebuilt surrogate.
-gh release download v0.9.5-build.1087 --pattern 'VK-Music-Export-0.9.5-1087.apk' --dir upgrade-input --clobber
-mv upgrade-input/VK-Music-Export-0.9.5-1087.apk upgrade-input/previous.apk
-./gradlew lintRelease assembleRelease --stacktrace
+# Download the actual current stable, plus the oldest supported upgrade baseline.
+python3 tools/download-baselines.py
+./gradlew --dependency-verification strict lintRelease assembleRelease --stacktrace
 cp app/build/outputs/apk/release/app-release.apk upgrade-input/current.apk
 expected=$(openssl x509 -in config/release-certificate.pem -outform DER | sha256sum | cut -d' ' -f1)
-for apk in upgrade-input/previous.apk upgrade-input/current.apk; do
+for apk in upgrade-input/previous.apk upgrade-input/oldest.apk upgrade-input/current.apk; do
   "$build_tools/apksigner" verify --verbose --print-certs "$apk" > "$apk.signing.txt"
   actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$apk.signing.txt")
   test "$actual" = "$expected" || { echo 'Signing certificate changed; publication blocked.'; exit 1; }
@@ -35,6 +34,7 @@ shutil.copyfile('upgrade-input/current.apk', f'release-output/{filename}')
 Path('release-output/build-info.json').write_text(json.dumps({
     'versionName': version, 'versionCode': code, 'minSdk': 36,
     'applicationId': 'app.alcovaibe.vkmusicexport', 'commit': os.environ['GITHUB_SHA'],
+    'buildRun': os.environ['GITHUB_RUN_ID'],
     'tag': f'v{version}-build.{code}', 'apk': filename,
 }, indent=2) + '\n')
 PY

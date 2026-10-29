@@ -37,8 +37,9 @@ internal fun LibraryRemovalSheet(state: LibraryRemovalState,onConfirm: ()->Unit,
                 when(state.phase) {
                     LibraryRemovalPhase.CHECKING->{LinearProgressIndicator(Modifier.fillMaxWidth());Text("Проверяем скачанную копию…")}
                     LibraryRemovalPhase.CONFIRM->{
-                        Text("Скачанный файл останется в Music/VK Music Export/Моя музыка. Перед удалением проверь его воспроизведение.")
+                        Text("Скачанный файл останется на устройстве. Перед удалением проверь его воспроизведение.")
                         state.file?.let{row->
+                            Text(row.relativePath,style=MaterialTheme.typography.bodySmall)
                             Text(row.displayName,style=MaterialTheme.typography.bodySmall)
                             TextButton(onClick={
                                 try {

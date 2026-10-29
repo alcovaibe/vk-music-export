@@ -97,7 +97,14 @@ class DownloadProgressEntryDeviceTest {
             ui.onNodeWithTag("native_music_screen").assertExists()
             // A synthetic formerly-restricted item exercises UIDT. Without credentials a fresh
             // resolution must pause before any VK request, rather than silently skip the old flag.
-            ui.runOnUiThread{model.download(NativeTrack("12_99999","CI unavailable","CI",1,restricted=true),1)}
+            // Bind the synthetic queue explicitly. Creating a new queue without a verified
+            // library/account is now rejected before scheduling.
+            withContext(Dispatchers.IO){
+                val task=ExportLayout.task(NativeTrack("12_99999","CI unavailable","CI",1,restricted=true),
+                    listOf("Моя музыка"),1,ExportSource(12,"library","my"))
+                AudioExportRuntime.replace(context,listOf(task),account=12)
+            }
+            ui.runOnUiThread{model.resumeQueue()}
             ui.waitUntil(10000){model.downloadsOpen.value&&!model.state.value.busy}
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             ui.onNodeWithTag("downloads_dismiss").performClick()

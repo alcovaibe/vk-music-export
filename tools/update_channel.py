@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 REPO = 'alcovaibe/vk-music-export'
@@ -58,9 +59,27 @@ def publish_channel(info, apk_path):
     if old_code >= info['versionCode']:
         assert old_code > info['versionCode'] or old == manifest, 'Same version has different channel metadata'
         return
-    payload = {'message': f"docs: advertise {info['tag']} in public update channel [skip ci]",
-               'branch': 'main', 'sha': existing['sha'],
+    branch = f"release/update-channel-{info['versionCode']}"
+    prs = api(f'repos/{REPO}/pulls?head=alcovaibe:{branch}&state=all&per_page=10')
+    if prs:
+        assert any(pr['state'] == 'open' for pr in prs), 'Channel PR was closed; inspect it before retrying'
+        print('Public update channel PR already exists; main was not changed.')
+        return
+    base = api(f'repos/{REPO}/git/ref/heads/main')['object']['sha']
+    subprocess.run(['gh', 'api', '--method', 'POST', f'repos/{REPO}/git/refs', '--input', '-'],
+                   input=json.dumps({'ref':'refs/heads/'+branch, 'sha':base}), text=True, check=True)
+    payload = {'message': f"docs: advertise {info['tag']} in public update channel",
+               'branch': branch, 'sha': existing['sha'],
                'content': base64.b64encode((json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()).decode()}
-    # The contents API compares the file SHA; concurrent changes are rejected.
+    # Main protection applies to release automation too. Review/merge this PR to advertise stable.
     subprocess.run(['gh', 'api', '--method', 'PUT', f'repos/{REPO}/contents/{CHANNEL_PATH}', '--input', '-'],
                    input=json.dumps(payload), text=True, check=True)
+    with tempfile.TemporaryDirectory() as temp:
+        body = Path(temp)/'body.md'
+        body.write_text(f"Advertise published stable {info['tag']}. The public APK size, SHA-256 and GitHub asset digest were verified.\n\n"
+                        'Merging this PR enables discovery by installed apps.\n')
+        subprocess.run(['gh', 'pr', 'create', '--repo', REPO, '--base', 'main', '--head', branch,
+                        '--title', f"Update stable channel to {info['tag']}", '--body-file', str(body)], check=True)
+    # PR events created by GITHUB_TOKEN do not trigger checks. An explicit dispatch does.
+    subprocess.run(['gh', 'workflow', 'run', 'android.yml', '--repo', REPO, '--ref', branch,
+                    '-f', 'channel=checks'], check=True)

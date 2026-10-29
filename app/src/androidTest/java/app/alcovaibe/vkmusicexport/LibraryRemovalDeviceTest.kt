@@ -66,12 +66,12 @@ class LibraryRemovalIntegrationDeviceTest {
         }
         lateinit var model: NativeMusicViewModel
         var row: PublishedAudio?=null
-        val task=ExportLayout.task(t,listOf("Моя музыка"),1)
+        val task=ExportLayout.task(t,listOf("Моя музыка"),1,ExportSource(12,"library","my"))
         try {
             withContext(Dispatchers.IO) {
                 AudioExportRuntime.initialize(app);AudioExportRuntime.clear(app)
                 val input=File(app.cacheDir,"removal-fixture.mp3").apply{InstrumentationRegistry.getInstrumentation().context.assets.open("native-audio/tone.mp3").use{writeBytes(it.readBytes())}}
-                AudioExportStore(app).use{store->store.replace(listOf(task));row=SharedAudioStore(app).publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){store.prepared(task,it)};store.done(task,row!!)}
+                AudioExportStore(app).use{store->store.replace(listOf(task),account=12);row=SharedAudioStore(app).publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){store.prepared(task,it)};store.done(task,row!!)}
                 input.delete();AudioExportRuntime.refresh()
             }
             ui.runOnUiThread {
@@ -107,7 +107,7 @@ class LibraryRemovalIntegrationDeviceTest {
 class LibraryRemovalCopyDeviceTest {
     @Test fun aModifiedPublishedFileBlocksMutationEvenAfterAnEarlierSuccessfulVerification()=runBlocking<Unit> {
         val app=InstrumentationRegistry.getInstrumentation().targetContext
-        val track=NativeTrack("12_99554","CI modified","CI",1);val task=ExportLayout.task(track,listOf("Моя музыка"),1)
+        val track=NativeTrack("12_99554","CI modified","CI",1);val task=ExportLayout.task(track,listOf("Моя музыка"),1,ExportSource(12,"library","my"))
         val input=File(app.cacheDir,"removal-modified.mp3").apply{writeBytes(ByteArray(4096){7})}
         var row: PublishedAudio?=null;var deletes=0
         val api=object: MusicApi {
