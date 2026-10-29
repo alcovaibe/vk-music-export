@@ -100,7 +100,10 @@ class MediaFinalizationDeviceTest {
         try {
             store.replace(listOf(task));store.status("PAUSED")
             row=shared.publish(task,TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200))){store.prepared(task,it)}
-            app.contentResolver.openOutputStream(Uri.parse(row!!.uri),"wt")!!.use{it.write("CHANGED".toByteArray())}
+            val changed=File(root,"tone.mp3").readBytes()
+            changed[changed.lastIndex]=(changed.last().toInt() xor 1).toByte()
+            app.contentResolver.openOutputStream(Uri.parse(row!!.uri),"wt")!!.use{it.write(changed)}
+            assertEquals(SavedFileReason.HASH_CHANGED,shared.inspect(row!!).reason)
             assertNull(shared.completed(row!!))
             AudioExportEngine(store,shared,File(root,"tmp"),credential={error("No network credentials in recovery")}).recover()
             assertEquals(0,store.snapshot().done);assertEquals(1,store.snapshot().pending)
