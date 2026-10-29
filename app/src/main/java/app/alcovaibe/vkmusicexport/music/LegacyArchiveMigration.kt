@@ -2,7 +2,6 @@ package app.alcovaibe.vkmusicexport.music
 
 import android.content.Context
 import android.net.Uri
-import android.util.AtomicFile
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,7 +32,11 @@ internal class LegacyArchiveMigration(private val context: Context,private val s
         try {
             val index=File(context.filesDir,"native-audio-index.json")
             musicCheck(listOf(index,File(index.path+".bak"),File(index.path+".new")).none{Files.isSymbolicLink(it.toPath())},MusicError.STORAGE)
-            val bytes=AtomicFile(index).openRead().use{it.readNBytes(131073)}
+            // AtomicFile.openRead may restore/delete .bak/.new. Migration must only read
+            // the last committed snapshot and leave every original index variant intact.
+            val backup=File(index.path+".bak")
+            val committed=if(Files.isRegularFile(backup.toPath(),LinkOption.NOFOLLOW_LINKS))backup else index
+            val bytes=committed.inputStream().use{it.readNBytes(131073)}
             musicCheck(bytes.size<=131072,MusicError.STORAGE)
             val rows=json.decodeFromString<List<OldFile>>(strictUtf8(bytes))
             musicCheck(rows.size<=5,MusicError.STORAGE)

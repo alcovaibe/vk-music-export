@@ -97,9 +97,12 @@ class AuditRegressionDeviceTest {
         try {
             val file=File(context.filesDir,"native-audio/old.mp3").apply{parentFile.mkdirs();writeBytes(fixture(root).readBytes())}
             val index=File(context.filesDir,"native-audio-index.json").apply{writeText("{broken")}
+            val backup=File(index.path+".bak").apply{writeText("{backup-interrupted")}
+            val pending=File(index.path+".new").apply{writeText("{uncommitted")}
             val before=fileSha256(file)
             LegacyArchiveMigration(context,store,SharedAudioStore(context)).migrate()
             assertTrue(store.savedFiles().isEmpty());assertEquals(before,fileSha256(file));assertEquals("{broken",index.readText())
+            assertEquals("{backup-interrupted",backup.readText());assertEquals("{uncommitted",pending.readText())
             assertEquals("old.mp3",LegacyArchiveRuntime.state.value.files.single().name)
             assertNotNull(LegacyArchiveRuntime.state.value.message)
         }finally{store.close();root.deleteRecursively()}
