@@ -89,7 +89,7 @@ configurations.configureEach {
         }
         if(patched != null) {
             useVersion(patched)
-            because("Patch OSV findings in the lint tool classpath; see docs/AUDIT-FIXES.md")
+            because("Patch OSV findings in the lint tool classpath; see CONTRIBUTING.md")
         }
     }
 }
