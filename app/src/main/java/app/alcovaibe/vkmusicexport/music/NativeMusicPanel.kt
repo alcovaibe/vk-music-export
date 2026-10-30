@@ -106,6 +106,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     queue.recent.forEach{row->
                         Text("${row.displayName}\n${row.relativePath}",style=MaterialTheme.typography.bodySmall)
                         Text(if(row.coverEmbedded)"С обложкой" else "Без добавленной обложки",style=MaterialTheme.typography.labelSmall)
+                        if(!row.catalogueVerified)Text("Выбранный локальный файл · оригинальность записи ВК не подтверждена",style=MaterialTheme.typography.labelSmall)
                         TextButton(onClick={
                             Diagnostics.button("audio_public_open")
                             scope.launch {

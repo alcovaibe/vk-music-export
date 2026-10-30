@@ -126,6 +126,8 @@ class SavedFileRecoveryDeviceTest {
             val preview=recovery.preview(row,Uri.parse(row.uri));assertFalse(preview.exact);assertEquals(row,store.existing(row.taskKey))
             val source=app.contentResolver.openInputStream(Uri.parse(row.uri))!!.use{it.readBytes()}
             val after=recovery.confirm(preview);rows.add(after);assertTrue(shared.valid(after))
+            assertFalse(after.catalogueVerified)
+            assertFalse(LibraryRemovalProtocol.libraryCopy(12,after.track,after.copy(source=ExportSource(12,"library","my"))))
             assertArrayEquals(source,app.contentResolver.openInputStream(Uri.parse(row.uri))!!.use{it.readBytes()})
             app.contentResolver.openOutputStream(Uri.parse(row.uri),"wt")!!.use{it.write(byteArrayOf(1,2,3))}
             try{recovery.preview(after,Uri.parse(row.uri));fail("invalid audio must not be accepted")}catch(_: MusicFailure){}

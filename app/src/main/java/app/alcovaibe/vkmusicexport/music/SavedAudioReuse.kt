@@ -25,19 +25,16 @@ internal class SavedAudioReuse(private val store: AudioExportStore, private val 
         return store.existing(before.taskKey)
     }
 
-    suspend fun existing(task: AudioExportTask, queueKeys: Set<String>): PublishedAudio? {
+    suspend fun existing(task: AudioExportTask): PublishedAudio? {
         for (row in store.reusable(task)) {
             val actual = locate(row) ?: continue
             return store.adopt(task, actual, store.existing(task.key))
         }
-        // A download made as an album may have been moved over the playlist's file.
-        // Reuse that exact known copy in the destination; leave other active positions independent.
-        val destination = store.directory(task)
+        // Membership is independent of storage: one verified URI can serve several
+        // sources and repeated positions. M3U8 keeps their order without audio copies.
         for (row in store.copies(task.track)) {
-            if (row.taskKey != task.key && row.taskKey in queueKeys) continue
             val actual = locate(row) ?: continue
-            if (actual.relativePath == destination)
-                return store.adopt(task, actual, store.existing(task.key))
+            return store.link(task, actual)
         }
         return null
     }

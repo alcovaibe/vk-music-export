@@ -43,7 +43,6 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
             reconcile()
             val reuse=SavedAudioReuse(store,shared)
             val queue=store.taskRows()
-            val queueKeys=queue.map{it.first.key}.toSet()
             // DONE is a checkpoint, not proof that a user has kept the file at its old URI.
             // A retry validates saved items locally; only missing/changed ones re-enter the queue.
             val completed=queue.filter{it.second=="DONE"}.map{it.first}
@@ -52,7 +51,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                 AudioExportRuntime.progress(AudioProgress("checking_saved",segment=index+1,segments=completed.size))
                 try {
                     accountGuard()
-                    val local=reuse.existing(task,queueKeys)
+                    val local=reuse.existing(task)
                     if(local==null)store.retryMissing(task)else store.done(task,local)
                 }catch(e: SavedFileFailure){store.failed(task,e.code)}
                  catch(e: MusicFailure){store.status("PAUSED",e.code);return}
@@ -65,60 +64,42 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                 try {
                     accountGuard()
                     AudioExportRuntime.progress(AudioProgress("checking_saved"))
-                    val already=reuse.existing(task,queueKeys)
+                    val already=reuse.existing(task)
                     if(already!=null) {
                         store.done(task,already);observe("audio_queue_item",mapOf("outcome" to "already_saved"));continue
                     }
-                    var published: PublishedAudio?=null
-                    for(record in store.copies(task.track)) {
-                        val copy=reuse.locate(record)?:continue
-                        if(copy.coverEmbedded)published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
-                        else {
-                            val local=File(temporary,"local-copy.audio")
-                            var result=TransferResult(local,ProcessedAudio(copy.extension,copy.mime,copy.durationMs))
+                    var result: TransferResult?=null
+                    var resolvedTrack=task.track
+                    val output=try {
+                        for(attempt in 0..2) {
                             try {
-                                shared.copyTo(copy,local)
-                                result=withArtwork(result,task.track)
-                                published=shared.publish(task,result,store.directory(task)){store.prepared(task,it)}
-                            }finally{local.delete();result.file.delete()}
-                        }
-                        observe("audio_queue_item",mapOf("outcome" to "local_copy"));break
-                    }
-                    if(published==null) {
-                        var result: TransferResult?=null
-                        var resolvedTrack=task.track
-                        try {
-                            for(attempt in 0..2) {
-                                try {
-                                    // Read the current encrypted access for every track/retry; never persist a signed media URL.
-                                    val resolved=api.resolve(credential(),task.track);resolvedTrack=resolved.track
-                                    val downloaded=transfer.download(resolved.url,resolved.track,temporary){progress->
-                                        val now=System.nanoTime()
-                                        if(now-lastProgress>=300_000_000||progress.stage=="verifying") {
-                                            lastProgress=now;AudioExportRuntime.progress(progress)
-                                        }
+                                // Read the current encrypted access for every track/retry; never persist a signed media URL.
+                                val resolved=api.resolve(credential(),task.track);resolvedTrack=resolved.track
+                                val downloaded=transfer.download(resolved.url,resolved.track,temporary){progress->
+                                    val now=System.nanoTime()
+                                    if(now-lastProgress>=300_000_000||progress.stage=="verifying") {
+                                        lastProgress=now;AudioExportRuntime.progress(progress)
                                     }
-                                    result=downloaded
-                                    AudioCompleteness.requireComplete(downloaded.media.durationMs,
-                                        task.track.duration.takeIf{it>0}?:resolvedTrack.duration,null)
-                                    break
-                                }catch(e: MusicFailure) {
-                                    val retry=e.code in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP)||
-                                        e is MediaHttpFailure&&e.code==MusicError.UNAVAILABLE
-                                    if(attempt==2||!retry)throw e
-                                    observe("audio_queue_retry",mapOf("attempt" to attempt+1,"code" to e.code.name))
-                                    delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                                 }
+                                result=downloaded
+                                AudioCompleteness.requireComplete(downloaded.media.durationMs,
+                                    task.track.duration.takeIf{it>0}?:resolvedTrack.duration,null)
+                                break
+                            }catch(e: MusicFailure) {
+                                val retry=e.code in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP)||
+                                    e is MediaHttpFailure&&e.code==MusicError.UNAVAILABLE
+                                if(attempt==2||!retry)throw e
+                                observe("audio_queue_retry",mapOf("attempt" to attempt+1,"code" to e.code.name))
+                                delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                             }
-                            result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),resolvedTrack)
-                            val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
-                            // Persist the verified metadata when the queued record had no known duration.
-                            val verifiedTask=if(task.track.duration<=0)task.copy(track=resolvedTrack)else task
-                            published=shared.publish(verifiedTask,file,store.directory(task)){store.prepared(task,it)}
-                        }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
-                    }
+                        }
+                        result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),resolvedTrack)
+                        val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
+                        // Persist the verified metadata when the queued record had no known duration.
+                        val verifiedTask=if(task.track.duration<=0)task.copy(track=resolvedTrack)else task
+                        shared.publish(verifiedTask,file,store.directory(task)){store.prepared(task,it)}
+                    }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
                     currentCoroutineContext().ensureActive()
-                    val output=published?:throw MusicFailure(MusicError.STORAGE)
                     store.done(task,output)
                     observe("audio_queue_item",mapOf("outcome" to "saved","format" to output.extension,"bytes" to output.bytes))
                 }catch(e: CancellationException){throw e}
@@ -131,7 +112,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                             !(e is MediaHttpFailure&&code!=MusicError.RATE_LIMIT)) {
                         store.status("PAUSED",code);break
                     }
-                    store.failed(task,code)
+                    store.failed(task,code,exportFailureDetails(e))
                 }finally{store.releaseRunning();update(store.snapshot())}
             }
             if(!store.snapshot().unfinished) {
