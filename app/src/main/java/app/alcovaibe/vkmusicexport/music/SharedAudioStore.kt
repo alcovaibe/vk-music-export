@@ -110,10 +110,10 @@ internal class SharedAudioStore(internal val context: Context) {
             arrayOf(context.packageName,ExportLayout.ROOT+"%"),null)?.use{c->buildList{while(c.moveToNext())add(ContentUris.withAppendedId(collection,c.getLong(0)).toString())}}?:emptyList()
         rows.forEach(::removePending)
     }
-    suspend fun publish(task: AudioExportTask,result: TransferResult,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
-        publish(task,result.media,result.file.length(),null,relative,result.coverEmbedded,{FileInputStream(result.file)},prepared)
+    suspend fun publish(task: AudioExportTask,result: TransferResult,relative: String=ExportLayout.relative(task),catalogueVerified: Boolean=true,prepared:(PublishedAudio)->Unit): PublishedAudio =
+        publish(task,result.media,result.file.length(),null,relative,result.coverEmbedded,catalogueVerified,{FileInputStream(result.file)},prepared)
     suspend fun copy(task: AudioExportTask,record: PublishedAudio,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
-        publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,relative,record.coverEmbedded,{open(record)},prepared)
+        publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,relative,record.coverEmbedded,record.catalogueVerified,{open(record)},prepared)
     private suspend fun availableName(task: AudioExportTask,extension: String,relative: String): String {
         var duplicate=1
         while(true) {
@@ -126,7 +126,7 @@ internal class SharedAudioStore(internal val context: Context) {
             duplicate++;musicCheck(duplicate<=1_000_000,MusicError.STORAGE)
         }
     }
-    private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,relative: String,covered: Boolean,input:()->InputStream,
+    private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,relative: String,covered: Boolean,catalogueVerified: Boolean,input:()->InputStream,
         prepared:(PublishedAudio)->Unit): PublishedAudio {
         val c=currentCoroutineContext();c.ensureActive()
         musicCheck(size>0&&media.durationMs>0,MusicError.INCOMPLETE)
@@ -159,7 +159,7 @@ internal class SharedAudioStore(internal val context: Context) {
             }?:throw MusicFailure(MusicError.STORAGE)
             val actual=location()
             val row=PublishedAudio(task.key,task.track,target.toString(),actual.first,actual.second,media.extension,media.mime,media.durationMs,bytes,hash,covered,
-                source=task.source,occurrence=task.occurrence)
+                source=task.source,occurrence=task.occurrence,catalogueVerified=catalogueVerified)
             // Checkpoint before publishing: recovery can adopt a finished file after a process kill.
             prepared(row);c.ensureActive()
             musicCheck(resolver.update(target,ContentValues().apply{put(MediaStore.MediaColumns.IS_PENDING,0)},null,null)==1,MusicError.STORAGE)

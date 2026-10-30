@@ -92,8 +92,10 @@ internal class SavedFileRecovery(private val context: Context,private val store:
         recover()
         musicCheck(store.existing(preview.before.taskKey)==preview.before&&selected.length()==preview.bytes&&fileSha256(selected)==preview.sha256,MusicError.INCOMPLETE)
         // Always create an owned copy for manual selection, never overwrite an arbitrary document provider.
-        val task=AudioExportTask(preview.before.taskKey,preview.before.track,listOf("Моя музыка"),1)
-        val row=shared.publish(task,TransferResult(selected,preview.media,preview.covered),ExportLayout.ROOT+"Восстановленные/"){after->
+        val task=AudioExportTask(preview.before.taskKey,preview.before.track,listOf("Моя музыка"),1,
+            preview.before.source,preview.before.occurrence)
+        val row=shared.publish(task,TransferResult(selected,preview.media,preview.covered),ExportLayout.ROOT+"Восстановленные/",
+            catalogueVerified=preview.exact&&preview.before.catalogueVerified){after->
             val stream=journal.startWrite()
             try{stream.write(json.encodeToString(Import(preview.before,after)).toByteArray());journal.finishWrite(stream)}
             catch(e: Exception){journal.failWrite(stream);throw e}

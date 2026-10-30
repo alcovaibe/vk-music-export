@@ -31,7 +31,10 @@ internal object ExportReportShare {
                                 put("error",failure.error.name)
                                 failure.details?.let{put("errorDetails",json.encodeToJsonElement(it))}
                             }
-                            store.existing(task.key)?.let{file->put("file",file.relativePath+file.displayName);put("sha256",file.sha256)}
+                            store.existing(task.key)?.let{file->
+                                put("file",file.relativePath+file.displayName);put("sha256",file.sha256)
+                                put("catalogueVerified",file.catalogueVerified)
+                            }
                         })
                     }
                 }.toString()

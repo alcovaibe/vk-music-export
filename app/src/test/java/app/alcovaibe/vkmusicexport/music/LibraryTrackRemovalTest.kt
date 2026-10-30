@@ -2,6 +2,7 @@ package app.alcovaibe.vkmusicexport.music
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -12,6 +13,18 @@ class LibraryTrackRemovalTest {
     private val track=NativeTrack("12_34","CI","Artist",1)
     private val access=MusicAccess("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")
     private fun record(path: String=ExportLayout.ROOT+"Моя музыка/")=PublishedAudio("key",track,"content://media/external_primary/audio/media/1","CI.mp3",path,"mp3","audio/mpeg",1000,10,"a".repeat(64))
+    @Test fun userSelectedReplacementNeverAuthorizesVkRemovalAfterSharingOrMoving() {
+        val replacement=record().copy(source=ExportSource(12,"library","my"),catalogueVerified=false)
+        assertFalse(LibraryRemovalProtocol.libraryCopy(12,track,replacement))
+        assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.record(12,track,replacement)}
+        val moved=replacement.copy(relativePath=ExportLayout.ROOT+"Альбомы/CI/",recoveredLocation=true)
+        assertFalse(LibraryRemovalProtocol.libraryCopy(12,track,moved))
+        assertFalse(Json.decodeFromString<PublishedAudio>(Json.encodeToString(moved)).catalogueVerified)
+        // Old manual imports without a provenance field are conservative on upgrade.
+        val legacy=Json.encodeToString(record(ExportLayout.ROOT+"Восстановленные/"))
+        assertFalse(legacy.contains("catalogueVerified"))
+        assertFalse(Json.decodeFromString<PublishedAudio>(legacy).catalogueVerified)
+    }
     @Test fun wrongAccountForeignFoldersAndMissingCopyNeverReachMutation()=runBlocking<Unit> {
         assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.audioId(13,track)}
         assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.audioId(12,track.copy(id="-12_34"))}

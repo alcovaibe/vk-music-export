@@ -108,7 +108,7 @@ class MusicExportDeviceTest {
             }finally{reopened.close()}
         }finally{store.close();prepared?.let{cleanup(listOf(it))};base.deleteRecursively()}
     }
-    @Test fun actualMp3TransferUsesMedia3ThenPublishesAndCopiesAcrossAlbumFoldersWithoutSecondNetworkRequest()=runBlocking(Dispatchers.IO) {
+    @Test fun actualMp3TransferUsesMedia3ThenSharesOneFileAcrossAlbumAndLibraryWithoutSecondNetworkRequest()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("public-audio-engine");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val bytes=InstrumentationRegistry.getInstrumentation().context.assets.open("native-audio/tone.mp3").use{it.readBytes()}
         val t=track(30).copy(album=MusicAlbum("album:991","CI album"));val tasks=ExportLayout.library(NativePage(listOf(t),1))
@@ -129,7 +129,8 @@ class MusicExportDeviceTest {
             assertEquals(1,requests);assertEquals(1,resolutions)
             tasks.forEach{rows.add(store.existing(it.key)!!)}
             assertEquals(rows[0].sha256,rows[1].sha256);rows.forEach{assertTrue(shared.valid(it))}
-            assertTrue(rows.any{it.relativePath.contains("/Альбомы/")});assertFalse(events.toString().contains("PRIVATE"));assertFalse(events.toString().contains("SYNTHETIC_SECRET"))
+            assertEquals(rows[0].uri,rows[1].uri);assertTrue(rows.all{it.relativePath==ExportLayout.ROOT+"Моя музыка/"})
+            assertFalse(events.toString().contains("PRIVATE"));assertFalse(events.toString().contains("SYNTHETIC_SECRET"))
             assertEquals(0,File(base,"tmp").listFiles()!!.size)
         }finally{tasks.mapNotNull{store.existing(it.key)}.forEach{if(it !in rows)rows.add(it)};store.close();cleanup(rows);base.deleteRecursively()}
     }
@@ -191,8 +192,8 @@ class MusicExportDeviceTest {
             engine.recover();reopened.status("QUEUED");engine.run{}
             val copy=reopened.existing(tasks.last().key)!!;rows.add(copy)
             assertEquals("FINISHED",reopened.snapshot().status);assertEquals(2,reopened.snapshot().done)
-            assertEquals("Music/VK Music Export/Плейлисты/CI Existing playlist/",copy.relativePath)
-            assertEquals("CI — Synthetic export 60.mp3",copy.displayName);assertEquals(old.sha256,copy.sha256)
+            assertEquals(old.uri,copy.uri);assertEquals(old.relativePath,copy.relativePath)
+            assertEquals(old.displayName,copy.displayName);assertEquals(old.sha256,copy.sha256)
             assertEquals(old,reopened.existing(tasks.first().key));assertTrue(shared.valid(old));assertTrue(shared.valid(copy))
             context.contentResolver.query(Uri.parse(old.uri),arrayOf(MediaStore.MediaColumns.DISPLAY_NAME),null,null,null)!!.use{
                 assertTrue(it.moveToFirst());assertEquals(old.displayName,it.getString(0))

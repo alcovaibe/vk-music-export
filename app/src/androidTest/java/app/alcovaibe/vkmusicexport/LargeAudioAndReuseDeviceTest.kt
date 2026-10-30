@@ -254,6 +254,7 @@ class LargeAudioAndReuseDeviceTest {
             val queue=memberships("CI shared move ${UUID.randomUUID()}",track(22))
             queue.forEach{directories.add(store.directory(it))};store.replace(queue)
             val first=publish(dir,store,shared,queue.first(),dir.name);run(dir,store,shared);store.clearRecentFiles()
+            store.imported(store.existing(queue[1].key)!!.copy(catalogueVerified=false));store.clearRecentFiles()
             val bitmap=android.graphics.Bitmap.createBitmap(16,16,android.graphics.Bitmap.Config.ARGB_8888)
             val image=try{bitmap.eraseColor(android.graphics.Color.MAGENTA)
                 val out=java.io.ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,90,out)
@@ -263,6 +264,7 @@ class LargeAudioAndReuseDeviceTest {
             val tagged=store.existing(first.taskKey)!!
             assertNotEquals(first.sha256,tagged.sha256);assertEquals(4,store.snapshot().covered)
             store.savedFiles().forEach{assertEquals(tagged.sha256,it.sha256);assertTrue(it.coverEmbedded);assertTrue(shared.valid(it))}
+            assertFalse(store.existing(queue[1].key)!!.catalogueVerified)
             val destination=ExportLayout.ROOT+"Плейлисты/CI moved shared ${UUID.randomUUID()}/";directories.add(destination)
             val oldPlaylist=playlistText(store,queue[1])
             // The former album/playlist must be repaired even after another selection replaces the queue.
@@ -271,6 +273,7 @@ class LargeAudioAndReuseDeviceTest {
             app.contentResolver.delete(Uri.parse(tagged.uri),null,null)
             run(dir,store,shared)
             assertEquals(setOf(replacement.uri),store.savedFiles().map{it.uri}.toSet())
+            assertFalse(store.existing(queue[1].key)!!.catalogueVerified)
             assertTrue(store.snapshot().recent.isEmpty());assertEquals(1,store.snapshot().covered)
             val repaired=playlistText(store,queue[1]);assertNotEquals(oldPlaylist,repaired)
             assertTrue(repaired.contains("CI moved shared"));assertEquals(2,repaired.lineSequence().count{it.startsWith("#EXTINF:")})

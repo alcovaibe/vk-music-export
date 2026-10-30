@@ -35,6 +35,7 @@ internal fun SavedFilesSheet(state: SavedFilesState,onCheck: ()->Unit,onSearch: 
                             color=if(preview.exact)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
                         Text("Создадим отдельную копию в Music/VK Music Export/Восстановленные и свяжем с этой записью. Выбранный файл и прежние файлы останутся на месте. Обложки добавляются отдельной кнопкой.")
                         if(preview.references>1)Text("Обновим все связи с этим файлом: ${preview.references}. Альбомы и плейлисты будут использовать выбранную копию.")
+                        if(!preview.exact)Text("Это будет локальная замена. Она не подтверждает сохранность оригинала для удаления песни из ВК.")
                     }
                     item {Button(onClick=onConfirm,enabled=!state.running,modifier=Modifier.testTag("confirm_file_recovery")){Text("Восстановить копию")}}
                     item {TextButton(onClick=onBack,enabled=!state.running){Text("Отмена")}}

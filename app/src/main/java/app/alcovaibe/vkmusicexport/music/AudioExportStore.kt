@@ -280,7 +280,8 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         musicCheck(existing(before.taskKey)==before,MusicError.STORAGE)
         val aliases=savedFiles().filter{it.uri==before.uri}
         musicCheck(aliases.all{sameFile(it,before)&&AudioCompleteness.matchesCatalogue(after.durationMs,it.track.duration,it.track.duration)},MusicError.INCOMPLETE)
-        fun changed(row: PublishedAudio)=after.copy(taskKey=row.taskKey,track=row.track,source=row.source,occurrence=row.occurrence)
+        fun changed(row: PublishedAudio)=after.copy(taskKey=row.taskKey,track=row.track,source=row.source,occurrence=row.occurrence,
+            catalogueVerified=row.catalogueVerified&&after.catalogueVerified)
         val recent=recentFiles()
         val doneKeys=taskRows().filter{it.second=="DONE"}.map{it.first.key}.toSet()
         val delta: Int=aliases.filter{it.taskKey in doneKeys}.sumOf{(if(after.coverEmbedded)1 else 0)-(if(it.coverEmbedded)1 else 0)}

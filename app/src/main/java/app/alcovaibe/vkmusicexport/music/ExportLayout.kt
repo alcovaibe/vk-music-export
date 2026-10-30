@@ -12,7 +12,8 @@ import java.text.Normalizer
     val source: ExportSource?=null,val occurrence: Int=1)
 @Serializable internal data class PublishedAudio(val taskKey: String,val track: NativeTrack,val uri: String,val displayName: String,
     val relativePath: String,val extension: String,val mime: String,val durationMs: Long,val bytes: Long,val sha256: String,val coverEmbedded: Boolean=false,val recoveredLocation: Boolean=false,
-    val source: ExportSource?=null,val occurrence: Int=1)
+    val source: ExportSource?=null,val occurrence: Int=1,
+    val catalogueVerified: Boolean=relativePath!=ExportLayout.ROOT+"Восстановленные/")
 
 @Serializable internal data class ExportSourceFailure(val source: ExportSource,val title: String,val error: MusicError,
     val category: PlaylistKind?=null)
