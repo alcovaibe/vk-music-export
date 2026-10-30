@@ -19,7 +19,7 @@ internal object EmbeddedArtwork {
     private fun sync(n: Int)=byteArrayOf((n ushr 21).toByte(),((n ushr 14) and 127).toByte(),((n ushr 7) and 127).toByte(),(n and 127).toByte())
     private data class Tag(val version: Int,val bytes: ByteArray,val end: Long,val cover: Boolean)
     private fun tag(file: RandomAccessFile): Tag {
-        file.seek(0);val head=ByteArray(minOf(10,file.length().toInt()));file.readFully(head)
+        file.seek(0);val head=ByteArray(minOf(10L,file.length()).toInt());file.readFully(head)
         if(head.size<3||String(head,0,3,Charsets.US_ASCII)!="ID3")return Tag(3,byteArrayOf(),0,false)
         check(head.size==10&&head[3].toInt() in 3..4&&head[4].toInt()==0&&head[5].toInt()==0)
         val size=sync(head,6);check(size<=MAX_META&&size+10L<=file.length())

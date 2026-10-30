@@ -46,7 +46,7 @@ internal class ArtworkRepair(context: Context,private val store: AudioExportStor
         musicCheck(store.existing(row.taskKey)==row,MusicError.INCOMPLETE)
         shared.requireValid(row)
         onStep(ArtworkStep.BACKUP)
-        musicCheck(dir.usableSpace>row.bytes*2+8*1024*1024,MusicError.STORAGE)
+        AudioStorage.requireSpace(dir,row.bytes,2)
         try {
             shared.copyTo(row,backup)
             musicCheck(fileSha256(backup)==row.sha256,MusicError.INCOMPLETE)
@@ -61,7 +61,7 @@ internal class ArtworkRepair(context: Context,private val store: AudioExportStor
             onStep(ArtworkStep.WRITE_TAGS)
             EmbeddedArtwork.write(backup,tagged,row.extension,image){ctx.ensureActive()}
             onStep(ArtworkStep.VERIFY_TAGGED)
-            musicCheck(tagged.length()<=AudioTransfer.MAX_BYTES&&shared.valid(row)&&store.existing(row.taskKey)==row,MusicError.INCOMPLETE)
+            musicCheck(tagged.length()>0&&shared.valid(row)&&store.existing(row.taskKey)==row,MusicError.INCOMPLETE)
             val after=row.copy(bytes=tagged.length(),sha256=fileSha256(tagged),coverEmbedded=true)
             val stream=journal.startWrite()
             try{stream.write(json.encodeToString(Edit(row,after)).toByteArray());journal.finishWrite(stream)}catch(e: Exception){journal.failWrite(stream);throw e}
@@ -87,9 +87,10 @@ internal class DownloadArtwork(private val source: ArtworkSource) {
         try {
             if(EmbeddedArtwork.hasCover(result.file,result.media.extension))return TransferResult(result.file,result.media,true)
             val image=source.load(access(),track)?:return result
+            AudioStorage.requireSpace(result.file.parentFile!!,result.file.length()+image.bytes.size)
             val ctx=currentCoroutineContext()
             EmbeddedArtwork.write(result.file,next,result.media.extension,image){ctx.ensureActive()}
-            musicCheck(next.length()<=AudioTransfer.MAX_BYTES,MusicError.TOO_LARGE)
+            musicCheck(next.length()>0,MusicError.INCOMPLETE)
             result.file.delete()
             return TransferResult(next,result.media,true)
         }catch(e: CancellationException){next.delete();throw e}

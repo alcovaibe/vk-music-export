@@ -5,6 +5,15 @@ import org.junit.Test
 
 class HlsPlaylistTest {
     private val base="https://audio.userapi.com/path/index.m3u8?secret=SIGNATURE"
+    @Test fun longFiniteRecordingIsNotRejectedByTheOldSegmentOrDayLimits() {
+        val raw=buildString {
+            append("#EXTM3U\n")
+            repeat(2501){append("#EXTINF:40,\nsegment-$it.ts\n")}
+            append("#EXT-X-ENDLIST\n")
+        }
+        val plan=HlsPlaylist.parse(base,raw)
+        assertEquals(2501,plan.segments.size);assertEquals(100040.0,plan.duration,0.0)
+    }
     @Test fun finitePlaylistPreservesRelativeUrlsDurationSequenceAndKeyRotation() {
         val p=HlsPlaylist.parse(base,"""#EXTM3U
             #EXT-X-MEDIA-SEQUENCE:257

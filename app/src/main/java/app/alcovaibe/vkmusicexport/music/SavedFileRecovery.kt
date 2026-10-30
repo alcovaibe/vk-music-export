@@ -68,14 +68,13 @@ internal class SavedFileRecovery(private val context: Context,private val store:
         val name=context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{c->
             if(c.moveToFirst())c.getString(0) else null
         }?:"Выбранный аудиофайл"
-        musicCheck(dir.usableSpace>before.bytes*2+8*1024*1024,MusicError.STORAGE)
+        AudioStorage.requireSpace(dir,before.bytes,2)
         try {
             val input=context.contentResolver.openInputStream(uri)?:throw SavedFileFailure(SavedFileReason.NO_ACCESS)
             selected.outputStream().use{out->input.use{source->
                 val buffer=ByteArray(65536);var count=0L
                 while(true){currentCoroutineContext().ensureActive();val n=source.read(buffer);if(n<0)break;count+=n
-                    musicCheck(count<=AudioTransfer.MAX_BYTES,MusicError.TOO_LARGE)
-                    musicCheck(dir.usableSpace>n+8*1024*1024,MusicError.STORAGE);out.write(buffer,0,n)}
+                    AudioStorage.requireSpace(dir,count,2);out.write(buffer,0,n)}
                 out.flush();out.fd.sync()
             }}
             val hash=fileSha256(selected)

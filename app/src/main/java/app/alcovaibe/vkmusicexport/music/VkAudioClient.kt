@@ -145,7 +145,7 @@ internal object NetworkClients {
     fun api() = OkHttpClient.Builder().cookieJar(CookieJar.NO_COOKIES).followRedirects(false).followSslRedirects(false)
         .authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).cache(null)
         .connectTimeout(10,TimeUnit.SECONDS).readTimeout(25,TimeUnit.SECONDS).callTimeout(35,TimeUnit.SECONDS).build()
-    fun media() = api().newBuilder().callTimeout(2,TimeUnit.MINUTES).build()
+    fun media() = api().newBuilder().callTimeout(0,TimeUnit.MILLISECONDS).build()
 }
 internal data class BoundedResponse(val status: Int,val bytes: ByteArray,val location: String?,val mediaType: String? = null,
     val charset: String? = null)

@@ -23,10 +23,11 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.AccessRecoveryDeviceTest" name="access{i}"/>' for i in range(2))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MediaFinalizationDeviceTest" name="finalization{i}"/>' for i in range(4))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.DownloadContinuityDeviceTest" name="continuity{i}"/>' for i in range(4))
-        return f'<testsuites tests="91" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.LargeAudioAndReuseDeviceTest" name="reuse{i}"/>' for i in range(5))
+        return f'<testsuites tests="96" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 91)
+        self.assertEqual(self.check([self.successful_report()], '0'), 96)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -73,6 +74,11 @@ class InstrumentationReportTest(unittest.TestCase):
     def test_missing_download_continuity_coverage_is_rejected(self):
         report = self.successful_report().replace('app.alcovaibe.vkmusicexport.DownloadContinuityDeviceTest', 'OtherTest')
         with self.assertRaisesRegex(ValueError, 'Required download continuity'):
+            self.check([report])
+
+    def test_missing_large_audio_and_reuse_coverage_is_rejected(self):
+        report = self.successful_report().replace('app.alcovaibe.vkmusicexport.LargeAudioAndReuseDeviceTest', 'OtherTest')
+        with self.assertRaisesRegex(ValueError, 'Required large audio and reuse'):
             self.check([report])
 
 

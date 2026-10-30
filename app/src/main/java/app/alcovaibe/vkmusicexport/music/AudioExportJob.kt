@@ -131,7 +131,9 @@ internal object AudioExportRuntime {
     }
     @Synchronized fun refresh(){
         val next=database.snapshot();val previous=mutable.value
-        mutable.value=next.copy(progress=previous.progress.takeIf{next.status=="RUNNING"&&next.currentTask!=null&&next.currentTask.key==previous.currentTask?.key})
+        mutable.value=next.copy(progress=previous.progress.takeIf{next.status=="RUNNING"&&
+            (next.currentTask!=null&&next.currentTask.key==previous.currentTask?.key||
+                next.currentTask==null&&it.stage=="checking_saved")})
     }
     suspend fun run(update: suspend(ExportSnapshot)->Unit){engine.run{refresh();update(state.value)}}
     suspend fun stopped(){withContext(NonCancellable+Dispatchers.IO){database.releaseRunning();if(database.snapshot().unfinished)database.status("PAUSED",database.snapshot().error);refresh()}}

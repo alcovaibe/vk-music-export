@@ -41,19 +41,37 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
             musicCheck(temporary.isDirectory||temporary.mkdirs(),MusicError.STORAGE)
             // Also reconcile a pause in this process, including cancellation just after publication.
             reconcile()
+            val reuse=SavedAudioReuse(store,shared)
+            val queue=store.taskRows()
+            val queueKeys=queue.map{it.first.key}.toSet()
+            // DONE is a checkpoint, not proof that a user has kept the file at its old URI.
+            // A retry validates saved items locally; only missing/changed ones re-enter the queue.
+            val completed=queue.filter{it.second=="DONE"}.map{it.first}
+            for((index,task)in completed.withIndex()) {
+                currentCoroutineContext().ensureActive();if(!store.running())break
+                AudioExportRuntime.progress(AudioProgress("checking_saved",segment=index+1,segments=completed.size))
+                try {
+                    accountGuard()
+                    val local=reuse.existing(task,queueKeys)
+                    if(local==null)store.retryMissing(task)else store.done(task,local)
+                }catch(e: SavedFileFailure){store.failed(task,e.code)}
+                 catch(e: MusicFailure){store.status("PAUSED",e.code);return}
+                update(store.snapshot())
+            }
             while(store.running()) {
                 currentCoroutineContext().ensureActive()
                 val task=store.claim()?:break
                 update(store.snapshot())
                 try {
                     accountGuard()
-                    val already=store.reusable(task).firstOrNull{shared.valid(it)}
-                    if(already!=null&&already.track.id==task.track.id&&shared.valid(already)) {
-                        store.done(task,store.adopt(task,already));observe("audio_queue_item",mapOf("outcome" to "already_saved"));continue
+                    AudioExportRuntime.progress(AudioProgress("checking_saved"))
+                    val already=reuse.existing(task,queueKeys)
+                    if(already!=null) {
+                        store.done(task,already);observe("audio_queue_item",mapOf("outcome" to "already_saved"));continue
                     }
                     var published: PublishedAudio?=null
-                    for(copy in store.copies(task.track)) {
-                        if(!AudioCompleteness.matchesCatalogue(copy.durationMs,task.track.duration,copy.track.duration)||!shared.valid(copy))continue
+                    for(record in store.copies(task.track)) {
+                        val copy=reuse.locate(record)?:continue
                         if(copy.coverEmbedded)published=shared.copy(task,copy,store.directory(task)){store.prepared(task,it)}
                         else {
                             val local=File(temporary,"local-copy.audio")

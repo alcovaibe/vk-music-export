@@ -19,9 +19,9 @@ internal fun interface AudioProcessor {
 internal class TransferResult(val file: File,val media: ProcessedAudio,val coverEmbedded: Boolean=false)
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.media(),private val processor: AudioProcessor = AndroidAudioProcessor(),
-    private val timeoutMs: Long=10*60*1000L,
+    private val timeoutMs: Long=0,
     private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) {
-    companion object {const val MAX_BYTES=100L*1024*1024;const val MAX_SEGMENT=16*1024*1024}
+    companion object {const val MAX_MANIFEST=8*1024*1024;const val MAX_SEGMENT=16*1024*1024}
     private class Trace(val id: String,val observe:(String,Map<String,Any?>)->Unit) {
         var stage="preparing";private var requests=0
         fun stage(value: String){stage=value;event("native_audio_stage",emptyMap())}
@@ -79,14 +79,25 @@ internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.m
             trace.stage("preparing")
             musicCheck(track.duration>0&&!track.restricted,MusicError.UNAVAILABLE)
             musicCheck(directory.isDirectory||directory.mkdirs(),MusicError.STORAGE)
-            withTimeoutOrNull(timeoutMs) {
+            AudioStorage.requireSpace(directory)
+            val receive: suspend ()->TransferResult = {
                 trace.stage("receiving")
                 progress(AudioProgress("receiving"))
                 var manifest=false
                 val first=storage{FileOutputStream(raw).use { out ->
-                    resource(url,MAX_BYTES,trace,"initial"){r->
+                    resource(url,Long.MAX_VALUE,trace,"initial"){r->
                         manifest=r.body!!.contentType()?.toString()?.contains("mpegurl",ignoreCase=true)==true
-                        copy(r.body!!.byteStream(),out,if(manifest)524288 else MAX_BYTES){n->progress(AudioProgress("receiving",n))}
+                        if(!manifest)manifest=r.peekBody(16).bytes().toString(Charsets.UTF_8)
+                            .removePrefix("\uFEFF").trimStart().startsWith("#EXTM3U")
+                        val declared=r.body!!.contentLength()
+                        if(declared>0) {
+                            if(manifest)musicCheck(declared<=MAX_MANIFEST,MusicError.TOO_LARGE)
+                            AudioStorage.requireSpace(directory,declared,3)
+                        }
+                        copy(r.body!!.byteStream(),out,if(manifest)MAX_MANIFEST.toLong() else Long.MAX_VALUE){n->
+                            AudioStorage.requireSpace(directory,n,2)
+                            progress(AudioProgress("receiving",n))
+                        }
                     }.also{out.fd.sync()}
                 }}
                 val prefix=storage{raw.inputStream().use{it.readNBytes(16)}}.toString(Charsets.UTF_8).removePrefix("\uFEFF")
@@ -95,12 +106,12 @@ internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.m
                 if(manifest) {
                     trace.stage("manifest")
                     progress(AudioProgress("manifest",raw.length()))
-                    musicCheck(raw.length()<=524288,MusicError.TOO_LARGE)
+                    musicCheck(raw.length()<=MAX_MANIFEST,MusicError.TOO_LARGE)
                     var base=first.url;var text=strictUtf8(storage{raw.readBytes()});var plan: HlsPlan?=null
                     repeat(4) {
                         if(plan==null) {
                             val p=HlsPlaylist.parse(base,text)
-                            if(p.redirect==null)plan=p else {val b=bytes(p.redirect,524288,trace,"manifest");base=b.first;text=strictUtf8(b.second)}
+                            if(p.redirect==null)plan=p else {val b=bytes(p.redirect,MAX_MANIFEST,trace,"manifest");base=b.first;text=strictUtf8(b.second)}
                         }
                     }
                     val media=plan?:throw MusicFailure(MusicError.HLS);hlsSeconds=media.duration
@@ -126,13 +137,15 @@ internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.m
                                     }
                                 }catch(_: Exception){throw MusicFailure(MusicError.INCOMPLETE)}
                             }
-                            total+=data.size;musicCheck(total<=MAX_BYTES,MusicError.TOO_LARGE)
+                            total+=data.size
+                            AudioStorage.requireSpace(directory,total,2)
                             output.write(data);progress(AudioProgress("segments",total,i+1,media.segments.size))
                         }
                         output.fd.sync()
                     }}
                 }
                 musicCheck(raw.length()>0,MusicError.INCOMPLETE)
+                AudioStorage.requireSpace(directory,raw.length(),2)
                 trace.stage("verifying")
                 progress(AudioProgress("verifying",raw.length()))
                 // Media3 ParserException extends IOException. Local parsing is never a network request.
@@ -143,10 +156,15 @@ internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.m
                     catch(_: EOFException){throw MusicFailure(MusicError.INCOMPLETE,kind=MusicFailureKind.EOF)}
                     catch(_: IOException){throw MusicFailure(MusicError.STORAGE,kind=MusicFailureKind.IO)}
                 currentCoroutineContext().ensureActive()
-                musicCheck(converted.length() in 1..MAX_BYTES,MusicError.INCOMPLETE)
+                musicCheck(converted.length()>0,MusicError.INCOMPLETE)
                 trace.stage("verified")
                 TransferResult(converted,media)
-            }?:throw MusicFailure(MusicError.TIMEOUT,kind=MusicFailureKind.TIMEOUT)
+            }
+            // Production transfers have no whole-file deadline. Socket inactivity still times out;
+            // callers/tests may explicitly impose a deadline, and parent cancellation always wins.
+            if(timeoutMs>0)withTimeoutOrNull(timeoutMs){receive()}
+                ?:throw MusicFailure(MusicError.TIMEOUT,kind=MusicFailureKind.TIMEOUT)
+            else receive()
         }catch(e: CancellationException){converted.delete();trace.event("native_audio_cancelled",emptyMap());throw e}
          catch(e: MusicFailure){converted.delete();trace.event("native_audio_failure",mapOf("code" to e.code.name,"kind" to e.kind?.name));throw e}
          catch(_: IOException){converted.delete();trace.event("native_audio_failure",mapOf("code" to "STORAGE","kind" to "IO"));throw MusicFailure(MusicError.STORAGE,kind=MusicFailureKind.IO)}

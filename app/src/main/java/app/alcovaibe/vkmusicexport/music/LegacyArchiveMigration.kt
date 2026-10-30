@@ -45,7 +45,7 @@ internal class LegacyArchiveMigration(private val context: Context,private val s
                 val input=original(context,row.fileName)
                 musicCheck(row.extension in setOf("mp3","m4a")&&input.extension==row.extension&&
                     row.mime==(if(row.extension=="mp3")"audio/mpeg" else "audio/mp4"),MusicError.FORMAT)
-                musicCheck(row.bytes in 1..AudioTransfer.MAX_BYTES&&row.durationMs>0&&
+                musicCheck(row.bytes>0&&row.durationMs>0&&
                     Regex("[0-9a-f]{64}").matches(row.sha256)&&input.length()==row.bytes&&fileSha256(input)==row.sha256,MusicError.INCOMPLETE)
                 val task=ExportLayout.task(row.track,listOf("Восстановленные","Из старой версии"),1,
                     ExportSource(0,"legacy_archive",row.fileName+":"+row.sha256))
@@ -89,7 +89,7 @@ internal class LegacyArchiveMigration(private val context: Context,private val s
             musicCheck(uri.scheme=="content",MusicError.STORAGE)
             val source=original(context,name)
             val expected=source.length()
-            musicCheck(expected in 1..AudioTransfer.MAX_BYTES,MusicError.TOO_LARGE)
+            musicCheck(expected>0,MusicError.INCOMPLETE)
             val output=context.contentResolver.openOutputStream(uri,"wt")?:throw MusicFailure(MusicError.STORAGE)
             output.use{out->source.inputStream().use{input->
                 val buffer=ByteArray(65536);var count=0L
