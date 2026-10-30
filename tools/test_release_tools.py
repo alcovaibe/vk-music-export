@@ -111,6 +111,30 @@ class EmulatorDialogTest(unittest.TestCase):
         self.assertEqual(self.dialog("Quickstep isn't responding", 'Close app'), '20 30')
 
 class UpgradeDeviceGuardTest(unittest.TestCase):
+    def test_large_badging_output_selects_oldest_screen_and_schema_under_pipefail(self):
+        script=(TOOLS/'upgrade-check.sh').read_text()
+        conditions=[line.split('; then',1)[0] for line in script.splitlines()
+                    if line.startswith('if "$build_tools/aapt"')]
+        self.assertEqual(len(conditions),2)
+        with tempfile.TemporaryDirectory() as td:
+            aapt=Path(td)/'aapt'
+            aapt.write_text('''#!/usr/bin/env python3
+import os, signal
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+os.write(1, ("package: name='fixture' versionCode='"+os.environ['BASELINE_CODE']+"'\\n").encode())
+for _ in range(256):
+    os.write(1, b"additional manifest data\\n"*1024)
+''')
+            aapt.chmod(0o755)
+            for condition in conditions:
+                for code,expected in [('1087','oldest'),('1210','current')]:
+                    with self.subTest(condition=condition,code=code):
+                        result=subprocess.run(['bash','-c','set -euo pipefail\n'+condition+
+                            '; then echo oldest; else echo current; fi'],
+                            env=dict(os.environ,build_tools=td,BASELINE_CODE=code),capture_output=True,text=True)
+                        self.assertEqual(result.returncode,0,result.stderr)
+                        self.assertEqual(result.stdout.strip(),expected,result.stderr)
+
     def test_published_baseline_home_retries_missing_snapshot_without_accepting_stale_xml(self):
         script=(TOOLS/'upgrade-check.sh').read_text()
         function=script[script.index('assert_visible() {'):script.index('\nadb shell am start -W',script.index('assert_visible() {'))]

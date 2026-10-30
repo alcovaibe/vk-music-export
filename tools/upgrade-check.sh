@@ -86,7 +86,9 @@ assert_visible() {
   return 1
 }
 adb shell am start -W -n "$package/.MainActivity"
-if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -Fq "versionCode='1087'"; then
+# Drain aapt output: grep -q can close the pipe early and make pipefail treat
+# a matching 1087 manifest as false because aapt receives SIGPIPE.
+if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -F "versionCode='1087'" >/dev/null; then
 assert_visible before "Открыть мою музыку"
 else
 assert_visible before "VK Music"
@@ -102,7 +104,7 @@ adb shell "cp /data/local/tmp/legacy-audio.mp3 $appdata/files/native-audio/retir
 public_expected=$(adb shell "sha256sum /sdcard/Music/'VK Music Export'/UpgradeMusicFixture.mp3" | cut -d' ' -f1 | tr -d '\r')
 # Exercise the baseline's real schema: oldest v1, current stable v2. No network request is needed.
 export UPGRADE_SCHEMA=2
-if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -Fq "versionCode='1087'"; then export UPGRADE_SCHEMA=1; fi
+if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -F "versionCode='1087'" >/dev/null; then export UPGRADE_SCHEMA=1; fi
 python3 - <<'PYQUEUE'
 import hashlib, json, os, sqlite3
 from pathlib import Path
