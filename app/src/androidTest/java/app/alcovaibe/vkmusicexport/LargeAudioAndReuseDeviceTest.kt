@@ -133,6 +133,7 @@ class LargeAudioAndReuseDeviceTest {
             }
             run(dir,store,shared,api,transfer{requests.add(it)})
             assertEquals(4,store.snapshot().done);assertEquals(2,store.snapshot().failed)
+            assertTrue(store.snapshot().failures.all{it.details?.accessReason=="RESTRICTED"})
             val originals=store.savedFiles().associate{it.taskKey to it.uri};requests.clear()
             val nextApi=object: MusicApi by noApi {
                 override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/${track.id}")
@@ -303,7 +304,7 @@ class LargeAudioAndReuseDeviceTest {
     }
 
     @Test fun equalTitlesWithDifferentIdsAndCatalogueDurationMismatchNeverAutoMerge()=runBlocking<Unit>(Dispatchers.IO) {
-        scenario{_,dir,store,shared,directories->
+        scenario{context,dir,store,shared,directories->
             val row=track(25);val queue=tasks("CI shared identity ${UUID.randomUUID()}",listOf(row,row.copy(id="12_99025")))
             directories.add(store.directory(queue.first()));store.replace(queue)
             val first=publish(dir,store,shared,queue.first(),dir.name)
@@ -316,6 +317,9 @@ class LargeAudioAndReuseDeviceTest {
             val wrongDuration=queue.first().copy(track=row.copy(duration=30));store.replace(listOf(wrongDuration));requests.clear()
             run(dir,store,shared,api,transfer{requests.add(it)})
             assertEquals(0,store.snapshot().done);assertEquals(MusicError.INCOMPLETE,store.snapshot().failures.single().error)
+            val details=store.snapshot().failures.single().details!!
+            assertEquals(30,details.expectedSeconds);assertTrue(details.actualMs!! in 1000..2500)
+            AudioExportStore(context).use{reopened->assertEquals(details,reopened.snapshot().failures.single().details)}
             assertEquals(listOf(row.id),requests);assertTrue(shared.valid(first))
         }
     }

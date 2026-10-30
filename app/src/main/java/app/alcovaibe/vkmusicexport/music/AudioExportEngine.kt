@@ -112,7 +112,7 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                             !(e is MediaHttpFailure&&code!=MusicError.RATE_LIMIT)) {
                         store.status("PAUSED",code);break
                     }
-                    store.failed(task,code)
+                    store.failed(task,code,exportFailureDetails(e))
                 }finally{store.releaseRunning();update(store.snapshot())}
             }
             if(!store.snapshot().unfinished) {

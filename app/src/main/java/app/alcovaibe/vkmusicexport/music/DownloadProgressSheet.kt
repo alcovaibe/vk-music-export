@@ -107,6 +107,7 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                 }
                 queue.failures.drop(page*50).take(50).forEach{
                     Text("${it.task.track.artist} — ${it.task.track.title}: ${it.error.label}",style=MaterialTheme.typography.bodySmall)
+                    it.details?.let{details->Text(details.label,style=MaterialTheme.typography.bodySmall)}
                 }
                 onExportReport?.let{export->if(queue.total>0||queue.sourceIssues>0) {
                     OutlinedButton(onClick=export){Text("Поделиться полным отчётом")}

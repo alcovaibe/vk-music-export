@@ -27,7 +27,10 @@ internal object ExportReportShare {
                         for((task,state)in store.taskRows())add(buildJsonObject {
                             put("track",json.encodeToJsonElement(task.track));put("source",json.encodeToJsonElement(task.source))
                             put("position",task.position);put("occurrence",task.occurrence);put("state",state)
-                            failures[task.key]?.let{put("error",it.error.name)}
+                            failures[task.key]?.let{failure->
+                                put("error",failure.error.name)
+                                failure.details?.let{put("errorDetails",json.encodeToJsonElement(it))}
+                            }
                             store.existing(task.key)?.let{file->put("file",file.relativePath+file.displayName);put("sha256",file.sha256)}
                         })
                     }
