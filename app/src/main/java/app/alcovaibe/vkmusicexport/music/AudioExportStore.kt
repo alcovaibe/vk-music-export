@@ -147,6 +147,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         }}
     @Synchronized fun checkpoint(name: String): String?=get(name)
     @Synchronized fun checkpoint(name: String,value: String){put(name,value)}
+    @Synchronized fun checkpoints(prefix: String): List<Pair<String,String>>=readableDatabase.rawQuery(
+        "SELECT name,value FROM meta WHERE name GLOB ? ORDER BY rowid",arrayOf(prefix+"*")).use{c->buildList{
+            while(c.moveToNext())add(c.getString(0) to c.getString(1))
+        }}
+    @Synchronized fun removeCheckpoint(name: String){writableDatabase.delete("meta","name=?",arrayOf(name))}
     @Synchronized fun status(status: String,error: MusicError?=null){put("status",status);put("error",error?.name?:"")}
     @Synchronized fun beginRun(): Boolean=transaction {if(get("status")!="QUEUED")false else{status("RUNNING");true}}
     @Synchronized fun running()=get("status")=="RUNNING"
@@ -289,6 +294,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
                 arrayOf(json.encodeToString(changed(prepared)),alias.taskKey))
         }
         put("recent_files",json.encodeToString(recent.map{if(it.uri==before.uri)changed(it)else it}.distinctBy{it.uri}))
+        if(before.relativePath+before.displayName!=after.relativePath+after.displayName) {
+            val move=PlaylistRelocation(before.relativePath+before.displayName,after.relativePath+after.displayName,
+                after.durationMs,aliases.mapNotNull{it.source?.key}.distinct())
+            put("m3u-relocation:"+java.util.UUID.randomUUID(),json.encodeToString(move))
+        }
     }
     /** Forget only this stale index entry. Never delete a MediaStore file, VK track or queue item. */
     @Synchronized fun forgetFile(before: PublishedAudio)=transaction {

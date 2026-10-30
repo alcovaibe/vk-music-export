@@ -340,7 +340,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     AudioExportStore(getApplication()).use{store->
                         val shared=SharedAudioStore(getApplication());val recovery=SavedFileRecovery(getApplication(),store,shared)
                         ArtworkRepair(getApplication(),store,shared).recover();recovery.recover()
-                        block(g,store,shared,recovery);AudioExportRuntime.refresh()
+                        block(g,store,shared,recovery)
+                        SharedPlaylistStore(getApplication(),store).repairLocations();AudioExportRuntime.refresh()
                     }
                 }}
             }catch(e: CancellationException){_savedFiles.update{it.copy(message="Проверка прервана. Восстановленные связи сохранены.")};throw e}

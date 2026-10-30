@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -216,6 +217,10 @@ class LargeAudioAndReuseDeviceTest {
     private fun memberships(title: String,row: NativeTrack): List<AudioExportTask> =
         tasks(title,listOf(row),PlaylistKind.ALBUM,id=930)+tasks(title,listOf(row,row),id=931)+
             listOf(ExportLayout.task(row,listOf("Моя музыка",title),1,ExportSource(0,"library","my")))
+    private fun playlistUri(store: AudioExportStore,task: AudioExportTask)=Uri.parse(Json.parseToJsonElement(
+        store.checkpoint("m3u:"+task.source!!.key)!!).jsonObject.getValue("uri").jsonPrimitive.content)
+    private fun playlistText(store: AudioExportStore,task: AudioExportTask)=app.contentResolver
+        .openInputStream(playlistUri(store,task))!!.bufferedReader().use{it.readText()}
 
     @Test fun albumPlaylistLibraryAndRepeatedPositionsShareOneUriWithoutVkOrMediaRequests()=runBlocking<Unit>(Dispatchers.IO) {
         scenario{_,dir,store,shared,directories->
@@ -259,13 +264,19 @@ class LargeAudioAndReuseDeviceTest {
             assertNotEquals(first.sha256,tagged.sha256);assertEquals(4,store.snapshot().covered)
             store.savedFiles().forEach{assertEquals(tagged.sha256,it.sha256);assertTrue(it.coverEmbedded);assertTrue(shared.valid(it))}
             val destination=ExportLayout.ROOT+"Плейлисты/CI moved shared ${UUID.randomUUID()}/";directories.add(destination)
+            val oldPlaylist=playlistText(store,queue[1])
+            // The former album/playlist must be repaired even after another selection replaces the queue.
+            store.replace(listOf(queue.last()))
             val replacement=shared.copy(queue.first(),tagged,destination){}
             app.contentResolver.delete(Uri.parse(tagged.uri),null,null)
             run(dir,store,shared)
             assertEquals(setOf(replacement.uri),store.savedFiles().map{it.uri}.toSet())
-            assertTrue(store.snapshot().recent.isEmpty());assertEquals(4,store.snapshot().covered)
+            assertTrue(store.snapshot().recent.isEmpty());assertEquals(1,store.snapshot().covered)
+            val repaired=playlistText(store,queue[1]);assertNotEquals(oldPlaylist,repaired)
+            assertTrue(repaired.contains("CI moved shared"));assertEquals(2,repaired.lineSequence().count{it.startsWith("#EXTINF:")})
+            assertTrue(store.checkpoints("m3u-relocation:").isEmpty())
             AudioExportStore(context).use{reopened->
-                assertEquals(4,reopened.snapshot().done);reopened.savedFiles().forEach{assertTrue(shared.valid(it))}
+                assertEquals(1,reopened.snapshot().done);reopened.savedFiles().forEach{assertTrue(shared.valid(it))}
                 reopened.forgetFile(reopened.existing(queue[1].key)!!)
                 assertEquals(3,reopened.savedFiles().size);assertTrue(shared.valid(reopened.existing(queue.last().key)!!))
             }
@@ -295,11 +306,18 @@ class LargeAudioAndReuseDeviceTest {
             queue.forEach{directories.add(store.directory(it))};store.replace(queue)
             val first=publish(dir,store,shared,queue.first(),dir.name);run(dir,store,shared);store.clearRecentFiles()
             val recovery=SavedFileRecovery(context,store,shared)
+            val editedUri=playlistUri(store,queue[1]);val userPlaylist=playlistText(store,queue[1])+"# User edit\n"
+            app.contentResolver.openOutputStream(editedUri,"wt")!!.use{it.write(userPlaylist.toByteArray())}
             val preview=recovery.preview(first,Uri.parse(first.uri));assertEquals(4,preview.references)
             val after=recovery.confirm(preview);directories.add(after.relativePath)
             assertNotEquals(first.uri,after.uri);assertEquals(first.sha256,after.sha256)
             assertTrue(shared.valid(first));store.savedFiles().forEach{assertEquals(after.uri,it.uri);assertTrue(shared.valid(it))}
             assertEquals(4,store.snapshot().done);assertTrue(store.snapshot().recent.isEmpty())
+            try{SharedPlaylistStore(context,store).repairLocations();fail("An edited playlist must be reported, not overwritten")}
+            catch(e: MusicFailure){assertEquals(MusicError.PLAYLIST_CHANGED,e.code)}
+            assertEquals(userPlaylist,app.contentResolver.openInputStream(editedUri)!!.bufferedReader().use{it.readText()})
+            assertTrue(playlistText(store,queue.first()).contains("Восстановленные"))
+            assertTrue(store.checkpoints("m3u-relocation:").isNotEmpty())
         }
     }
 
@@ -318,7 +336,7 @@ class LargeAudioAndReuseDeviceTest {
             run(dir,store,shared,api,transfer{requests.add(it)})
             assertEquals(0,store.snapshot().done);assertEquals(MusicError.INCOMPLETE,store.snapshot().failures.single().error)
             val details=store.snapshot().failures.single().details!!
-            assertEquals(30,details.expectedSeconds);assertTrue(details.actualMs!! in 1000..2500)
+            assertEquals(30,details.expectedSeconds);assertTrue(details.actualMs!! in 1000L..2500L)
             AudioExportStore(context).use{reopened->assertEquals(details,reopened.snapshot().failures.single().details)}
             assertEquals(listOf(row.id),requests);assertTrue(shared.valid(first))
         }
