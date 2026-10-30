@@ -131,7 +131,7 @@ internal object AudioExportRuntime {
     }
     @Synchronized fun refresh(){
         val next=database.snapshot();val previous=mutable.value
-        mutable.value=next.copy(progress=previous.progress.takeIf{next.status=="RUNNING"&&
+        mutable.value=next.copy(progress=previous.progress?.takeIf{next.status=="RUNNING"&&
             (next.currentTask!=null&&next.currentTask.key==previous.currentTask?.key||
                 next.currentTask==null&&it.stage=="checking_saved")})
     }
