@@ -107,7 +107,7 @@ class LargeAudioAndReuseDeviceTest {
             }.build()
             assertEquals(0,client.callTimeoutMillis);assertTrue(client.readTimeoutMillis>0)
             val api=object: MusicApi by noApi {
-                override suspend fun media(access: MusicAccess,track: NativeTrack)="https://audio.userapi.com/large"
+                override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/large")
             }
             run(dir,store,shared,api,AudioTransfer(client,observe={_,_->}))
             assertEquals("FINISHED",store.snapshot().status);assertEquals(1,requests)
@@ -135,7 +135,7 @@ class LargeAudioAndReuseDeviceTest {
             assertEquals(4,store.snapshot().done);assertEquals(2,store.snapshot().failed)
             val originals=store.savedFiles().associate{it.taskKey to it.uri};requests.clear()
             val nextApi=object: MusicApi by noApi {
-                override suspend fun media(access: MusicAccess,track: NativeTrack)="https://audio.userapi.com/${track.id}"
+                override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/${track.id}")
             }
             AudioExportStore(context).use{reopened->
                 reopened.retryFailed();run(dir,reopened,shared,nextApi,transfer{requests.add(it)})
@@ -200,7 +200,7 @@ class LargeAudioAndReuseDeviceTest {
             app.contentResolver.openOutputStream(Uri.parse(files[1].uri),"wt")!!.use{it.write("USER MODIFIED".toByteArray())}
             val requests=mutableListOf<String>()
             val api=object: MusicApi by noApi {
-                override suspend fun media(access: MusicAccess,track: NativeTrack)="https://audio.userapi.com/${track.id}"
+                override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/${track.id}")
             }
             run(dir,store,shared,api,transfer{requests.add(it)})
             assertEquals(tasks.take(2).map{it.track.id},requests)
