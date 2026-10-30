@@ -147,7 +147,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         }}
     @Synchronized fun checkpoint(name: String): String?=get(name)
     @Synchronized fun checkpoint(name: String,value: String){put(name,value)}
-    @Synchronized fun checkpoints(prefix: String): List<Pair<String,String>>=readableDatabase.rawQuery(
+    @Synchronized fun checkpoints(prefix: String): List<Pair<String,String>> = readableDatabase.rawQuery(
         "SELECT name,value FROM meta WHERE name GLOB ? ORDER BY rowid",arrayOf(prefix+"*")).use{c->buildList{
             while(c.moveToNext())add(c.getString(0) to c.getString(1))
         }}
