@@ -353,7 +353,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     fun checkSavedFiles(search: Boolean=false) {
         savedFileWork{g,store,shared,recovery->
-            val rows=store.savedFiles();var restored=0
+            val rows=store.savedFiles().distinctBy{it.uri};var restored=0
             _savedFiles.update{it.copy(processed=0,total=rows.size,problems=emptyList(),preview=null,forget=null,restored=0)}
             rows.forEachIndexed{index,row->
                 active(g)

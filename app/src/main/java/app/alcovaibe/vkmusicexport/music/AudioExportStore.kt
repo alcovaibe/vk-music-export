@@ -164,6 +164,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun done(task: AudioExportTask,record: PublishedAudio)=transaction {
         musicCheck(record.taskKey==task.key,MusicError.STORAGE)
         val previous=existing(task.key)
+        val knownUri=readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=?",arrayOf(record.track.id)).use{c->
+            var found=false
+            while(c.moveToNext()&&!found)found=json.decodeFromString<PublishedAudio>(c.getString(0)).uri==record.uri
+            found
+        }
         val wasDone=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(task.key)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
         val delta=(if(record.coverEmbedded)1 else 0)-(if(wasDone&&previous?.coverEmbedded==true)1 else 0)
         put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+delta).toString())
@@ -171,7 +176,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload) VALUES(?,?,?)",arrayOf(task.key,task.track.id,json.encodeToString(record)))
         writableDatabase.execSQL("UPDATE tasks SET state='DONE',error=NULL,prepared=NULL WHERE task_key=?",arrayOf(task.key))
         // Reusing an existing file completes the queue item without reviving cleared history.
-        if(previous!=record)put("recent_files",json.encodeToString((listOf(record)+recent.filterNot{it.taskKey==record.taskKey}).take(5)))
+        if(previous!=record&&!knownUri)put("recent_files",json.encodeToString((listOf(record)+recent.filterNot{it.taskKey==record.taskKey}).distinctBy{it.uri}.take(5)))
     }
     private fun recentFiles(): List<PublishedAudio> {
         get("recent_files")?.let{return json.decodeFromString(it)}
@@ -224,6 +229,15 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         while(c.moveToNext()){val row=json.decodeFromString<PublishedAudio>(c.getString(0))
             if(AudioCompleteness.matchesCatalogue(row.durationMs,track.duration,row.track.duration))add(row)}
     }}
+    /** A source/position is a reference, not ownership of a separate physical file. */
+    @Synchronized fun link(task: AudioExportTask,before: PublishedAudio): PublishedAudio=transaction {
+        musicCheck(existing(before.taskKey)==before&&before.track.id==task.track.id&&
+            AudioCompleteness.matchesCatalogue(before.durationMs,task.track.duration,before.track.duration),MusicError.INCOMPLETE)
+        // done() atomically records this reference and its queue counters. A crash here
+        // leaves the original record available for the next attempt, with no file writes.
+        before.copy(taskKey=task.key,track=if(task.track.duration>0)task.track else task.track.copy(duration=before.track.duration),
+            source=task.source,occurrence=task.occurrence)
+    }
     @Synchronized fun savedLibraryCopies(track: NativeTrack,owner: Long=0): List<PublishedAudio> = readableDatabase.rawQuery(
         "SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC",arrayOf(track.id)).use{c->buildList{
         while(c.moveToNext()) {
@@ -237,29 +251,39 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     /** Same URI and task identity; update integrity checkpoints without reviving cleared history. */
     @Synchronized fun retagged(before: PublishedAudio,after: PublishedAudio)=transaction {
         musicCheck(before.uri==after.uri&&before.taskKey==after.taskKey&&before.track==after.track,MusicError.STORAGE)
-        val existing=existing(before.taskKey)
-        if(existing==after)return@transaction
-        musicCheck(existing==before,MusicError.STORAGE)
-        val done=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(before.taskKey)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
-        if(done)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+(if(after.coverEmbedded)1 else 0)-(if(before.coverEmbedded)1 else 0)).toString())
-        writableDatabase.execSQL("UPDATE files SET payload=? WHERE task_key=?",arrayOf(json.encodeToString(after),before.taskKey))
-        val prepared=readableDatabase.rawQuery("SELECT prepared FROM tasks WHERE task_key=?",arrayOf(before.taskKey)).use{if(it.moveToFirst()&&!it.isNull(0))json.decodeFromString<PublishedAudio>(it.getString(0))else null}
-        if(prepared?.uri==before.uri)writableDatabase.execSQL("UPDATE tasks SET prepared=? WHERE task_key=?",arrayOf(json.encodeToString(after),before.taskKey))
-        put("recent_files",json.encodeToString(recentFiles().map{if(it.uri==before.uri)after else it}))
+        updateReferences(before,after)
     }
     /** Compare-and-swap a location or explicitly confirmed replacement. Never changes queue states. */
     @Synchronized fun relinked(before: PublishedAudio,after: PublishedAudio)=transaction {
         musicCheck(before.taskKey==after.taskKey&&before.track==after.track,MusicError.STORAGE)
-        if(existing(before.taskKey)==after)return@transaction
-        musicCheck(existing(before.taskKey)==before&&!uriUsed(after.uri,before.taskKey),MusicError.STORAGE)
-        val recent=recentFiles()
-        val done=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(before.taskKey)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
-        if(done)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+(if(after.coverEmbedded)1 else 0)-(if(before.coverEmbedded)1 else 0)).coerceAtLeast(0).toString())
-        writableDatabase.execSQL("UPDATE files SET payload=? WHERE task_key=?",arrayOf(json.encodeToString(after),before.taskKey))
-        writableDatabase.execSQL("UPDATE tasks SET prepared=NULL WHERE task_key=?",arrayOf(before.taskKey))
-        put("recent_files",json.encodeToString(recent.map{if(it.taskKey==before.taskKey)after else it}))
+        musicCheck(canShareLocation(before,after),MusicError.STORAGE)
+        updateReferences(before,after)
     }
-    @Synchronized fun uriUsed(uri: String,exceptKey: String)=savedFiles().any{it.uri==uri&&it.taskKey!=exceptKey}
+    private fun sameFile(a: PublishedAudio,b: PublishedAudio)=a.track.id==b.track.id&&a.bytes==b.bytes&&
+        a.sha256==b.sha256&&a.durationMs==b.durationMs&&a.extension==b.extension&&a.mime==b.mime
+    @Synchronized fun canShareLocation(before: PublishedAudio,after: PublishedAudio)=savedFiles()
+        .filter{it.uri==after.uri&&it.uri!=before.uri}.all{sameFile(it,after)}
+    /** Moving or tagging one physical file must update every membership in one transaction. */
+    private fun updateReferences(before: PublishedAudio,after: PublishedAudio) {
+        if(existing(before.taskKey)==after)return
+        musicCheck(existing(before.taskKey)==before,MusicError.STORAGE)
+        val aliases=savedFiles().filter{it.uri==before.uri}
+        musicCheck(aliases.all{sameFile(it,before)&&AudioCompleteness.matchesCatalogue(after.durationMs,it.track.duration,it.track.duration)},MusicError.INCOMPLETE)
+        fun changed(row: PublishedAudio)=after.copy(taskKey=row.taskKey,track=row.track,source=row.source,occurrence=row.occurrence)
+        val recent=recentFiles()
+        val doneKeys=taskRows().filter{it.second=="DONE"}.map{it.first.key}.toSet()
+        val delta: Int=aliases.filter{it.taskKey in doneKeys}.sumOf{(if(after.coverEmbedded)1 else 0)-(if(it.coverEmbedded)1 else 0)}
+        put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+delta).coerceAtLeast(0).toString())
+        for(alias in aliases) {
+            writableDatabase.execSQL("UPDATE files SET payload=? WHERE task_key=?",arrayOf(json.encodeToString(changed(alias)),alias.taskKey))
+            val prepared=readableDatabase.rawQuery("SELECT prepared FROM tasks WHERE task_key=?",arrayOf(alias.taskKey)).use{c->
+                if(c.moveToFirst()&&!c.isNull(0))json.decodeFromString<PublishedAudio>(c.getString(0))else null
+            }
+            if(prepared?.uri==before.uri)writableDatabase.execSQL("UPDATE tasks SET prepared=? WHERE task_key=?",
+                arrayOf(json.encodeToString(changed(prepared)),alias.taskKey))
+        }
+        put("recent_files",json.encodeToString(recent.map{if(it.uri==before.uri)changed(it)else it}.distinctBy{it.uri}))
+    }
     /** Forget only this stale index entry. Never delete a MediaStore file, VK track or queue item. */
     @Synchronized fun forgetFile(before: PublishedAudio)=transaction {
         musicCheck(existing(before.taskKey)==before,MusicError.STORAGE)

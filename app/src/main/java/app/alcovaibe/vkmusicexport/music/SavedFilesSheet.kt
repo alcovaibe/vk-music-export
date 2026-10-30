@@ -34,6 +34,7 @@ internal fun SavedFilesSheet(state: SavedFilesState,onCheck: ()->Unit,onSearch: 
                             else "Содержимое отличается. Формат и длительность проверены, но это не доказывает, что выбрана та же песня. Подтверди выбор самостоятельно.",
                             color=if(preview.exact)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
                         Text("Создадим отдельную копию в Music/VK Music Export/Восстановленные и свяжем с этой записью. Выбранный файл и прежние файлы останутся на месте. Обложки добавляются отдельной кнопкой.")
+                        if(preview.references>1)Text("Обновим все связи с этим файлом: ${preview.references}. Альбомы и плейлисты будут использовать выбранную копию.")
                     }
                     item {Button(onClick=onConfirm,enabled=!state.running,modifier=Modifier.testTag("confirm_file_recovery")){Text("Восстановить копию")}}
                     item {TextButton(onClick=onBack,enabled=!state.running){Text("Отмена")}}
@@ -52,7 +53,7 @@ internal fun SavedFilesSheet(state: SavedFilesState,onCheck: ()->Unit,onSearch: 
                     item {
                         OutlinedButton(onClick=onCheck,enabled=!state.running,modifier=Modifier.testTag("check_saved_files")){Text("Проверить файлы")}
                         if(state.problems.isNotEmpty())Button(onClick=onSearch,enabled=!state.running,modifier=Modifier.testTag("search_saved_files")){Text("Найти автоматически")}
-                        Text("Связей восстановлено: ${state.restored} · требуют внимания: ${state.problems.size}")
+                        Text("Файлов восстановлено: ${state.restored} · требуют внимания: ${state.problems.size}")
                     }
                     items(state.problems,key={it.row.taskKey}){problem->
                         Column(Modifier.testTag("saved_file_problem_${problem.row.taskKey}")) {

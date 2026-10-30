@@ -22,7 +22,7 @@ internal data class SavedFileCheck(val reason: SavedFileReason,val actual: Publi
 internal class SavedFileFailure(val reason: SavedFileReason): MusicFailure(MusicError.INCOMPLETE)
 internal data class SavedFileProblem(val row: PublishedAudio,val reason: SavedFileReason,val searchReason: SavedFileReason?=null)
 internal data class SavedFilePreview(val before: PublishedAudio,val name: String,val bytes: Long,val sha256: String,
-    val media: ProcessedAudio,val covered: Boolean,val exact: Boolean)
+    val media: ProcessedAudio,val covered: Boolean,val exact: Boolean,val references: Int=1)
 internal data class SavedFilesState(val visible: Boolean=false,val running: Boolean=false,val processed: Int=0,val total: Int=0,
     val restored: Int=0,val problems: List<SavedFileProblem> = emptyList(),val message: String?=null,
     val selecting: PublishedAudio?=null,val preview: SavedFilePreview?=null,val forget: PublishedAudio?=null)
@@ -57,7 +57,7 @@ internal class SavedFileRecovery(private val context: Context,private val store:
             if(matches.size>1)return SavedFileReason.AMBIGUOUS
         }
         val match=matches.singleOrNull()?:return SavedFileReason.NOT_FOUND
-        if(store.uriUsed(match.uri,before.taskKey))return SavedFileReason.IN_USE
+        if(!store.canShareLocation(before,match))return SavedFileReason.IN_USE
         // Recheck after the scan; never accept a file changed during hashing.
         shared.requireValid(match);store.relinked(before,match)
         return SavedFileReason.OK
@@ -83,7 +83,8 @@ internal class SavedFileRecovery(private val context: Context,private val store:
             val media=try{AndroidAudioProcessor().process(selected,checked,before.track,null)}finally{checked.delete()}
             // Preserve the chosen bytes/tags. Parsing validates actual audio and duration; no remux is published.
             val covered=EmbeddedArtwork.hasCover(selected,media.extension)
-            return SavedFilePreview(before,name,selected.length(),hash,media,covered,exact)
+            return SavedFilePreview(before,name,selected.length(),hash,media,covered,exact,
+                store.savedFiles().count{it.uri==before.uri})
         }catch(e: Exception){selected.delete();throw e}
     }
     fun discard(){selected.delete()}
