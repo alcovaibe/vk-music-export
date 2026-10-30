@@ -68,6 +68,9 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                     Text("Осталось: ${queue.pending} · пропущено: ${queue.failed}")
                     Text("С обложкой: ${queue.covered} · без добавленной обложки: ${queue.done-queue.covered}",style=MaterialTheme.typography.bodySmall)
                 }
+                if(queue.status=="RUNNING"&&queue.currentTask==null)queue.progress?.takeIf{it.stage=="checking_saved"}?.let{p->
+                    Text("Проверяем сохранённые файлы: ${p.segment}/${p.segments}",Modifier.testTag("downloads_saved_check"))
+                }
                 if(queue.status=="RUNNING")queue.currentTask?.let{task->
                     Text("Текущий трек",style=MaterialTheme.typography.titleSmall)
                     Text("${task.track.artist} — ${task.track.title}",Modifier.testTag("downloads_current_track"))
@@ -77,6 +80,7 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                             "manifest"->"Чтение списка сегментов"
                             "segments"->"Сегменты: ${p.segment}/${p.segments} · получено ${p.bytes/1024} КБ"
                             "verifying"->"Проверка и сохранение файла · ${p.bytes/1024} КБ"
+                            "checking_saved"->"Проверяем уже сохранённые файлы на телефоне"
                             else->"Получено ${p.bytes/1024} КБ"
                         },Modifier.testTag("downloads_current_progress"),style=MaterialTheme.typography.bodySmall)
                         if(p.stage=="segments"&&p.segments>0)LinearProgressIndicator(

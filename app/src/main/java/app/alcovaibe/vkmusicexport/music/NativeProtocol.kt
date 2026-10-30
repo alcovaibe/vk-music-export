@@ -116,7 +116,7 @@ internal object NativeProtocol {
     private fun track(o: JsonObject): NativeTrack {
         val owner = long(o, "owner_id"); val id = long(o, "id")
         musicCheck(owner != 0L && id > 0)
-        val duration = long(o, "duration"); musicCheck(duration in 0..86400)
+        val duration = long(o, "duration"); musicCheck(duration in 0..Int.MAX_VALUE.toLong())
         val album = (o["album"] as? JsonObject)?.let {
             val albumId=long(it,"id");musicCheck(albumId>0)
             val albumOwner=(it["owner_id"] as? JsonPrimitive)?.longOrNull

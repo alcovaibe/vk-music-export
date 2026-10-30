@@ -129,7 +129,8 @@ internal class SharedAudioStore(internal val context: Context) {
     private suspend fun publish(task: AudioExportTask,media: ProcessedAudio,size: Long,expectedHash: String?,relative: String,covered: Boolean,input:()->InputStream,
         prepared:(PublishedAudio)->Unit): PublishedAudio {
         val c=currentCoroutineContext();c.ensureActive()
-        musicCheck(size in 1..AudioTransfer.MAX_BYTES&&media.durationMs>0,MusicError.INCOMPLETE)
+        musicCheck(size>0&&media.durationMs>0,MusicError.INCOMPLETE)
+        AudioStorage.requireSpace(context.cacheDir,size)
         musicCheck(relative.startsWith(ExportLayout.ROOT)&&relative.endsWith("/")&&
             relative.removePrefix(ExportLayout.ROOT).dropLast(1).split('/').let{parts->
                 parts.size in 1..3&&parts.all{it==ExportLayout.component(it,180)}

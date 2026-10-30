@@ -32,9 +32,9 @@ internal object HlsPlaylist {
         return out
     }
     fun parse(base: String,raw: String): HlsPlan {
-        check(raw.length<=524288)
+        check(raw.length<=AudioTransfer.MAX_MANIFEST)
         val lines=raw.removePrefix("\uFEFF").lineSequence().map{it.trim()}.filter{it.isNotEmpty()}.toList()
-        check(lines.size in 2..20000&&lines.first()=="#EXTM3U")
+        check(lines.size in 2..100000&&lines.first()=="#EXTM3U")
         check(lines.none{it.startsWith("#EXT-X-SESSION-KEY:")})
         if(lines.any{it.startsWith("#EXT-X-STREAM-INF:")}) {
             check(lines.none{it.startsWith("#EXTINF:")})
@@ -64,7 +64,7 @@ internal object HlsPlaylist {
             line.startsWith("#EXTINF:")-> {
                 check(!ended&&duration==null)
                 duration=line.substringAfter(':').substringBefore(',').toDoubleOrNull()
-                check(duration!=null&&duration.isFinite()&&duration>0&&duration<=3600)
+                check(duration!=null&&duration.isFinite()&&duration>0&&duration<=Int.MAX_VALUE.toDouble())
             }
             line.startsWith("#EXT-X-KEY:")-> {
                 val a=attrs(line.substringAfter(':'))
@@ -91,11 +91,11 @@ internal object HlsPlaylist {
                 line.startsWith("#EXT-X-PRELOAD-HINT")->throw MusicFailure(MusicError.HLS)
             line.startsWith('#')->Unit
             else->{
-                check(!ended&&duration!=null&&segments.size<2000)
+                check(!ended&&duration!=null&&segments.size<20000)
                 val n=sequence+segments.size;check(n>=sequence)
                 val key=keyUrl?.let {HlsKey(it,explicitIv?.copyOf()?:sequenceIv(n))}
                 val seconds=duration?:throw MusicFailure(MusicError.HLS)
-                total+=seconds;check(total<=86400)
+                total+=seconds;check(total.isFinite()&&total<=Int.MAX_VALUE.toDouble())
                 segments.add(HlsSegment(MediaAddress.resolve(base,line),seconds,key));duration=null
             }
         }

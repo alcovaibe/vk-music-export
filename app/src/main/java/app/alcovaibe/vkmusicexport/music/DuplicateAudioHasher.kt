@@ -13,7 +13,7 @@ internal class DuplicateAudioHasher(context: Context,private val api: MusicApi,
     override fun beginScan(owner: Long,tracks: List<NativeTrack>){checkpoint?.begin(owner,tracks)}
     override fun cached(track: NativeTrack)=checkpoint?.get(track)
     override suspend fun signature(access: MusicAccess,track: NativeTrack): DuplicateSignature {
-        musicCheck(directory.usableSpace>AudioTransfer.MAX_BYTES*2+8*1024*1024,MusicError.STORAGE)
+        AudioStorage.requireSpace(directory)
         var result: TransferResult?=null
         try {
             progress(track,AudioProgress("resolve_media"))

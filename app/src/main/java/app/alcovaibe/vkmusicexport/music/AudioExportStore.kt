@@ -185,28 +185,32 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun existing(key: String): PublishedAudio?=readableDatabase.rawQuery("SELECT payload FROM files WHERE task_key=?",arrayOf(key)).use{if(it.moveToFirst())json.decodeFromString<PublishedAudio>(it.getString(0))else null}
     /** Reuse the same owned URI when adopting an old position-based identity. No filename guesses. */
     @Synchronized fun reusable(task: AudioExportTask): List<PublishedAudio> {
-        existing(task.key)?.let{if(AudioCompleteness.matchesCatalogue(it.durationMs,task.track.duration,it.track.duration))return listOf(it)}
-        val source=task.source?:return emptyList()
+        val direct=existing(task.key)?.takeIf{it.track.id==task.track.id&&AudioCompleteness.matchesCatalogue(it.durationMs,task.track.duration,it.track.duration)}
+        val source=task.source?:return listOfNotNull(direct)
         val path=directory(task)
-        return readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid",arrayOf(task.track.id)).use{c->buildList{
+        return (listOfNotNull(direct)+readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid",arrayOf(task.track.id)).use{c->buildList{
             while(c.moveToNext()) {
                 val row=json.decodeFromString<PublishedAudio>(c.getString(0))
                 if(!AudioCompleteness.matchesCatalogue(row.durationMs,task.track.duration,row.track.duration))continue
                 if(row.track.duration!=task.track.duration&&task.track.duration>0)continue
                 if(row.source==source&&row.occurrence==task.occurrence||row.source==null&&row.relativePath==path)add(row)
             }
-        }}
+        }}).distinctBy{it.taskKey}
     }
-    @Synchronized fun adopt(task: AudioExportTask,before: PublishedAudio): PublishedAudio=transaction {
+    @Synchronized fun adopt(task: AudioExportTask,before: PublishedAudio,expectedTarget: PublishedAudio?=null): PublishedAudio=transaction {
         musicCheck(existing(before.taskKey)==before&&before.track.id==task.track.id,MusicError.INCOMPLETE)
         val after=before.copy(taskKey=task.key,source=task.source,occurrence=task.occurrence)
         if(before==after)return@transaction before
-        musicCheck(existing(task.key)==null||before.taskKey==task.key,MusicError.STORAGE)
+        musicCheck(existing(task.key)==expectedTarget||before.taskKey==task.key,MusicError.STORAGE)
+        musicCheck(expectedTarget==null||expectedTarget.track.id==task.track.id,MusicError.STORAGE)
+        val wasDone=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(task.key)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
+        if(wasDone)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+
+            (if(after.coverEmbedded)1 else 0)-(if(expectedTarget?.coverEmbedded==true)1 else 0)).coerceAtLeast(0).toString())
         val recent=recentFiles()
         writableDatabase.delete("files","task_key=?",arrayOf(before.taskKey))
-        writableDatabase.execSQL("INSERT INTO files(task_key,track_id,payload) VALUES(?,?,?)",
+        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload) VALUES(?,?,?)",
             arrayOf(task.key,after.track.id,json.encodeToString(after)))
-        put("recent_files",json.encodeToString(recent.map{if(it.taskKey==before.taskKey)after else it}))
+        put("recent_files",json.encodeToString(recent.map{if(it.taskKey==before.taskKey||it.taskKey==task.key)after else it}.distinctBy{it.taskKey}))
         after
     }
     @Synchronized fun imported(record: PublishedAudio)=transaction {
@@ -216,8 +220,9 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             arrayOf(record.taskKey,record.track.id,json.encodeToString(record)))
         if(previous!=record)put("recent_files",json.encodeToString((listOf(record)+recent.filterNot{it.taskKey==record.taskKey}).take(5)))
     }
-    @Synchronized fun copies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC LIMIT 8",arrayOf(track.id)).use{c->buildList{
-        while(c.moveToNext()){val row=json.decodeFromString<PublishedAudio>(c.getString(0));if(row.track==track)add(row)}
+    @Synchronized fun copies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC",arrayOf(track.id)).use{c->buildList{
+        while(c.moveToNext()){val row=json.decodeFromString<PublishedAudio>(c.getString(0))
+            if(AudioCompleteness.matchesCatalogue(row.durationMs,track.duration,row.track.duration))add(row)}
     }}
     @Synchronized fun savedLibraryCopies(track: NativeTrack,owner: Long=0): List<PublishedAudio> = readableDatabase.rawQuery(
         "SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC",arrayOf(track.id)).use{c->buildList{
@@ -276,6 +281,10 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             while(c.moveToNext())add(json.decodeFromString<AudioExportTask>(c.getString(0)).track)
         }}.distinctBy{it.id}
     @Synchronized fun retryFailed(){writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE state='FAILED'")}
+    @Synchronized fun retryMissing(task: AudioExportTask)=transaction {
+        failed(task,MusicError.INCOMPLETE)
+        writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE task_key=?",arrayOf(task.key))
+    }
     @Synchronized fun clearQueue()=transaction {
         writableDatabase.delete("tasks",null,null);writableDatabase.delete("source_failures",null,null)
         status("EMPTY");put("source_issues","0");put("covered_count","0");put("queue_account","0")
