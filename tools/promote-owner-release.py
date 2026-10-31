@@ -9,25 +9,34 @@ import re
 import subprocess
 import tempfile
 
-REQUEST = Path('docs/release-requests/pr-48.json')
+REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
+            50: ('codex/music-followups', '0.11.2')}
+
+
+def request_path(env):
+    matches = [number for number, (branch, _) in REQUESTS.items() if env['GITHUB_REF'] == 'refs/heads/' + branch]
+    assert len(matches) == 1, 'No explicit owner release request for this branch'
+    return Path(f'docs/release-requests/pr-{matches[0]}.json')
 
 
 def validate_context(request, env, event, now):
     assert request['authorization'] == 'owner_requested_latest'
     assert request['manual_acceptance'] == 'pending'
     assert request['repository'] == env['GITHUB_REPOSITORY'] == 'alcovaibe/vk-music-export'
-    assert request['branch'] == 'codex/music-library-redesign'
+    number = request['pull_request']
+    assert number in REQUESTS
+    branch, version = REQUESTS[number]
+    assert request['branch'] == branch and request['version_name'] == version
     assert env['GITHUB_REF'] == 'refs/heads/' + request['branch']
     assert env['GITHUB_EVENT_NAME'] == 'push'
-    assert '[publish-pr-48]' in event['head_commit']['message']
-    assert request['pull_request'] == 48 and request['version_name'] == '0.11.0'
+    assert f'[publish-pr-{number}]' in event['head_commit']['message']
     assert now <= dt.datetime.fromisoformat(request['expires_at'].replace('Z', '+00:00'))
     assert re.fullmatch(r'[0-9a-f]{40}', env['GITHUB_SHA'])
     return request
 
 
-def validate_assets(info, release, apk, latest):
-    assert info['versionName'] == '0.11.0' and info['applicationId'] == 'app.alcovaibe.vkmusicexport'
+def validate_assets(info, release, apk, latest, version_name='0.11.0'):
+    assert info['versionName'] == version_name and info['applicationId'] == 'app.alcovaibe.vkmusicexport'
     assert info['minSdk'] == 36 and info['versionCode'] > 1236
     assert info['tag'] == f"v{info['versionName']}-build.{info['versionCode']}"
     assert release['target_commitish'] == info['commit']
@@ -53,15 +62,15 @@ def api(endpoint, method='GET', payload=None):
 
 
 def main(promote):
-    request = json.loads(REQUEST.read_text())
+    request = json.loads(request_path(os.environ).read_text())
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
     validate_context(request, os.environ, event, dt.datetime.now(dt.timezone.utc))
     for path, expected in request['build_inputs'].items():
         assert re.fullmatch(r'[0-9a-f]{40}', expected)
         actual = subprocess.check_output(['git', 'rev-parse', 'HEAD:' + path], text=True).strip()
         assert actual == expected, f'Owner request covers different build inputs: {path}'
-    assert 'versionName=0.11.0\n' in Path('version.properties').read_text()
-    print('PASS: exact owner-requested PR #48 build inputs; real-device acceptance remains pending.')
+    assert f"versionName={request['version_name']}\n" in Path('version.properties').read_text()
+    print(f"PASS: exact owner-requested PR #{request['pull_request']} build inputs; real-device acceptance remains pending.")
     if not promote:
         return
     info = json.loads(Path('release-output/build-info.json').read_text())
@@ -79,12 +88,12 @@ def main(promote):
     stable_tag = info['tag']; rc_tag = stable_tag + '-rc'
     release = api(repo + '/releases/tags/' + rc_tag)
     latest = api(repo + '/releases/latest')
-    digest = validate_assets(info, release, apk, latest)
+    digest = validate_assets(info, release, apk, latest, request['version_name'])
     assert digest + '  ' + info['apk'] in Path('release-output/SHA256SUMS.txt').read_text()
     api(repo + '/git/refs', 'POST', {'ref': 'refs/tags/' + stable_tag, 'sha': info['commit']})
     notes = release['body'].replace(' · rc', ' · stable').replace(
         'Для RC ручная приёмка реального аккаунта и фоновой работы ещё обязательна перед stable.',
-        'Ручная приёмка на реальном устройстве пока не подтверждена; публикация выполнена по явному решению владельца из PR #48.')
+        f"Ручная приёмка на реальном устройстве пока не подтверждена; публикация выполнена по явному решению владельца из PR #{request['pull_request']}.")
     updated = api(repo + '/releases/' + str(release['id']), 'PATCH', {
         'tag_name': stable_tag, 'target_commitish': info['commit'], 'prerelease': False, 'draft': False,
         'name': f"VK Music Export {info['versionName']} · {info['versionCode']}", 'body': notes, 'make_latest': 'true'})
