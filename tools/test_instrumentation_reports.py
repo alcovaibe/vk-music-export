@@ -24,12 +24,12 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MediaFinalizationDeviceTest" name="finalization{i}"/>' for i in range(4))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.DownloadContinuityDeviceTest" name="continuity{i}"/>' for i in range(4))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.LargeAudioAndReuseDeviceTest" name="reuse{i}"/>' for i in range(10))
-        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest" name="metadata{i}"/>' for i in range(5))
-        cases += '<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest" name="metadataUi"/>'
-        return f'<testsuites tests="107" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest" name="metadata{i}"/>' for i in range(6))
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest" name="metadataUi{i}"/>' for i in range(2))
+        return f'<testsuites tests="109" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 107)
+        self.assertEqual(self.check([self.successful_report()], '0'), 109)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

@@ -35,6 +35,7 @@ internal object MusicCredentialCodec {
     }
     fun encode(a: MusicAccess): String=buildJsonObject {
         put("token",a.token);put("agent",a.agent);put("credential_id",a.credentialId)
+        put("read_session_id",a.readSessionId)
         a.accountId?.let{put("account_id",it)}
         a.expiresAtMs?.let{put("expires_at_ms",it)};a.lastVerifiedAtMs?.let{put("verified_at_ms",it)}
         put("renewal_blocked",a.renewalBlocked);put("access_rejected",a.rejected)
@@ -56,10 +57,15 @@ internal object MusicCredentialCodec {
                 cookies.sumOf{c->c.length}<=20000,MusicError.STORAGE)
             WebRenewal(parent,owner,cookies)
         }
+        val credentialId=o["credential_id"]?.jsonPrimitive?.content?:"legacy"
+        val readSessionId=o["read_session_id"]?.let {
+            val p=it as? JsonPrimitive;musicCheck(p?.isString==true,MusicError.STORAGE);p!!.content
+        }?:credentialId
+        musicCheck(readSessionId.length in 1..128&&readSessionId.all{it.code in 33..126},MusicError.STORAGE)
         val a=MusicAccess(o.getValue("token").jsonPrimitive.content,o.getValue("agent").jsonPrimitive.content,
             time("expires_at_ms"),grant,time("verified_at_ms"),o["renewal_blocked"]?.jsonPrimitive?.boolean?:false,
-            o["credential_id"]?.jsonPrimitive?.content?:"legacy",persisted=true,rejected=o["access_rejected"]?.jsonPrimitive?.boolean?:false,
-            accountId=time("account_id")?:grant?.owner)
+            credentialId,persisted=true,rejected=o["access_rejected"]?.jsonPrimitive?.boolean?:false,
+            accountId=time("account_id")?:grant?.owner,readSessionId=readSessionId)
         musicCheck(NativeProtocol.validAccess(a.token,a.agent),MusicError.INVALID_ACCESS)
         return a
     }
@@ -110,13 +116,13 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     private val mutable=MutableStateFlow(MusicSessionState());val state=mutable.asStateFlow()
     private var attemptedId: String?=null;private var attemptedAt=0L
     private var lastFailure: MusicFailure?=null
-    // Read-only operations may follow verified renewals, never an unrelated save/new login.
-    private val renewedReads=mutableMapOf<String,String>()
+    // A verified renewal retains the read session; a new login receives a new one.
+    // Unlike a bounded chain of old credential IDs this works across any number of short-lived tokens.
     suspend fun continueRead(supplied: MusicAccess): MusicAccess=mutex.withLock {
         val stored=withContext(io){store.read()}?:throw MusicFailure(MusicError.ACCESS)
-        if(stored.credentialId!=supplied.credentialId&&renewedReads[supplied.credentialId]!=stored.credentialId)throw MusicReadChanged()
+        if(stored.readSessionId!=supplied.readSessionId)throw MusicReadChanged()
         val current=resolve(false,null)
-        if(current.credentialId!=supplied.credentialId&&renewedReads[supplied.credentialId]!=current.credentialId)throw MusicReadChanged()
+        if(current.readSessionId!=supplied.readSessionId)throw MusicReadChanged()
         current
     }
     private fun publish(a: MusicAccess?,status: SessionStatus?=null) {
@@ -130,12 +136,15 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
         val old=withContext(io){store.read()}?:run{publish(null);throw MusicFailure(MusicError.ACCESS)}
         // Another request already refreshed the rejected token. Use that result, never refresh twice.
         if(force&&failed!=null&&old.credentialId!=failed.credentialId) {
+            if(old.readSessionId!=failed.readSessionId)throw MusicReadChanged()
             musicCheck(failed.renewal?.owner!=null&&failed.renewal.owner==old.renewal?.owner,MusicError.ACCESS)
             return resolve(false,null)
         }
         if(old.rejected){publish(old,SessionStatus.LOGIN_REQUIRED);throw MusicFailure(MusicError.ACCESS)}
         val now=wall();val expired=old.expiresAtMs?.let{it<=now}==true
-        val due=force||old.expiresAtMs?.let{it-now<=300_000}==true
+        val lifetime=old.lastVerifiedAtMs?.let{verified->old.expiresAtMs?.minus(verified)}?.takeIf{it>0}
+        val window=lifetime?.let{(it/5).coerceIn(1,300_000)}?:300_000
+        val due=force||old.expiresAtMs?.let{it-now<=window}==true
         if(!due){publish(old);return old}
         if(old.renewal==null||old.renewalBlocked){
             val value=if(force)old.withSession(rejected=true) else old
@@ -143,7 +152,8 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             publish(value,if(expired||force)SessionStatus.LOGIN_REQUIRED else null)
             if(expired||force)throw MusicFailure(MusicError.ACCESS);return old
         }
-        if(attemptedId==old.credentialId&&now>=attemptedAt&&now-attemptedAt<300_000){
+        val retryDelay=old.expiresAtMs?.let{((it-attemptedAt)/2).coerceIn(1_000,300_000)}?:300_000
+        if(attemptedId==old.credentialId&&now>=attemptedAt&&now-attemptedAt<retryDelay){
             publish(old,SessionStatus.RETRY)
             if(expired||force)throw lastFailure?:MusicFailure(MusicError.ACCESS);return old
         }
@@ -154,12 +164,9 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             musicCheck(fresh.token!=old.token||(fresh.expiresAtMs?:0)>(old.expiresAtMs?:0),MusicError.ACCESS)
             val probe=verify(fresh)
             musicCheck(probe.owner==old.renewal.owner,MusicError.ACCESS)
-            val next=fresh.withSession(verifiedAt=wall(),accountId=probe.owner)
+            val next=fresh.withSession(verifiedAt=wall(),accountId=probe.owner,readSessionId=old.readSessionId)
             currentCoroutineContext().ensureActive()
             if(!withContext(io){store.replace(old,next)})throw MusicFailure(MusicError.ACCESS)
-            renewedReads.entries.forEach{if(it.value==old.credentialId)it.setValue(next.credentialId)}
-            if(renewedReads.size>=64)renewedReads.clear()
-            renewedReads[old.credentialId]=next.credentialId
             publish(next);event("verified");return next
         }catch(e: CancellationException){publish(old);throw e}
          catch(e: Exception){
@@ -189,6 +196,7 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
         if(!supplied.persisted&&(stored==null||stored.credentialId!=supplied.credentialId))return block(supplied)
         if(stored==null)throw MusicFailure(MusicError.ACCESS)
         if(stored.credentialId!=supplied.credentialId&&stored.token!=supplied.token) {
+            if(stored.readSessionId!=supplied.readSessionId)throw MusicReadChanged()
             musicCheck(supplied.renewal?.owner!=null&&supplied.renewal.owner==stored.renewal?.owner,MusicError.ACCESS)
         }
         val access=current()

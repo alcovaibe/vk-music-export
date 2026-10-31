@@ -79,7 +79,7 @@ class MusicSessionTest {
         catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
         assertEquals(1,requests);assertEquals(0,renewals);assertSame(other,store.value)
     }
-    @Test fun transientFailureKeepsValidAccessAndUsesFiveMinuteBackoff()=runTest {
+    @Test fun transientFailureKeepsValidAccessAndDoesNotRetryInATightLoop()=runTest {
         val old=access();val store=Store(old);var calls=0;var clock=now
         val m=manager(store,{calls++;throw MusicFailure(MusicError.NETWORK)},clock={clock})
         repeat(5){assertSame(old,m.current())};assertEquals(1,calls)
@@ -126,7 +126,7 @@ class MusicSessionTest {
         val m=manager(store,{renewals++;MusicAccess("vk1.a."+"NEW_${renewals}_".repeat(12),"Client/1",clock+600_000,
             WebRenewal(parent,12,emptyList()),credentialId="renewed-$renewals",persisted=true)},clock={clock})
         assertEquals(initial.credentialId,m.continueRead(initial).credentialId)
-        repeat(3){clock+=400_000;m.current();assertEquals("renewed-${it+1}",m.continueRead(initial).credentialId)}
+        repeat(3){clock+=500_000;m.current();assertEquals("renewed-${it+1}",m.continueRead(initial).credentialId)}
         assertEquals(3,renewals);assertNotEquals(initial.credentialId,store.value!!.credentialId) // The former fixed-ID guard rejected this verified renewal.
         store.value=access(expiry=clock+600_000,id="manual-new-login")
         try{m.continueRead(initial);fail("Manual login must invalidate the old read")}
@@ -180,5 +180,33 @@ class MusicSessionTest {
         val form=request.body as FormBody;val fields=(0 until form.size).associate{form.name(it) to form.value(it)}
         assertEquals(parent,fields["access_token"]);assertEquals(WebExchangeProtocol.WEB_TOKEN_CLIENT,fields["app_id"])
         assertNull(request.header("Authorization"));assertFalse(renewed.toString().contains("SECRET"))
+    }
+    @Test fun minuteTokensRenewNearExpiryAndLongReadsSurviveMoreThan64Rotations()=runTest {
+        var clock=now;var renewals=0
+        val original=access(expiry=now+60_000).withSession(verifiedAt=now)
+        val store=Store(original)
+        val m=manager(store,{renewals++;MusicAccess("vk1.a."+"ROTATED_${renewals}_".repeat(8),"Client/1",clock+60_000,
+            WebRenewal(parent,12,emptyList()),credentialId="rotation-$renewals",persisted=true)},clock={clock})
+        repeat(20){assertEquals(original.credentialId,m.continueRead(original).credentialId)}
+        assertEquals(0,renewals)
+        repeat(80) {
+            clock+=49_000
+            val fresh=m.continueRead(original)
+            assertEquals(original.readSessionId,fresh.readSessionId)
+            repeat(5){assertEquals(fresh.credentialId,m.continueRead(original).credentialId)}
+        }
+        assertEquals(80,renewals)
+        val decoded=MusicCredentialCodec.decode(MusicCredentialCodec.encode(store.value!!))
+        assertEquals(original.readSessionId,decoded.readSessionId)
+        assertNotEquals(original.credentialId,decoded.credentialId)
+    }
+    @Test fun transientRenewalRetriesBeforeAStillValidTokenExpires()=runTest {
+        var clock=now;var calls=0
+        val original=access(expiry=now+120_000);val store=Store(original)
+        val m=manager(store,{if(++calls==1)throw MusicFailure(MusicError.NETWORK)else fresh()},clock={clock})
+        assertSame(original,m.current())
+        clock+=30_000;assertSame(original,m.current());assertEquals(1,calls)
+        clock+=30_001;assertEquals("fresh",m.current().credentialId);assertEquals(2,calls)
+        assertEquals(SessionStatus.VALID,m.state.value.status)
     }
 }

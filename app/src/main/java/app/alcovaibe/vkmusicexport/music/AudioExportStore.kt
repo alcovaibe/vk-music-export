@@ -147,6 +147,22 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         }}
     @Synchronized fun checkpoint(name: String): String?=get(name)
     @Synchronized fun checkpoint(name: String,value: String){put(name,value)}
+    @Synchronized fun metadataRun(owner: Long): TrackMetadataRun?=get("track-metadata-run:$owner")?.let {
+        json.decodeFromString<TrackMetadataRun>(it).also{run->musicCheck(run.owner==owner&&run.next in 0..run.targets.size,MusicError.STORAGE)}
+    }
+    @Synchronized fun metadataRun(run: TrackMetadataRun) {
+        musicCheck(run.owner>0&&run.next in 0..run.targets.size,MusicError.STORAGE)
+        put("track-metadata-run:${run.owner}",json.encodeToString(run))
+    }
+    @Synchronized fun metadataTarget(target: TrackMetadataTarget): PublishedAudio? {
+        existing(target.taskKey)?.takeIf{it.track.id==target.trackId}?.let{return it}
+        return readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid",arrayOf(target.trackId)).use{c->
+            while(c.moveToNext()) {
+                val row=json.decodeFromString<PublishedAudio>(c.getString(0))
+                if(row.uri==target.uri)return@use row
+            };null
+        }
+    }
     @Synchronized fun checkpoints(prefix: String): List<Pair<String,String>> = readableDatabase.rawQuery(
         "SELECT name,value FROM meta WHERE name GLOB ? ORDER BY rowid",arrayOf(prefix+"*")).use{c->buildList{
             while(c.moveToNext())add(c.getString(0) to c.getString(1))
