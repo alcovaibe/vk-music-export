@@ -38,7 +38,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var sessionMonitor: Job?=null
     private val operations=NativeOperationJournal(application)
     private val _state=MutableStateFlow(NativeMusicState())
-    val state=_state.asStateFlow()
+    private val stateScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+    private val _visibleState=MutableStateFlow(_state.value)
+    val state=_visibleState.asStateFlow()
+    private fun visibleState(own: NativeMusicState,task: MaintenanceStatus=MaintenanceRuntime.status.value)=
+        if(task.busy)own.copy(busy=true,stage=task.stage,stopping=task.phase==MaintenancePhase.STOPPING)else own
     private var maintenanceOpen: String?=null
     private val _maintenanceNavigation=MutableStateFlow(0L);val maintenanceNavigation=_maintenanceNavigation.asStateFlow()
     fun openMaintenanceNotification(stage: String) {
@@ -795,12 +799,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var operationOwner: Int?=null
     @Volatile private var generation=0
     init {
-        viewModelScope.launch {
-            MaintenanceRuntime.status.collect{task->_state.update{own->
-                if(task.busy)own.copy(busy=true,stage=task.stage,stopping=task.phase==MaintenancePhase.STOPPING)
-                else if(own.stage in MaintenanceRuntime.stages)own.copy(busy=false,stage="",stopping=false)
-                else own
-            }}
+        stateScope.launch {
+            combine(_state,MaintenanceRuntime.status){own,task->visibleState(own,task)}.collect{_visibleState.value=it}
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -1251,5 +1251,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             _artists.value=MusicArtistsState()
         }
     }
-    override fun onCleared(){if(_state.value.stage !in MaintenanceRuntime.stages)work?.cancel();super.onCleared()}
+    override fun onCleared(){
+        val pending=work
+        if(_state.value.stage !in MaintenanceRuntime.stages)pending?.cancel()
+        if(pending==null)stateScope.cancel() else pending.invokeOnCompletion {
+            // Cleanup can finish after viewModelScope is cancelled. Publish its final state before releasing observers.
+            _visibleState.value=visibleState(_state.value);stateScope.cancel()
+        }
+        super.onCleared()
+    }
 }
