@@ -32,7 +32,7 @@ class MaintenanceService: Service() {
                 // Snapshot writes happen after each completed file. A small ticker also displays the current file.
                 while(isActive&&MaintenanceRuntime.status.value.id==id) {
                     val status=MaintenanceRuntime.status.value
-                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,notification(this@MaintenanceService))
+                    runCatching{getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,notification(this@MaintenanceService))}
                     if(!status.busy){stopForeground(STOP_FOREGROUND_DETACH);stopSelfResult(startId);break}
                     delay(500)
                 }

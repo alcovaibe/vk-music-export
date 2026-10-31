@@ -15,7 +15,7 @@ internal object ArtistFailureText {
         val prefix=artist?.method?.let{"Запрос $it. "}.orEmpty()
         val detail=when(artist?.reason) {
             ArtistFailureReason.SUBSCRIPTIONS_NOT_FOUND->"Ответ ВК получен, но раздел подписок на исполнителей не найден. Раздел мог отсутствовать в ответе или иметь неподдерживаемый приложением формат. Это не подтверждённый отказ ВК в доступе. "+
-                "Прочитано страниц: ${artist.pages}, разделов: ${artist.sections}, блоков: ${artist.blocks}, записей исполнителей: ${artist.pool}."
+                "В последнем проходе прочитано страниц: ${artist.pages}, разделов: ${artist.sections}, блоков: ${artist.blocks}, записей исполнителей: ${artist.pool}."
             ArtistFailureReason.MISSING_ARTIST->"ВК передал ссылку на исполнителя в разделе подписок, но не передал его данные. Список неполный."
             ArtistFailureReason.CURSOR_LOOP->"ВК повторил уже прочитанную страницу каталога. Загрузка остановлена, чтобы не повторять запросы бесконечно."
             ArtistFailureReason.NO_PROGRESS->"Продолжение каталога не добавляет исполнителей. Полноту списка подтвердить не удалось."

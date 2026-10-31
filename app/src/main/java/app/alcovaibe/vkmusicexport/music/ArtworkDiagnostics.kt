@@ -7,7 +7,7 @@ import java.util.UUID
 @Serializable internal enum class ArtworkStep { INITIALIZE,RECOVERY,VERIFY_FILE,BACKUP,READ_TAGS,RESOLVE_COVER,FETCH_COVER,DECODE_COVER,
     WRITE_TAGS,VERIFY_TAGGED,REPLACE_FILE,VERIFY_WRITTEN,UPDATE_INDEX }
 @Serializable internal enum class ArtworkFetchReason { HTTP_STATUS,REDIRECT_LIMIT,REDIRECT_LOCATION_MISSING,REDIRECT_UNSAFE }
-internal class ArtworkFetchFailure(val httpStatus: Int,val fetchReason: ArtworkFetchReason,code: MusicError=MusicError.HTTP,val candidatesTried: Int=1): MusicFailure(code)
+internal class ArtworkFetchFailure(override val httpStatus: Int,val fetchReason: ArtworkFetchReason,code: MusicError=MusicError.HTTP,val candidatesTried: Int=1): MusicFailure(code)
 @Serializable internal enum class ArtworkSkipReason(val label: String) {
     NO_COVER("ВК не передал ссылку на обложку."),TRACK_UNAVAILABLE("ВК не вернул запись по сохранённому ID. Она могла быть удалена из твоей библиотеки.")
 }

@@ -31,7 +31,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
-    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null): AndroidViewModel(application) {
+    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null,private val maintenanceBeforeItem: suspend(String,Int)->Unit={_,_->}): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
@@ -89,7 +89,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             catch(e: CancellationException){_artists.update{it.copy(message="Загрузка подписок приостановлена. Уже полученные исполнители доступны.")};throw e}
             catch(e: Exception){active(g);Diagnostics.event("audio_artists_failure",mapOf("code" to (e as? MusicFailure)?.code?.name,
                 "vk_code" to (e as? MusicFailure)?.remoteCode,"http_status" to (e as? MusicFailure)?.httpStatus,
-                "reason" to (e as? ArtistLoadingFailure)?.reason?.name,"method" to (e as? ArtistLoadingFailure)?.method));_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
+                "reason" to (e as? ArtistLoadingFailure)?.reason?.name,"method" to (e as? ArtistLoadingFailure)?.method,
+                "pages" to (e as? ArtistLoadingFailure)?.pages,"sections" to (e as? ArtistLoadingFailure)?.sections,
+                "blocks" to (e as? ArtistLoadingFailure)?.blocks,"artist_pool" to (e as? ArtistLoadingFailure)?.pool));_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
         }
     }
     fun selectArtist(artist: MusicArtist?) {
@@ -193,7 +195,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
                             val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
                                 verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},
-                                metadataSource={store.metadataReplacement(owner,it)?.referenceId},
+                                metadataSource={store.metadataReplacement(owner,it)?.referenceId},beforeItem={maintenanceBeforeItem("track_metadata",it)},
                                 progress={snapshot,name->
                                     _trackMetadata.update{snapshot.state(it.visible,running=true).copy(name=name,message=null)}
                                     MaintenanceRuntime.checkpoint();AudioExportRuntime.refresh()
@@ -259,7 +261,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             for((index,original) in batch.rows.withIndex()) {
                                 if(index<batch.next)continue
                                 val row=store.existing(original.taskKey)?:original
-                                active(g);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
+                                active(g);maintenanceBeforeItem("artwork",index);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
                                 _artwork.update{it.copy(current="${row.track.artist} — ${row.track.displayTitle}")}
                                 _artwork.update{it.copy(issues=it.issues.filterNot{issue->issue.item==index+1})}
                                 try {
@@ -671,7 +673,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             batch.rows.forEachIndexed{index,original->
                 if(index<batch.next)return@forEachIndexed
                 val row=store.existing(original.taskKey)?:original
-                active(g)
+                active(g);maintenanceBeforeItem("saved_files_background",index)
                 var reason=shared.inspect(row).reason
                 var searchReason: SavedFileReason?=null
                 if(reason!=SavedFileReason.OK&&search) {
@@ -1009,7 +1011,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val full=fullLibrary(g,access,probe)
             active(g);_state.update{it.copy(probe=full,page=full.library)}
         }catch(e: CancellationException){throw e}
-         catch(e: Exception){active(g);_state.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
+         catch(e: Exception){active(g);_state.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
         try {
             loadCatalog(g,access,probe.owner)
             _state.update{it.copy(message="Музыкальный доступ работает. Плейлисты и альбомы показаны отдельно.")}
