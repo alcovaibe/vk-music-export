@@ -1,0 +1,30 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 53,
+  "version_name": "0.11.4",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-04T23:59:59Z",
+  "build_inputs": {
+    "app": "03f44338c4af5bba1fe9ca85ce7198a2667008c3",
+    "gradle": "c76c2cb5b79e3f5cb2fcff30c01d531049772314",
+    "config": "0b5e837d9fecfcf825e60178a576708862b20840",
+    "tools": "a1eb319be877d19ccefb397da208773c18d8c69c",
+    ".github": "a84ba138b458523f8b465a12faa1e690fd062baa",
+    "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "625c75d0e702ba89981847fae5ddab72c04bfeb7",
+    "version.properties": "26f84b26da49f5248533c639e51c7bb190e2188d",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e",
+    "CHANGELOG.md": "0e97606006a1c6df96c6d21d12ede29b66bc5208",
+    "LICENSE": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+    "NOTICE": "7e59d121ed67eb06e2003c4bb355a02482e46e91"
+  },
+  "delete_other_branches": true,
+  "branches_to_delete": {
+    "codex/background-maintenance-diagnostics": "730d8c2871d3933bbb01e412d2b0d5d58f001468"
+  },
+  "request": "Владелец явно запросил слияние PR #53 после проверок, публикацию релиза 0.11.4 и удаление всех веток кроме main. Ручная приёмка на реальном аккаунте не заявляется."
+}
