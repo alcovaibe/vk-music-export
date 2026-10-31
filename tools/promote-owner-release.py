@@ -11,7 +11,7 @@ import tempfile
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
-            52: ('main', '0.11.3')}
+            53: ('main', '0.11.4')}
 
 
 def request_path(env):
@@ -30,7 +30,7 @@ def validate_context(request, env, event, now):
     assert request['branch'] == branch and request['version_name'] == version
     assert env['GITHUB_REF'] == 'refs/heads/' + request['branch']
     assert env['GITHUB_EVENT_NAME'] == 'push'
-    marker = '[publish-main-0.11.3]' if number == 52 else f'[publish-pr-{number}]'
+    marker = '[publish-main-0.11.4]' if number == 53 else f'[publish-pr-{number}]'
     assert marker in event['head_commit']['message']
     assert now <= dt.datetime.fromisoformat(request['expires_at'].replace('Z', '+00:00'))
     assert re.fullmatch(r'[0-9a-f]{40}', env['GITHUB_SHA'])
@@ -68,7 +68,7 @@ def api(endpoint, method='GET', payload=None):
 def delete_requested_branches(request):
     if not request.get('delete_other_branches'):
         return
-    assert request['pull_request'] == 52 and request['branch'] == 'main'
+    assert request['pull_request'] == 53 and request['branch'] == 'main'
     repo = 'repos/' + request['repository']
     assert api(repo)['default_branch'] == 'main'
     expected = request['branches_to_delete']

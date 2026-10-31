@@ -24,20 +24,37 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
 
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
-    val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null)
+    val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null,val errorDetails: String?=null)
 internal data class SavedLibraryEntry(val file: PublishedAudio,val present: Boolean)
 
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
-    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer()): AndroidViewModel(application) {
+    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null,private val maintenanceBeforeItem: suspend(String,Int)->Unit={_,_->}): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
     private var sessionMonitor: Job?=null
     private val operations=NativeOperationJournal(application)
-    private val _state=MutableStateFlow(NativeMusicState());val state=_state.asStateFlow()
+    private val _state=MutableStateFlow(NativeMusicState())
+    private val stateScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+    private val _visibleState=MutableStateFlow(_state.value)
+    val state=_visibleState.asStateFlow()
+    private fun visibleState(own: NativeMusicState,task: MaintenanceStatus=MaintenanceRuntime.status.value)=
+        if(task.busy)own.copy(busy=true,stage=task.stage,stopping=task.phase==MaintenancePhase.STOPPING)else own
+    private var maintenanceOpen: String?=null
+    private val _maintenanceNavigation=MutableStateFlow(0L);val maintenanceNavigation=_maintenanceNavigation.asStateFlow()
+    fun openMaintenanceNotification(stage: String) {
+        if(stage !in MaintenanceRuntime.stages)return
+        if(!_state.value.initialized){maintenanceOpen=stage;return}
+        _maintenanceNavigation.update{it+1}
+        when(stage){
+            "track_metadata"->{_trackMetadata.update{it.copy(visible=true)};if(!MaintenanceRuntime.busy)showTrackMetadata()}
+            "artwork"->_artwork.update{it.copy(visible=true)}
+            else->_savedFiles.update{it.copy(visible=true)}
+        }
+    }
     private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
     private val _artists=MutableStateFlow(MusicArtistsState());val artists=_artists.asStateFlow()
     private val _savedLibrary=MutableStateFlow<List<SavedLibraryEntry>>(emptyList());val savedLibrary=_savedLibrary.asStateFlow()
@@ -72,9 +89,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 }};active(g)
                 if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
                 _artists.value=MusicArtistsState(owner,true,rows.distinctBy{it.id})
-            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,message="ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.")}}
+            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.")}}
             catch(e: CancellationException){_artists.update{it.copy(message="Загрузка подписок приостановлена. Уже полученные исполнители доступны.")};throw e}
-            catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            catch(e: Exception){active(g);Diagnostics.event("audio_artists_failure",mapOf("code" to (e as? MusicFailure)?.code?.name,
+                "vk_code" to (e as? MusicFailure)?.remoteCode,"http_status" to (e as? MusicFailure)?.httpStatus,
+                "reason" to (e as? ArtistLoadingFailure)?.reason?.name,"method" to (e as? ArtistLoadingFailure)?.method,
+                "pages" to (e as? ArtistLoadingFailure)?.pages,"sections" to (e as? ArtistLoadingFailure)?.sections,
+                "blocks" to (e as? ArtistLoadingFailure)?.blocks,"artist_pool" to (e as? ArtistLoadingFailure)?.pool));_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
         }
     }
     fun selectArtist(artist: MusicArtist?) {
@@ -90,12 +111,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 val details=withTimeout(artistTimeoutMs){api.artistDetails(a,artist)};active(g)
                 if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
                 _artists.update{it.copy(details=details)}
-            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}
-            catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}
+            catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
         }
     }
     fun backFromArtist() {
-        if(_state.value.busy)cancel()
+        if(_state.value.busy&&_state.value.stage !in MaintenanceRuntime.stages)cancel()
         _artists.update{if(it.album!=null)it.copy(album=null,albumTracks=null,error=null,message=null)else it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null)}
     }
     fun selectArtistAlbum(album: NativePlaylist?) {
@@ -110,8 +131,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 musicCheck(a.accountId==null||a.accountId==s.owner,MusicError.ACCOUNT_CHANGED)
                 val page=withTimeout(artistTimeoutMs){MusicPagination.tracks({offset->active(g);api.playlistPage(sessions?.continueRead(a)?:a,album,offset)})}
                 active(g);_artists.update{it.copy(albumTracks=page)}
-            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}
-            catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}
+            catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
         }
     }
     private val _queueAccount=MutableStateFlow<Long?>(null);val queueAccount=_queueAccount.asStateFlow()
@@ -134,8 +155,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _downloadsOpen.value=true
         AudioExportRuntime.start(getApplication(),retry)
     }
-    private val _artwork=MutableStateFlow(ArtworkState());val artwork=_artwork.asStateFlow()
-    private val _trackMetadata=MutableStateFlow(TrackMetadataState());val trackMetadata=_trackMetadata.asStateFlow()
+    private val _artwork=MaintenanceRuntime.artwork;val artwork=_artwork.asStateFlow()
+    private val _trackMetadata=MaintenanceRuntime.metadata;val trackMetadata=_trackMetadata.asStateFlow()
     fun showTrackMetadata() {
         if(!_state.value.initialized||_state.value.busy)return
         _trackMetadata.update{it.copy(visible=true)}
@@ -154,7 +175,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             _trackMetadata.update{it.copy(running=true,message=null)}
             try {
                 withContext(Dispatchers.IO) {
-                    AudioExportRuntime.editSaved(getApplication()) {
+                    AudioExportRuntime.editSaved(getApplication(),maintenance=true) {
                         AudioExportStore(getApplication()).use{store->
                             val shared=SharedAudioStore(getApplication())
                             vault.read()?.accountId?.let{owner->store.metadataRun(owner)}?.let{saved->
@@ -178,10 +199,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
                             val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
                                 verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},
-                                metadataSource={store.metadataReplacement(owner,it)?.referenceId},
+                                metadataSource={store.metadataReplacement(owner,it)?.referenceId},beforeItem={maintenanceBeforeItem("track_metadata",it)},
                                 progress={snapshot,name->
                                     _trackMetadata.update{snapshot.state(it.visible,running=true).copy(name=name,message=null)}
-                                    AudioExportRuntime.refresh()
+                                    MaintenanceRuntime.checkpoint();AudioExportRuntime.refresh()
                                 })
                             try {
                                 val result=batch.run(pending)
@@ -197,6 +218,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 }
             }catch(e: CancellationException){_trackMetadata.update{it.copy(message="Проверка приостановлена. Нажми «Продолжить», чтобы вернуться к необработанной записи.")};throw e}
              catch(e: Exception) {
+                MaintenanceRuntime.markPaused()
                 val code=(e as? MusicFailure)?.code
                 _trackMetadata.update{it.copy(message=when {
                     e is MusicReadChanged->"Доступ ВК изменился. Сохранённую проверку можно продолжить после входа в тот же аккаунт."
@@ -217,24 +239,39 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("artwork"){g->
             val diagnostic=ArtworkDiagnostics{type,fields->Diagnostics.event(type,fields)}
             var outcome="STOPPED"
-            _artwork.value=ArtworkState(visible=true,running=true)
+            if(MaintenanceRuntime.isResuming("artwork"))_artwork.update{it.copy(visible=true,running=true,message=null,current=null)}
+            else _artwork.value=ArtworkState(visible=true,running=true)
             try {
                 withContext(Dispatchers.IO) {
-                    AudioExportRuntime.editSaved(getApplication()) {
+                    AudioExportRuntime.editSaved(getApplication(),maintenance=true) {
                         AudioExportStore(getApplication()).use{store->
                             val shared=SharedAudioStore(getApplication())
-                            val repair=ArtworkRepair(getApplication(),store,shared,onStep={diagnostic.step=it})
+                            var lease: MusicAccess?=null
+                            suspend fun checkedAccess(): MusicAccess {
+                                active(g)
+                                val first=lease?:throw MusicFailure(MusicError.ACCESS)
+                                return (sessions?.continueRead(first)?:access().also{musicCheck(it.credentialId==first.credentialId,MusicError.ACCESS)}).also{active(g)}
+                            }
+                            val repair=ArtworkRepair(getApplication(),store,shared,onStep={diagnostic.step=it},beforeWrite={checkedAccess();Unit})
                             diagnostic.step=ArtworkStep.RECOVERY;repair.recover()
                             val saved=store.savedFiles()
                             val ready=saved.filter{it.coverEmbedded}.map{it.uri}.toSet()
                             val files=saved.filter{it.uri !in ready}.distinctBy{it.uri}
-                            _artwork.update{it.copy(total=files.size,readySkipped=ready.size)}
+                            if(files.isNotEmpty())lease=sessions?.current()?:access()
+                            val batch=MaintenanceRuntime.batch("artwork",lease?.accountId?:0,files)
+                            if(batch.resumed)_artwork.update{it.copy(total=batch.rows.size)}
+                            else _artwork.value=ArtworkState(visible=_artwork.value.visible,running=true,total=batch.rows.size,readySkipped=ready.size)
+                            MaintenanceRuntime.checkpoint()
                             val source=ArtworkLoader(api,onAttempt=diagnostic::candidate,onStep={diagnostic.step=it})
-                            for((index,row) in files.withIndex()) {
-                                active(g);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
+                            for((index,original) in batch.rows.withIndex()) {
+                                if(index<batch.next)continue
+                                val row=store.existing(original.taskKey)?:original
+                                active(g);maintenanceBeforeItem("artwork",index);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
                                 _artwork.update{it.copy(current="${row.track.artist} — ${row.track.displayTitle}")}
+                                _artwork.update{it.copy(issues=it.issues.filterNot{issue->issue.item==index+1})}
                                 try {
-                                    val changed=repair.add(row,source){sessions?.current()?:access()}
+                                    musicCheck(row.uri==original.uri&&row.track.id==original.track.id,MusicError.INCOMPLETE)
+                                    val changed=repair.add(row,source,::checkedAccess)
                                     val marked=store.existing(row.taskKey)?.coverEmbedded==true
                                     _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.displayTitle,ArtworkSkipReason.NO_COVER))}}
                                     diagnostic.result(if(changed)"ADDED" else if(marked)"EXISTING" else "NO_COVER")
@@ -252,17 +289,17 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                                         _artwork.update{it.copy(failed=it.failed+1)}
                                     }
                                 }
-                                _artwork.update{it.copy(processed=it.processed+1)}
-                                AudioExportRuntime.refresh()
+                                _artwork.update{it.copy(processed=index+1)}
+                                MaintenanceRuntime.advance(index+1);AudioExportRuntime.refresh()
                             }
                         }
                     }
                 }
                 active(g);outcome="COMPLETED"
                 _artwork.update{it.copy(message="Обработка завершена. Музыка повторно не скачивалась.")}
-            }catch(e: CancellationException){outcome="INTERRUPTED";_artwork.update{it.copy(message="Обработка прервана. Оставь музыкальный экран открытым для продолжения. Готовые обложки будут пропущены.")};throw e}
-             catch(e: Exception){diagnostic.result("STOPPED",e);_artwork.update{it.copy(message="Обработка остановлена (${(e as? MusicFailure)?.code?.name?:"STORAGE"}). Уже готовые файлы сохранены; при незавершённой записи резервная копия остаётся до восстановления.")}}
-            finally{_artwork.update{it.copy(running=false,current=null)};diagnostic.summary(outcome,_artwork.value)}
+            }catch(e: CancellationException){outcome="INTERRUPTED";_artwork.update{it.copy(message="Обработка прервана. Продолжи обработку из приложения. Готовые обложки и прогресс сохранены.")};throw e}
+             catch(e: Exception){MaintenanceRuntime.markPaused();diagnostic.result("STOPPED",e);_artwork.update{it.copy(message="Обработка остановлена (${(e as? MusicFailure)?.code?.name?:"STORAGE"}). Уже готовые файлы сохранены; при незавершённой записи резервная копия остаётся до восстановления.")}}
+            finally{_artwork.update{it.copy(running=false,current=null,resumable=MaintenanceRuntime.isResuming("artwork"))};diagnostic.summary(outcome,_artwork.value)}
         }
     }
     private val _metadataLookup=MutableStateFlow(MetadataLookupState());val metadataLookup=_metadataLookup.asStateFlow()
@@ -602,7 +639,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             finally{_availability.update{it.copy(running=false)}}
         }
     }
-    private val _savedFiles=MutableStateFlow(SavedFilesState());val savedFiles=_savedFiles.asStateFlow()
+    private val _savedFiles=MaintenanceRuntime.files;val savedFiles=_savedFiles.asStateFlow()
     fun showSavedFiles(){if(_state.value.initialized&&!_state.value.busy)_savedFiles.update{it.copy(visible=true)}}
     fun dismissSavedFiles(){_savedFiles.update{it.copy(visible=false)}}
     fun selectSavedFile(row: PublishedAudio){if(!_state.value.busy)_savedFiles.update{it.copy(selecting=row)}}
@@ -612,11 +649,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _savedFiles.update{it.copy(preview=null,forget=null,selecting=null)}
     }
     fun requestForgetFile(row: PublishedAudio){if(!_state.value.busy)_savedFiles.update{it.copy(forget=row)}}
-    private fun savedFileWork(block: suspend(Int,AudioExportStore,SharedAudioStore,SavedFileRecovery)->Unit) {
-        run("saved_files"){g->
+    private fun savedFileWork(background: Boolean=false,block: suspend(Int,AudioExportStore,SharedAudioStore,SavedFileRecovery)->Unit) {
+        run(if(background)"saved_files_background" else "saved_files"){g->
             _savedFiles.update{it.copy(running=true,message=null)}
             try {
-                withContext(Dispatchers.IO){AudioExportRuntime.editSaved(getApplication()){
+                withContext(Dispatchers.IO){AudioExportRuntime.editSaved(getApplication(),maintenance=background){
                     AudioExportStore(getApplication()).use{store->
                         val shared=SharedAudioStore(getApplication());val recovery=SavedFileRecovery(getApplication(),store,shared)
                         ArtworkRepair(getApplication(),store,shared).recover();recovery.recover()
@@ -626,18 +663,22 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 }}
             }catch(e: CancellationException){_savedFiles.update{it.copy(message="Проверка прервана. Восстановленные связи сохранены.")};throw e}
              catch(e: Exception){
+                if(background)MaintenanceRuntime.markPaused()
                 val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
                 _savedFiles.update{it.copy(message=(e as? SavedFileFailure)?.reason?.label?:code.label)}
                 Diagnostics.event("audio_file_recovery",mapOf("outcome" to "FAILED","code" to code.name,"file_reason" to (e as? SavedFileFailure)?.reason?.name))
-            }finally{_savedFiles.update{it.copy(running=false)}}
+            }finally{_savedFiles.update{it.copy(running=false,resumable=MaintenanceRuntime.isResuming("saved_files_background"))}}
         }
     }
-    fun checkSavedFiles(search: Boolean=false) {
-        savedFileWork{g,store,shared,recovery->
-            val rows=store.savedFiles().distinctBy{it.uri};var restored=0
-            _savedFiles.update{it.copy(processed=0,total=rows.size,problems=emptyList(),preview=null,forget=null,restored=0)}
-            rows.forEachIndexed{index,row->
-                active(g)
+    fun checkSavedFiles(search: Boolean=MaintenanceRuntime.savedSearch()) {
+        savedFileWork(background=true){g,store,shared,recovery->
+            val batch=MaintenanceRuntime.batch("saved_files_background",0,store.savedFiles().distinctBy{it.uri},search)
+            var restored=if(batch.resumed)_savedFiles.value.restored else 0
+            if(!batch.resumed)_savedFiles.update{it.copy(processed=0,total=batch.rows.size,problems=emptyList(),preview=null,forget=null,restored=0)}
+            batch.rows.forEachIndexed{index,original->
+                if(index<batch.next)return@forEachIndexed
+                val row=store.existing(original.taskKey)?:original
+                active(g);maintenanceBeforeItem("saved_files_background",index)
                 var reason=shared.inspect(row).reason
                 var searchReason: SavedFileReason?=null
                 if(reason!=SavedFileReason.OK&&search) {
@@ -647,6 +688,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 Diagnostics.event("audio_file_check",mapOf("item" to index+1,"reason" to reason.name,"search_reason" to searchReason?.name,"search" to search))
                 _savedFiles.update{it.copy(processed=index+1,restored=restored,
                     problems=if(reason==SavedFileReason.OK)it.problems else it.problems+SavedFileProblem(row,reason,searchReason))}
+                MaintenanceRuntime.advance(index+1)
             }
             _savedFiles.update{it.copy(message="Проверка завершена. Файлы не изменялись.")}
         }
@@ -757,6 +799,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var operationOwner: Int?=null
     @Volatile private var generation=0
     init {
+        stateScope.launch {
+            combine(_state,MaintenanceRuntime.status){own,task->visibleState(own,task)}.collect{_visibleState.value=it}
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val removed=LegacyAudioCleanup(application).run()
@@ -773,6 +818,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         viewModelScope.launch {
             try {
                 val loaded=withContext(Dispatchers.IO){
+                    MaintenanceRuntime.initialize(application)
                     DuplicateCheckRuntime.initialize(application)
                     val interrupted=if(NativeMusicGate.mutex.tryLock())try{operations.recover()}finally{NativeMusicGate.mutex.unlock()}else false
                     val access=runCatching{vault.read()}
@@ -782,10 +828,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     accessDamaged=loaded.third,
                     message=if(loaded.third)"Сохранённый доступ не удалось прочитать. Подключи ВК заново или удали только данные доступа. Музыка и очередь сохранены."
                         else if(loaded.second)"Предыдущая операция прервана. Готовые файлы сохранены; проверку можно повторить." else null)
+                maintenanceOpen?.let{maintenanceOpen=null;openMaintenanceNotification(it)}
             }catch(_: Exception){_state.value=NativeMusicState(initialized=true,error=MusicError.STORAGE)}
         }
     }
     private fun run(stage: String,block: suspend (Int)->Unit) {
+        if(MaintenanceRuntime.busy){_state.update{it.copy(error=MusicError.BUSY)};return}
+        val maintenance=stage in MaintenanceRuntime.stages
         if(DuplicateCheckRuntime.transferring&&stage!="duplicates_delete"){
             _state.update{it.copy(error=MusicError.BUSY)};return
         }
@@ -809,9 +858,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             authPhase=if(stage=="browser_auth")DeviceAuthPhase.PREPARING else null)}
         Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "start"))
         if(stage=="browser_auth")Diagnostics.event("native_auth_phase",mapOf("phase" to DeviceAuthPhase.PREPARING.name))
-        work=viewModelScope.launch(start=CoroutineStart.UNDISPATCHED) {
+        val operation: suspend()->Unit={
             var outcome="failed"
             try {
+                if(maintenance)MaintenanceRuntime.awaitAdmission()
                 // An old Activity/operation may still be finishing its non-cancellable cleanup.
                 // Wait for that owner instead of failing the user's next attempt with BUSY.
                 NativeMusicGate.mutex.withLock {
@@ -833,6 +883,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 }
              }
              catch(e: Exception){
+                if(maintenance)MaintenanceRuntime.markPaused()
                 if(g==generation) {
                     val error=(e as? MusicFailure)?.code?:MusicError.STORAGE
                     _state.update{it.copy(error=error,authPhase=if(stage=="browser_auth")DeviceAuthPhase.FAILED else it.authPhase,
@@ -845,6 +896,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 // Cancellation can happen while waiting for the shared gate, before block() starts.
                 if(duplicateRunId!=null)_duplicates.update{if(it.scanId==duplicateRunId&&it.busy)
                     it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message="Проверка прервана до завершения. Готовые проверки сохранены; поиск можно продолжить.") else it}
+                if(maintenance||stage in setOf("metadata_lookup_apply","cover_lookup_apply","saved_files"))withContext(NonCancellable+Dispatchers.IO){runCatching{MaintenanceRuntime.checkpoint()}}
                 if(operationOwner==g){
                     operationOwner=null;work=null
                     authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
@@ -854,6 +906,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 }
             }
         }
+        work=if(maintenance)MaintenanceRuntime.launch(getApplication(),stage,id,maintenanceLauncher,operation)
+            else viewModelScope.launch(start=CoroutineStart.UNDISPATCHED){operation()}
     }
     private suspend fun active(g: Int){currentCoroutineContext().ensureActive();if(g!=generation)throw CancellationException()}
     private suspend fun access(): MusicAccess=withContext(Dispatchers.IO){vault.read()?:throw MusicFailure(MusicError.ACCESS)}
@@ -1168,15 +1222,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
              catch(_: Exception){_state.update{it.copy(error=MusicError.STORAGE)}}
         }
     }
-    fun cancel()=stop("native_stop_button")
-    fun stopForWindow(){_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();stop("native_window_closed")}
+    fun cancel(){if(MaintenanceRuntime.busy)MaintenanceRuntime.pause()else stop("native_stop_button")}
+    fun stopForWindow(){_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();if(_state.value.stage !in MaintenanceRuntime.stages)stop("native_window_closed")}
     fun stopInBackground() {
         _metadataLookup.value=MetadataLookupState()
         _artworkLookup.value=ArtworkLookupState()
         _duplicates.update{it.copy(consent=null)}
         setForeground(false)
         // Every browser-auth phase survives Chrome, including code validation and music verification.
-        if(_state.value.stage=="browser_auth")return
+        if(_state.value.stage=="browser_auth"||_state.value.stage in MaintenanceRuntime.stages)return
         stop("activity_onStop")
     }
     private fun stop(detector: String) {
@@ -1197,5 +1251,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             _artists.value=MusicArtistsState()
         }
     }
-    override fun onCleared(){work?.cancel();super.onCleared()}
+    override fun onCleared(){
+        val pending=work
+        if(_state.value.stage !in MaintenanceRuntime.stages)pending?.cancel()
+        if(pending==null)stateScope.cancel() else pending.invokeOnCompletion {
+            // Cleanup can finish after viewModelScope is cancelled. Publish its final state before releasing observers.
+            _visibleState.value=visibleState(_state.value);stateScope.cancel()
+        }
+        super.onCleared()
+    }
 }

@@ -151,7 +151,7 @@ class ArtworkLookupViewModelDeviceTest {
             withContext(Dispatchers.IO){MusicAccessStore(app).save(lookupAccess)}
             inst.runOnMainSync{model=ViewModelProvider(holder,object: ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=
-                    NativeMusicViewModel(app,lookupApi(match),lookupImages={ArtworkSource{_,_->lookupImage()}}) as T
+                    NativeMusicViewModel(app,lookupApi(match),maintenanceLauncher={},lookupImages={ArtworkSource{_,_->lookupImage()}}) as T
             })[NativeMusicViewModel::class.java]}
             await{model.state.value.initialized}
             inst.runOnMainSync{model.setForeground(true);model.showArtwork();model.addSavedArtwork()}

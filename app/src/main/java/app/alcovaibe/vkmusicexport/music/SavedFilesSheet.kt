@@ -52,7 +52,7 @@ internal fun SavedFilesSheet(state: SavedFilesState,onCheck: ()->Unit,onSearch: 
                 }else {
                     item {Text("Проверяем только файлы из учёта приложения. Автопоиск ищет единственное совпадение размера и SHA-256 среди доступных файлов приложения в Music. Название не используется для сопоставления.",style=MaterialTheme.typography.bodySmall)}
                     item {
-                        OutlinedButton(onClick=onCheck,enabled=!state.running,modifier=Modifier.testTag("check_saved_files")){Text("Проверить файлы")}
+                        OutlinedButton(onClick=onCheck,enabled=!state.running,modifier=Modifier.testTag("check_saved_files")){Text(if(state.resumable)"Продолжить проверку" else "Проверить файлы")}
                         if(state.problems.isNotEmpty())Button(onClick=onSearch,enabled=!state.running,modifier=Modifier.testTag("search_saved_files")){Text("Найти автоматически")}
                         Text("Файлов восстановлено: ${state.restored} · требуют внимания: ${state.problems.size}")
                     }

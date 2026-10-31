@@ -89,6 +89,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
     var notifications by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
+    fun startMaintenance(action: ()->Unit) {
+        if(!notifications)notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        action()
+    }
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
@@ -98,6 +102,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var ascending by rememberSaveable {mutableStateOf(false)}
     var configure by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
+    val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
+    LaunchedEffect(maintenanceNavigation) {
+        if(maintenanceNavigation>0){aboutOpen=false;accessOpen=false;configure=false;toolsOpen=false;destination=MusicDestination.SAVED}
+    }
     if(aboutOpen) {
         app.alcovaibe.vkmusicexport.AboutAppPage(onBack={aboutOpen=false})
         return
@@ -114,7 +122,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val localFiles by model.savedLibrary.collectAsState()
     val localError by model.savedLibraryError.collectAsState()
     LaunchedEffect(state.initialized,state.busy,queue.done,queue.status) {if(state.initialized&&!state.busy)model.refreshSavedLibrary()}
-    LaunchedEffect(state.initialized) {if(state.initialized&&state.configured&&state.probe==null&&!state.busy)model.openMusic()}
+    LaunchedEffect(state.initialized,state.busy) {if(state.initialized&&state.configured&&state.probe==null&&!state.busy)model.openMusic()}
     LaunchedEffect(state.stage) {if(state.stage=="browser_auth")accessOpen=true}
     val savedById=remember(localFiles,state.probe?.owner){localFiles.filter{it.present&&it.file.source?.account==state.probe?.owner}.associateBy{it.file.track.id}}
     fun openFile(row: PublishedAudio) {
@@ -210,9 +218,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         onBack=::back,showBack=state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null,
         menuItems={closeMenu->
-            DropdownMenuItem(text={Text("Доступ к музыке")},modifier=Modifier.testTag("open_music_access"),onClick={closeMenu();accessOpen=true})
             DropdownMenuItem(text={Text("Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck,onClick={closeMenu();model.checkAccess()})
-            DropdownMenuItem(text={Text("Инструменты сохранённых файлов")},onClick={closeMenu();destination=MusicDestination.SAVED})
             DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();onUpdates()})
             HorizontalDivider()
         }) {
@@ -259,10 +265,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 LibraryCategory.PLAYLISTS to state.catalog?.let{MusicCatalog.visible(state,CatalogSection.PLAYLISTS).size},
                 LibraryCategory.ALBUMS to state.catalog?.let{MusicCatalog.visible(state,CatalogSection.ALBUMS).size},
                 LibraryCategory.ARTISTS to artists.takeIf{it.loaded}?.artists?.size),!state.busy&&!backgroundCheck,::choose)}
-            if(!notifications)item("notifications") {TextButton(onClick={notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}}
+            if(!notifications)item("notifications") {TextButton(onClick={notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления процессов")}}
             if(state.busy)item("busy") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(if(state.stopping)"Завершаем операцию…" else state.preparing?:when(state.stage){"artists"->"Загружаем подписки на исполнителей…";"artist_details"->"Загружаем музыку исполнителя…";else->"Обновляем библиотеку…"},style=MaterialTheme.typography.bodySmall)
+                Text(if(state.stopping)"Завершаем операцию…" else state.preparing?:when(state.stage){"artists"->"Загружаем подписки на исполнителей…";"artist_details"->"Загружаем музыку исполнителя…";"track_metadata"->"Обновляем названия и пометки в фоне…";"artwork"->"Добавляем обложки в фоне…";"saved_files_background"->"Проверяем сохранённые файлы в фоне…";else->"Обновляем библиотеку…"},style=MaterialTheme.typography.bodySmall)
                 TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
             }}
             state.error?.let{error->item("error"){Text("${error.label} Код: ${error.name}",color=MaterialTheme.colorScheme.error)}}
@@ -279,7 +285,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     artists.message?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
                     if(!state.busy&&!artists.loaded&&artists.artists.isNotEmpty())Text("Получено: ${artists.artists.size}. Список загружен не полностью.",style=MaterialTheme.typography.bodySmall)
                     artists.error?.let{error->
-                        Text(if(error==MusicError.METHOD||error==MusicError.DENIED)"ВК не предоставил этот музыкальный раздел текущему подключению." else if(error==MusicError.TIMEOUT)"Истекло время ожидания ВК." else error.label,color=MaterialTheme.colorScheme.error)
+                        Text(artists.errorDetails?:if(error==MusicError.TIMEOUT)"Загрузка остановлена по времени ожидания. ВК не завершил ответ за 45 секунд. Код приложения: TIMEOUT." else error.label,Modifier.testTag("artists_error_reason"),color=MaterialTheme.colorScheme.error)
                         if(artists.selected!=null)TextButton(enabled=!state.busy,onClick={val album=artists.album;if(album!=null)model.selectArtistAlbum(album)else model.selectArtist(artists.selected)}){Text("Повторить загрузку")}
                     }
                 }}
@@ -362,12 +368,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         model::cancelDuplicateRemoval,model::skipDuplicate,model::pauseDuplicateCheck,model::dismissDuplicates)
     if(availability.visible)AvailabilitySheet(availability,model::checkUnavailableTracks,model::cancel,model::dismissAvailability)
     LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
-    if(savedFiles.visible)SavedFilesSheet(savedFiles,{model.checkSavedFiles()},{model.checkSavedFiles(true)},
+    if(savedFiles.visible)SavedFilesSheet(savedFiles,{startMaintenance{model.checkSavedFiles()}},{startMaintenance{model.checkSavedFiles(true)}},
         onSelect={row->model.selectSavedFile(row);savedFilePicker.launch(arrayOf("audio/*"))},
         onConfirm=model::confirmSavedFile,onForget=model::requestForgetFile,onConfirmForget=model::confirmForgetFile,
         onBack=model::backSavedFiles,onStop=model::cancel,onDismiss=model::dismissSavedFiles)
-    if(artwork.visible&&!lookup.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork,model::showArtworkLookup)
-    if(trackMetadata.visible&&!metadataLookup.visible)TrackMetadataSheet(trackMetadata,model::updateSavedTrackMetadata,model::cancel,model::dismissTrackMetadata,model::showMetadataLookup)
+    if(artwork.visible&&!lookup.visible)ArtworkSheet(artwork,{startMaintenance{model.addSavedArtwork()}},model::cancel,model::dismissArtwork,model::showArtworkLookup)
+    if(trackMetadata.visible&&!metadataLookup.visible)TrackMetadataSheet(trackMetadata,{startMaintenance{model.updateSavedTrackMetadata()}},model::cancel,model::dismissTrackMetadata,model::showMetadataLookup)
     if(metadataLookup.visible)TrackMetadataLookupSheet(metadataLookup,model::metadataLookupQuery,model::findMetadataReplacement,model::previewMetadataReplacement,
         model::confirmMetadataReplacement,model::backMetadataReplacement,model::cancel,model::dismissMetadataLookup)
     if(lookup.visible)ArtworkLookupSheet(lookup,model::artworkLookupQuery,model::findArtworkReplacement,model::previewArtworkReplacement,

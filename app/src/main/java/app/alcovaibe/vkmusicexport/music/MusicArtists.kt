@@ -76,15 +76,15 @@ internal object MusicArtists {
         val pool=mutableMapOf<String,JsonObject>();val listPool=mutableMapOf<String,JsonObject>()
         val pending=java.util.ArrayDeque<Triple<JsonObject,Boolean,Boolean>>();pending.add(Triple(initial,false,false))
         val targets=java.util.ArrayDeque<Target>();val visited=mutableSetOf<Target>()
-        var recognized=!subscriptions;var pages=0;var stalled=0
+        var recognized=!subscriptions;var pages=0;var stalled=0;var sectionsSeen=0;var blocksSeen=0
         fun schedule(method: String,id: JsonElement?,from: JsonElement?=null,trusted: Boolean=true,own: Boolean=false) {
             cursor(id)?.let{val target=Target(method,it,cursor(from),trusted,own);if(target !in targets)targets.add(target)}
         }
         fun subscription(o: JsonObject,own: Boolean=false)=title(o) in subscriptionTitles||own&&title(o) in artistTitles
         while(pending.isNotEmpty()||targets.isNotEmpty()) {
             if(pending.isEmpty()) {
-                val t=targets.removeFirst();musicCheck(visited.add(t),MusicError.INCOMPLETE)
-                musicCheck(++pages<=200,MusicError.TOO_LARGE)
+                val t=targets.removeFirst();if(!visited.add(t))throw ArtistLoadingFailure(ArtistFailureReason.CURSOR_LOOP,MusicError.INCOMPLETE,t.method)
+                if(++pages>200)throw ArtistLoadingFailure(ArtistFailureReason.PAGE_LIMIT,MusicError.TOO_LARGE,t.method)
                 val fields=mapOf((when(t.method){"catalog.getSection"->"section_id";"catalog.getAudio"->"url";else->"block_id"}) to t.id)+
                     (t.from?.let{mapOf("start_from" to it)}?:emptyMap())
                 val response=fetch(t.method,fields) as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
@@ -102,7 +102,7 @@ internal object MusicArtists {
             }
             for(p in (o["playlists"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject})
                 listPool[text(p,"owner_id")+"_"+text(p,"id")]=p
-            val sections=sections(o)
+            val sections=sections(o);sectionsSeen+=sections.size;blocksSeen+=blocks(o).size
             if(subscriptions)for(s in sections) {
                 if(subscription(s,own)) {
                     recognized=true
@@ -128,7 +128,7 @@ internal object MusicArtists {
                 if(subscriptions&&accepted)recognized=true
                 if(accepted) {
                     if(subscriptions)for(id in (b["artists_ids"] as? JsonArray).orEmpty()) {
-                        val raw=pool[str(id)]?:throw MusicFailure(MusicError.INCOMPLETE)
+                        val raw=pool[str(id)]?:throw ArtistLoadingFailure(ArtistFailureReason.MISSING_ARTIST,MusicError.INCOMPLETE)
                         if(following(raw)!=false)artist(raw).let{artists[it.id]=it}
                     }else for(id in (b["playlists_ids"] as? JsonArray).orEmpty()) {
                         val key=str(id)?.split('_')?.take(2)?.joinToString("_")
@@ -160,10 +160,10 @@ internal object MusicArtists {
                 progress(artists.values.toList(),pages+1)
                 val hasMore=cursor(s?.get("next_from"))!=null||blocks(o).any{cursor(it.first["next_from"])!=null}
                 stalled=if(trusted&&artists.size==before&&hasMore)stalled+1 else 0
-                musicCheck(stalled<2,MusicError.INCOMPLETE)
+                if(stalled>=2)throw ArtistLoadingFailure(ArtistFailureReason.NO_PROGRESS,MusicError.INCOMPLETE)
             }
         }
-        musicCheck(recognized,MusicError.METHOD)
+        if(!recognized)throw ArtistLoadingFailure(ArtistFailureReason.SUBSCRIPTIONS_NOT_FOUND,MusicError.METHOD,pages=pages+1,sections=sectionsSeen,blocks=blocksSeen,pool=pool.size)
         return artists.values.toList() to playlists.values.toList()
     }
     suspend fun subscriptions(owner: Long?=null,progress:(List<MusicArtist>,Int)->Unit={_,_->},fetch:suspend(String,Map<String,String>)->JsonElement): List<MusicArtist> {

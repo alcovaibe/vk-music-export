@@ -10,7 +10,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
-internal enum class SavedFileReason(val label: String) {
+@Serializable internal enum class SavedFileReason(val label: String) {
     OK("Файл проверен."),MISSING("Запись файла не найдена в доступной медиатеке."),NO_ACCESS("Android не разрешил прочитать файл."),
     OWNER_CHANGED("Файл больше не принадлежит приложению."),PENDING("Публикация файла не завершена."),
     OUTSIDE_FOLDER("Файл перемещён за пределы разрешённой папки."),SIZE_CHANGED("Размер файла изменился."),
@@ -20,12 +20,12 @@ internal enum class SavedFileReason(val label: String) {
 }
 internal data class SavedFileCheck(val reason: SavedFileReason,val actual: PublishedAudio?=null)
 internal class SavedFileFailure(val reason: SavedFileReason): MusicFailure(MusicError.INCOMPLETE)
-internal data class SavedFileProblem(val row: PublishedAudio,val reason: SavedFileReason,val searchReason: SavedFileReason?=null)
+@Serializable internal data class SavedFileProblem(val row: PublishedAudio,val reason: SavedFileReason,val searchReason: SavedFileReason?=null)
 internal data class SavedFilePreview(val before: PublishedAudio,val name: String,val bytes: Long,val sha256: String,
     val media: ProcessedAudio,val covered: Boolean,val exact: Boolean,val references: Int=1)
-internal data class SavedFilesState(val visible: Boolean=false,val running: Boolean=false,val processed: Int=0,val total: Int=0,
-    val restored: Int=0,val problems: List<SavedFileProblem> = emptyList(),val message: String?=null,
-    val selecting: PublishedAudio?=null,val preview: SavedFilePreview?=null,val forget: PublishedAudio?=null)
+@Serializable internal data class SavedFilesState(val visible: Boolean=false,val running: Boolean=false,val processed: Int=0,val total: Int=0,
+    val restored: Int=0,val resumable: Boolean=false,val problems: List<SavedFileProblem> = emptyList(),val message: String?=null,
+    @kotlinx.serialization.Transient val selecting: PublishedAudio?=null,@kotlinx.serialization.Transient val preview: SavedFilePreview?=null,@kotlinx.serialization.Transient val forget: PublishedAudio?=null)
 
 /** Local reconciliation only. Read-only scan, strict byte identity, CAS index, no remote VK calls. */
 internal class SavedFileRecovery(private val context: Context,private val store: AudioExportStore,private val shared: SharedAudioStore,private val onPublished: ()->Unit={}) {

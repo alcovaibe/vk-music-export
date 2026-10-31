@@ -140,7 +140,7 @@ class ArtworkRetryDeviceTest {
         val holder=ViewModelStore();lateinit var model: NativeMusicViewModel
         try {
             instrumentation.runOnMainSync{model=ViewModelProvider(holder,object: ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST") override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=NativeMusicViewModel(application,duplicateApi()) as T
+                @Suppress("UNCHECKED_CAST") override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=NativeMusicViewModel(application,duplicateApi(),maintenanceLauncher={}) as T
             })[NativeMusicViewModel::class.java]}
             suspend fun await(predicate:()->Boolean){withTimeout(15000){while(!predicate())delay(25)}}
             await{model.state.value.initialized}

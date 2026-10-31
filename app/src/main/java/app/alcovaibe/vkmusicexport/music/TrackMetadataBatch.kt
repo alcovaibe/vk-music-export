@@ -23,7 +23,7 @@ internal class TrackMetadataBatch(private val api: MusicApi,private val access:s
     private val find:(TrackMetadataTarget)->PublishedAudio?,private val verify:suspend(PublishedAudio)->Unit,
     private val update:suspend(PublishedAudio,NativeTrack)->Boolean,private val recover:suspend()->Unit,
     private val save:(TrackMetadataRun)->Unit,private val progress:(TrackMetadataRun,String?)->Unit={_,_->},
-    private val metadataSource:(PublishedAudio)->String?={null}) {
+    private val metadataSource:(PublishedAudio)->String?={null},private val beforeItem:suspend(Int)->Unit={}) {
     suspend fun run(initial: TrackMetadataRun): TrackMetadataRun {
         musicCheck(initial.owner>0&&initial.next in 0..initial.targets.size,MusicError.STORAGE)
         var run=initial.copy(error=null)
@@ -32,6 +32,7 @@ internal class TrackMetadataBatch(private val api: MusicApi,private val access:s
         while(run.unfinished) {
             val target=run.targets[run.next]
             try {
+                beforeItem(run.next)
                 access();progress(run,target.name)
                 val row=find(target)
                 val issue=when {

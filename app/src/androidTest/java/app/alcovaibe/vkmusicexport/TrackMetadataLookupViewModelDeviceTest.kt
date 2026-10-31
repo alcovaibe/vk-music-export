@@ -45,7 +45,7 @@ class TrackMetadataLookupViewModelDeviceTest {
             }
             withContext(Dispatchers.IO){MusicAccessStore(app).save(MusicAccess("a".repeat(64),"CI/1",accountId=12))}
             inst.runOnMainSync{model=ViewModelProvider(holder,object: ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=NativeMusicViewModel(app,api) as T
+                @Suppress("UNCHECKED_CAST")override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=NativeMusicViewModel(app,api,maintenanceLauncher={}) as T
             })[NativeMusicViewModel::class.java]}
             until{model.state.value.initialized}
             inst.runOnMainSync{model.setForeground(true);model.showTrackMetadata();model.updateSavedTrackMetadata()}
