@@ -18,7 +18,7 @@ internal enum class DuplicateStatus(val label: String) { PENDING("Ожидает
 internal data class MusicDuplicate(val keep: NativeTrack,val remove: NativeTrack,val signature: DuplicateSignature,val status: DuplicateStatus=DuplicateStatus.PENDING)
 internal data class DuplicateProblem(val track: NativeTrack,val reason: String,val error: MusicError?=null)
 internal data class DuplicateReport(val owner: Long,val credentialId: String,val tracks: Int,val checked: Int,
-    val duplicates: List<MusicDuplicate>,val problems: List<DuplicateProblem>,val libraryChanged: Boolean=false)
+    val duplicates: List<MusicDuplicate>,val problems: List<DuplicateProblem>,val libraryChanged: Boolean=false,val readSessionId: String=credentialId)
 internal data class DuplicateProgress(val stage: String,val done: Int=0,val total: Int=0,val track: NativeTrack?=null,val bytes: Long=0,val reused: Int=0)
 
 internal object DuplicateNames {
@@ -27,7 +27,7 @@ internal object DuplicateNames {
     fun key(track: NativeTrack)=normalize(track.artist) to normalize(track.displayTitle)
 }
 /** A single explicit consent can authorize at most one request, including failed/ambiguous results. */
-internal class DuplicateConsent(val owner: Long,val credentialId: String,val duplicate: MusicDuplicate) {
+internal class DuplicateConsent(val owner: Long,val credentialId: String,val duplicate: MusicDuplicate,val readSessionId: String=credentialId) {
     val id: String=UUID.randomUUID().toString()
     private val claimed=AtomicBoolean()
     fun claim()=claimed.compareAndSet(false,true)
@@ -98,12 +98,12 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
             }
         }
         progress(DuplicateProgress("Поиск завершён",candidates.size,candidates.size,reused=reused))
-        return DuplicateReport(owner,access.credentialId,tracks.size,checkedCount,duplicates,problems,libraryChanged)
+        return DuplicateReport(owner,access.credentialId,tracks.size,checkedCount,duplicates,problems,libraryChanged,access.readSessionId)
     }
-    suspend fun remove(access: MusicAccess,consent: DuplicateConsent,beforeMutation: suspend()->Unit={}) {
+    suspend fun remove(access: MusicAccess,consent: DuplicateConsent,mutationAccess: suspend()->MusicAccess={access},beforeMutation: suspend()->Unit={}) {
         musicCheck(consent.claim(),MusicError.BUSY)
         val row=consent.duplicate
-        musicCheck(access.credentialId==consent.credentialId&&row.status==DuplicateStatus.PENDING,MusicError.ACCESS)
+        musicCheck(access.readSessionId==consent.readSessionId&&row.status==DuplicateStatus.PENDING,MusicError.ACCESS)
         LibraryRemovalProtocol.audioId(consent.owner,row.keep);LibraryRemovalProtocol.audioId(consent.owner,row.remove)
         musicCheck(row.keep.id!=row.remove.id&&DuplicateNames.key(row.keep)==DuplicateNames.key(row.remove),MusicError.INCOMPLETE)
         val (_,before)=read(access,consent.owner,"Проверяем обе записи в ВК")
@@ -114,9 +114,12 @@ internal class MusicDuplicates(private val api: MusicApi,private val hasher: Dup
         }
         val (_,after)=read(access,consent.owner,"Повторно проверяем библиотеку")
         musicCheck(after==before,MusicError.LIBRARY_CHANGED)
-        guard();currentCoroutineContext().ensureActive();beforeMutation()
+        guard();currentCoroutineContext().ensureActive()
+        val current=mutationAccess()
+        musicCheck(current.readSessionId==consent.readSessionId&&(current.accountId==null||current.accountId==consent.owner),MusicError.ACCESS)
+        currentCoroutineContext().ensureActive();beforeMutation()
         // The existing client checks users.get with this token and sends one non-retrying POST audio.delete.
-        api.removeLibraryTrack(access,consent.owner,row.remove)
+        api.removeLibraryTrack(current,consent.owner,row.remove)
     }
 }
 

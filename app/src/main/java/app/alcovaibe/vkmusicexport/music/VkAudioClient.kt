@@ -75,7 +75,9 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun followedArtists(access: MusicAccess,owner: Long)=followedArtists(access,owner){_,_->}
     override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit)=MusicArtists.subscriptions(owner,progress) {method,fields->
         val current=sessions?.continueRead(access)?:access
-        request(current,method,fields+mapOf("lang" to "ru")+(if(method=="catalog.getAudio")mapOf("owner_id" to owner.toString(),"need_blocks" to "1")else emptyMap()))
+        val currentUser=fields["current_user"]=="1"
+        request(current,method,fields.filterKeys{it!="current_user"}+mapOf("lang" to "ru")+
+            (if(method=="catalog.getAudio")mapOf("need_blocks" to "1")+(if(currentUser)emptyMap()else mapOf("owner_id" to owner.toString()))else emptyMap()))
     }
     override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
         val catalogue=request(access,"catalog.getAudioArtist",mapOf("artist_id" to artist.id,"need_blocks" to "1","lang" to "ru"))

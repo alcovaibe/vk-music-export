@@ -107,4 +107,38 @@ class MusicArtistsTest {
         assertEquals(2,n);assertEquals(listOf("1"),snapshots.first().map{it.id})
     }
 
+    @Test fun ownPreviewIsHydratedEvenWhenItAlreadyContainsTrackBlocks()=runTest {
+        val requests=mutableListOf<String>()
+        val rows=MusicArtists.subscriptions {method,fields->
+            requests.add(method)
+            if(method=="catalog.getAudio")json("""{"catalog":{"sections":[{"id":"own","title":"Моя музыка","blocks":[{"audios_ids":["12_1"]}]}]}}""")
+            else {assertEquals("own",fields["section_id"]);json("""{"artists":[{"id":"1","name":"Подписка"}],"section":{"id":"own","blocks":[{"title":"Исполнители","artists_ids":["1"]}]}}""")}
+        }
+        assertEquals(listOf("catalog.getAudio","catalog.getSection"),requests)
+        assertEquals(listOf("1"),rows.map{it.id})
+    }
+    @Test fun sectionButtonsAndShowAllUnderSubscriptionHeadingOpenTheFullList()=runTest {
+        for(sectionButton in listOf(true,false)) {
+            val rows=MusicArtists.subscriptions {method,fields->
+                if(method=="catalog.getAudio") {
+                    if(sectionButton)json("""{"section":{"id":"own","title":"Моя музыка","buttons":[{"title":"Исполнители","action":{"section_id":"followed"}}],"blocks":[]}}""")
+                    else json("""{"section":{"id":"own","title":"Моя музыка","blocks":[{"layout":{"title":"Ваши исполнители"},"buttons":[{"title":"Показать всех","action":{"section_id":"followed"}}]}]}}""")
+                }else {
+                    assertEquals("followed",fields["section_id"])
+                    json("""{"artists":[{"id":"1","name":"Подписка"},{"id":"2","name":"Рекомендация","is_following":false}],"section":{"id":"followed","blocks":[{"artists_ids":["1","2"]}]}}""")
+                }
+            }
+            assertEquals(listOf("1"),rows.map{it.id})
+        }
+    }
+    @Test fun unrecognizedProfileProjectionRetriesCurrentUsersOwnCatalogueOnce()=runTest {
+        val calls=mutableListOf<Map<String,String>>()
+        val rows=MusicArtists.subscriptions(12){method,fields->
+            assertEquals("catalog.getAudio",method);calls.add(fields)
+            if(fields.isEmpty())json("""{"artists":[{"id":"2","name":"Рекомендация"}],"catalog":{"sections":[]}}""")
+            else {assertEquals("1",fields["current_user"]);json("""{"artists":[{"id":"1","name":"Подписка","is_followed":true}]}""")}
+        }
+        assertEquals(2,calls.size);assertEquals(listOf("1"),rows.map{it.id})
+    }
+
 }

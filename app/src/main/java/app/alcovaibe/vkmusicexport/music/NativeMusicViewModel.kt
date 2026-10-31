@@ -31,7 +31,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
-    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000): AndroidViewModel(application) {
+    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer()): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
@@ -499,8 +499,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun dismissDuplicates(){_duplicates.update{it.copy(visible=false,consent=null)}}
     fun requestDuplicateRemoval(row: MusicDuplicate) {
         val s=_duplicates.value;val report=s.report?:return
-        if(s.phase!=DuplicatePhase.READY||_state.value.busy||DuplicateCheckRuntime.transferring||row.status!=DuplicateStatus.PENDING||row !in report.duplicates)return
-        _duplicates.update{it.copy(consent=DuplicateConsent(report.owner,report.credentialId,row))}
+        if(s.phase!=DuplicatePhase.READY||_state.value.busy||row.status!=DuplicateStatus.PENDING||row !in report.duplicates)return
+        _duplicates.update{it.copy(consent=DuplicateConsent(report.owner,report.credentialId,row,report.readSessionId))}
     }
     fun cancelDuplicateRemoval(){if(!_duplicates.value.busy)_duplicates.update{it.copy(consent=null)}}
     fun skipDuplicate(row: MusicDuplicate) {
@@ -529,16 +529,19 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             var attempted=false;var stage="PREPARING"
             fun update(block:(DuplicatesState)->DuplicatesState){_duplicates.update{if(it.scanId==id)block(it)else it}}
             try {
-                withContext(Dispatchers.IO){AudioExportRuntime.editSaved(getApplication()){
+                withContext(Dispatchers.IO){
+                    DuplicateCheckRuntime.awaitIdle()
+                    AudioExportRuntime.editSaved(getApplication()){
                     musicCheck(!AudioExportRuntime.state.value.unfinished,MusicError.BUSY)
                     val a=sessions?.current()?:access()
                     suspend fun guard(){
                         active(g)
                         val previousStage=stage;stage="SESSION_GUARD"
-                        musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
+                        if(sessions!=null)sessions.continueRead(a)
+                        else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
                         active(g);stage=previousStage
                     }
-                    DuplicateAudioHasher(getApplication(),api,progress={track,p->
+                    DuplicateAudioHasher(getApplication(),api,transfer=duplicateTransfer,progress={track,p->
                         stage=when(p.stage){"resolve_media"->"RESOLVE_MEDIA";"payload_hash"->"AUDIO_HASH";"verifying"->"AUDIO_FORMAT";else->"AUDIO_TRANSFER"}
                         val label=when(p.stage){"resolve_media"->"Получаем ссылку ВК";"payload_hash"->"Считаем SHA-256 аудиоданных";"verifying"->"Проверяем аудиоформат";else->"Загружаем временную копию для SHA-256"}
                         update{it.copy(progress=it.progress.copy(stage=label,track=track,bytes=p.bytes))}
@@ -547,7 +550,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             stage=if(p.track!=null)"AUDIO_HASH" else "LIBRARY_READ"
                             update{it.copy(progress=p)}
                         })
-                        service.remove(a,consent){
+                        service.remove(a,consent,mutationAccess={sessions?.continueRead(a)?:access()}){
                             guard();musicCheck(authForeground.value,MusicError.BUSY);attempted=true
                             _state.update{it.copy(probe=null,page=null,selected=null)}
                             update{it.copy(progress=DuplicateProgress("Отправляем одно удаление в ВК",track=consent.duplicate.remove))}

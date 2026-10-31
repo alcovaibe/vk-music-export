@@ -15,11 +15,10 @@ import kotlinx.coroutines.*
 
 /** Both reports are regenerated from their journal. Never substitute the new run for the previous failure. */
 @Composable
-internal fun LatestReportMenu(extraItems: @Composable androidx.compose.foundation.layout.ColumnScope.(()->Unit)->Unit={}) {
+internal fun LatestReportMenu(onAbout: ()->Unit,extraItems: @Composable androidx.compose.foundation.layout.ColumnScope.(()->Unit)->Unit={}) {
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var busy by remember{mutableStateOf(false)}
     var expanded by remember{mutableStateOf(false)}
-    var legalPage by androidx.compose.runtime.saveable.rememberSaveable{mutableStateOf<String?>(null)}
     var previousAvailable by remember{mutableStateOf(false)}
     LaunchedEffect(expanded){if(expanded)previousAvailable=withContext(Dispatchers.IO){runCatching{Diagnostics.hasPreviousRun()}.getOrDefault(false)}}
     Box {
@@ -28,8 +27,7 @@ internal fun LatestReportMenu(extraItems: @Composable androidx.compose.foundatio
         }
         DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
             extraItems{expanded=false}
-            DropdownMenuItem(text={Text("Данные и доступ")},modifier=Modifier.testTag("open_privacy"),onClick={expanded=false;legalPage="privacy"})
-            DropdownMenuItem(text={Text("Лицензия")},modifier=Modifier.testTag("open_licenses"),onClick={expanded=false;legalPage="licenses"})
+            DropdownMenuItem(text={Text("О приложении")},modifier=Modifier.testTag("open_about"),onClick={expanded=false;onAbout()})
             HorizontalDivider()
             DropdownMenuItem(text={Text("Поделиться JSON-отчётом")},modifier=Modifier.testTag("share_latest_report"),onClick={
                 expanded=false
@@ -61,7 +59,6 @@ internal fun LatestReportMenu(extraItems: @Composable androidx.compose.foundatio
                 })
         }
     }
-    legalPage?.let{app.alcovaibe.vkmusicexport.LegalInformationSheet(it){legalPage=null}}
 }
 
 internal object LatestReportShare {

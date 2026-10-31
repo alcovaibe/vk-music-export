@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
 internal val LibraryNoteIcon=ImageVector.Builder("LibraryNote",24.dp,24.dp,24f,24f).apply {
@@ -20,4 +21,12 @@ internal val SavedLibraryIcon=ImageVector.Builder("SavedMusic",24.dp,24.dp,24f,2
 }.build()
 internal val MusicChevronIcon=ImageVector.Builder("OpenMusicSection",24.dp,24.dp,24f,24f).apply {
     path(fill=SolidColor(Color.Black)) {moveTo(9f,5f);lineTo(16f,12f);lineTo(9f,19f);lineTo(7.5f,17.5f);lineTo(13f,12f);lineTo(7.5f,6.5f);close()}
+}.build()
+
+/** Geometry from the supplied user-music.svg, centered in the navigation icon viewport. */
+internal val FriendsMusicIcon=ImageVector.Builder("FriendsMusic",24.dp,24.dp,555f,555f).apply {
+    addPath(addPathNodes("M 303 175.5 A 103 103 0 1 1 97 175.5 A 103 103 0 1 1 303 175.5 Z"),fill=SolidColor(Color.Black))
+    addPath(addPathNodes("M 20 457.5 C 20 365.5 110 303.5 205 303.5 C 230 303.5 251 303.5 272 305.5 A 80 80 0 0 0 405 394.5 L 405 457.5 Q 405 482.5 380 482.5 L 45 482.5 Q 20 482.5 20 457.5 Z"),fill=SolidColor(Color.Black))
+    addPath(addPathNodes("M 384 348.5 A 44 44 0 1 1 296 348.5 A 44 44 0 1 1 384 348.5 Z M 533 320.5 A 46 46 0 1 1 441 320.5 A 46 46 0 1 1 533 320.5 Z"),fill=SolidColor(Color.Black))
+    addPath(addPathNodes("M 363 165.5 Q 363 153.5 377 150.5 L 510 124.5 Q 533 120.5 533 143.5 L 533 320.5 L 508 320.5 L 508 197.5 L 387 220.5 L 387 348.5 L 363 348.5 Z"),fill=SolidColor(Color.Black))
 }.build()

@@ -151,4 +151,23 @@ class MusicDuplicatesTest {
         assertEquals(listOf("12_1","12_2"),calls)
     }
 
+    @Test fun verifiedRenewalKeepsConsentButAnIndependentLoginCannotUseIt()=runBlocking {
+        val api=Api(mutableListOf(track(1),track(2)));val engine=service(api)
+        val report=engine.scan(access)
+        val renewed=MusicAccess("b".repeat(64),"CI",credentialId="renewed",accountId=12,readSessionId=access.readSessionId)
+        val consent=DuplicateConsent(12,access.credentialId,report.duplicates.single(),report.readSessionId)
+        engine.remove(renewed,consent,mutationAccess={renewed})
+        assertEquals(listOf("12_2"),api.deletes)
+        val newLogin=MusicAccess("c".repeat(64),"CI",accountId=12)
+        fails(MusicError.ACCESS){engine.remove(newLogin,DuplicateConsent(12,access.credentialId,report.duplicates.single(),report.readSessionId))}
+        assertEquals(1,api.deletes.size)
+    }
+    @Test fun credentialChangeDuringFinalMutationAccessNeverSendsDeletion()=runBlocking {
+        val api=Api(mutableListOf(track(1),track(2)));val engine=service(api);val row=engine.scan(access).duplicates.single()
+        fails(MusicError.ACCESS) {
+            engine.remove(access,DuplicateConsent(12,access.credentialId,row),mutationAccess={MusicAccess("b".repeat(64),"CI",accountId=12)})
+        }
+        assertTrue(api.deletes.isEmpty())
+    }
+
 }

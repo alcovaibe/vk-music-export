@@ -238,4 +238,52 @@ class DuplicateResumeDeviceTest {
             assertEquals(2,downloads);assertEquals(1,DuplicateScanCache(context).count())
         }finally{dir.deleteRecursively()}
     }
+    @Test fun completedSearchReusesEveryHashAfterRecreationReorderAndAlbumChange()=runBlocking<Unit>(Dispatchers.IO) {
+        val dir=File(app.cacheDir,"duplicate-complete-repeat").apply{deleteRecursively();mkdirs()};val context=context(dir)
+        var tracks=(1..3).map{duplicateTrack(it).copy(album=MusicAlbum("old","Album"))};var downloads=0
+        val api=object: MusicApi by duplicateApi() {
+            override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(tracks,tracks.size))
+        }
+        suspend fun scan(): DuplicateReport=DuplicateAudioHasher(context,api,AudioTransfer(client{downloads++},observe={_,_->}),DuplicateScanCache(context)).use {
+            MusicDuplicates(api,it,pageDelayMs=0).scan(access)
+        }
+        try {
+            assertEquals(2,scan().duplicates.size);assertEquals(3,downloads)
+            tracks=tracks.reversed().map{it.copy(album=MusicAlbum("new","New album"))}
+            assertEquals(2,scan().duplicates.size);assertEquals(3,downloads)
+            assertEquals(2,scan().duplicates.size);assertEquals(3,downloads)
+            tracks=tracks.map{if(it.id=="12_2")it.copy(duration=2)else it}
+            scan();assertEquals(4,downloads)
+        }finally{dir.deleteRecursively()}
+    }
+
+    @Test fun verifiedDownloadedLibraryFilesAreHashedLocallyAndRepeatedSearchDoesNotFetchMedia()=runBlocking<Unit>(Dispatchers.IO) {
+        val dir=File(app.cacheDir,"duplicate-local-${java.util.UUID.randomUUID()}").apply{mkdirs()};val context=context(dir)
+        val tracks=(1..2).map{duplicateTrack(99770+it)};val published=mutableListOf<PublishedAudio>()
+        val shared=SharedAudioStore(context);val store=AudioExportStore(context)
+        val api=object: MusicApi by duplicateApi() {
+            override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(tracks,tracks.size))
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("Verified saved audio must not be downloaded")
+        }
+        try {
+            for((index,track)in tracks.withIndex()) {
+                val task=ExportLayout.task(track,listOf("CI duplicates ${dir.name}"),index+1,ExportSource(12,"library","my"))
+                val input=File(dir,"fixture.mp3").apply{writeBytes(instrumentation.context.assets.open("native-audio/tone.mp3").use{it.readBytes()})}
+                val row=shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){}
+                published.add(row);store.imported(row)
+            }
+            repeat(2) {
+                DuplicateAudioHasher(context,api,checkpoint=DuplicateScanCache(context),reuseSaved=true).use{hasher->
+                    val report=MusicDuplicates(api,hasher,pageDelayMs=0).scan(access)
+                    assertEquals(1,report.duplicates.size);assertEquals(2,report.checked)
+                }
+                assertEquals(2,DuplicateScanCache(context).count())
+            }
+            for(row in published){assertTrue(shared.valid(row));assertEquals(row,store.existing(row.taskKey))}
+        }finally {
+            for(row in published){app.contentResolver.delete(android.net.Uri.parse(row.uri),null,null);store.forgetFile(row)}
+            store.close();dir.deleteRecursively()
+        }
+    }
+
 }

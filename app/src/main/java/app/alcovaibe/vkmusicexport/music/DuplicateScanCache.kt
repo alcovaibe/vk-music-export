@@ -7,7 +7,7 @@ import kotlinx.serialization.json.*
 import java.io.File
 import java.security.MessageDigest
 
-/** IO-only checkpoint of completed checks, bound to one account and exact per-track metadata.
+/** IO-only checkpoint of completed checks, bound to one account and per-track audio metadata.
  * Neither tokens nor CDN URLs nor complete audio files are retained.
  * This is discovery evidence only: removal always downloads both records afresh.
  */
@@ -18,7 +18,9 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
     private var owner=0L;private var snapshot="";private var created=0L
     private val receipts=linkedMapOf<String,Receipt>()
     private fun hash(value: String)=MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString(""){"%02x".format(it)}
-    private fun key(track: NativeTrack)=hash(Json.encodeToString(track))
+    // Album grouping can change independently of the audio; it must not evict completed hashes.
+    private fun key(track: NativeTrack)=hash(Json.encodeToString(track.copy(album=null)))
+    private fun legacyKey(track: NativeTrack)=hash(Json.encodeToString(track))
     init { synchronized(lock){load()} }
     private fun load() {
         try {
@@ -50,7 +52,7 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
         if(snapshot!=fingerprint) {
             // Reordering or editing another record must not download every checked song again.
             // A changed/deleted record loses only its own receipt; deletion still verifies fresh audio.
-            val current=tracks.map(::key).toHashSet()
+            val current=tracks.flatMap{listOf(key(it),legacyKey(it))}.toHashSet()
             receipts.keys.retainAll(current)
             snapshot=fingerprint;write()
         }
@@ -59,13 +61,14 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
     }
     fun get(track: NativeTrack): DuplicateSignature?=synchronized(lock) {
         if(count()==0)return@synchronized null
-        receipts[key(track)]?.let{DuplicateSignature(it.codec,it.sha256)}
+        (receipts[key(track)]?:receipts[legacyKey(track)])?.let{DuplicateSignature(it.codec,it.sha256)}
     }
     fun save(track: NativeTrack,signature: DuplicateSignature,audio: File)=synchronized(lock) {
         musicCheck(owner>0&&snapshot.isNotEmpty()&&signature.codec in setOf("mp3","m4a")&&hex.matches(signature.sha256),MusicError.STORAGE)
         val id=key(track)
         musicCheck(directory.isDirectory||directory.mkdirs(),MusicError.STORAGE)
         musicCheck(signature.version==2&&audio.isFile,MusicError.STORAGE)
+        receipts.remove(legacyKey(track))
         receipts[id]=Receipt(signature.codec,signature.sha256)
         while(receipts.size>MAX_CHECKS)receipts.remove(receipts.keys.first())
         write()
