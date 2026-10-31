@@ -166,6 +166,48 @@ class TrackMetadataDeviceTest {
             assertTrue(shared.valid(after));assertTrue(shared.valid(other))
         }finally{clean(store,rows);store.close();dir.deleteRecursively()}
     }
+    @Test fun metadataCursorSurvivesDatabaseReopenAndResumesAfterReconnectionWithoutRepeatingReadyFiles()=runBlocking<Unit>(Dispatchers.IO) {
+        val(context,dir)=isolated("metadata-resume");var store=AudioExportStore(context)
+        val shared=SharedAudioStore(context);val rows=mutableListOf<PublishedAudio>()
+        try {
+            val tasks=listOf(task(8),task(9));store.replace(tasks,account=12)
+            rows.add(publish(dir,shared,store,tasks[0],"mp3"));rows.add(publish(dir,shared,store,tasks[1],"m4a"))
+            SharedPlaylistStore(context,store).publishAll();store.clearRecentFiles()
+            var denied=true;val fetched=mutableListOf<String>()
+            val api=object: MusicApi {
+                override suspend fun library(access: MusicAccess): NativeProbe=error("No library read")
+                override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("No catalog")
+                override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No playlist")
+                override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio download")
+                override suspend fun metadata(access: MusicAccess,id: String): NativeTrack {
+                    fetched.add(id)
+                    if(denied&&id==tasks[1].track.id)throw MusicFailure(MusicError.ACCESS,5)
+                    return tasks.single{it.track.id==id}.track.copy(subtitle="Cover sped up")
+                }
+            }
+            suspend fun execute(run: TrackMetadataRun): TrackMetadataRun {
+                val repair=TrackMetadataRepair(context,store,shared)
+                return TrackMetadataBatch(api,{MusicAccess("a".repeat(64),"CI/1",accountId=12)},
+                    find={store.existing(it.taskKey)},verify=shared::requireValid,update=repair::update,recover=repair::recover,
+                    save={store.metadataRun(it)}).run(run)
+            }
+            try{execute(TrackMetadataRun.start(12,rows));fail("Expired access must pause")}
+            catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
+            val first=store.existing(tasks[0].key)!!;assertTrue(shared.valid(first))
+            store.close();store=AudioExportStore(context)
+            val pending=store.metadataRun(12)!!
+            assertEquals(1,pending.next);assertEquals(1,pending.updated);assertEquals(0,pending.failed)
+            assertTrue(pending.state().resumable);assertNull(store.metadataRun(99))
+            denied=false;val done=execute(pending)
+            assertFalse(done.unfinished);assertEquals(2,done.updated)
+            assertEquals(listOf(tasks[0].track.id,tasks[1].track.id,tasks[1].track.id),fetched)
+            assertEquals(first,store.existing(tasks[0].key))
+            rows.forEach{assertTrue(shared.valid(store.existing(it.taskKey)!!))}
+            SharedPlaylistStore(context,store).repairLocations()
+            tasks.forEach{assertTrue(playlist(store,it.source!!).contains("(Cover sped up)"))}
+            assertTrue(store.snapshot().recent.isEmpty())
+        }finally{clean(store,rows);store.close();dir.deleteRecursively()}
+    }
 }
 
 @RunWith(AndroidJUnit4::class)
@@ -176,8 +218,18 @@ class TrackMetadataUiDeviceTest {
         ui.setContent{MusicTheme{TrackMetadataSheet(TrackMetadataState(visible=true,total=5,processed=5,updated=1,current=1,
             unavailable=1,skipped=1,failed=1,message="Проверка завершена.",issues=listOf(TrackMetadataIssue("Synthetic (2).mp3","ВК не вернул запись по сохранённому ID."))),{}, {}, {})}}
         ui.onNodeWithTag("track_metadata_sheet").assertIsDisplayed()
-        ui.onNodeWithTag("track_metadata_count").performScrollTo().assertTextEquals("Обработано: 5/5")
-        ui.onNodeWithTag("track_metadata_issue_0").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("track_metadata_results").performScrollToNode(hasTestTag("track_metadata_count"))
+        ui.onNodeWithTag("track_metadata_count").assertTextEquals("Обработано: 5/5")
+        ui.onNodeWithTag("track_metadata_results").performScrollToNode(hasTestTag("track_metadata_issue_0"))
+        ui.onNodeWithTag("track_metadata_issue_0").assertIsDisplayed()
         ui.onNodeWithTag("track_metadata_start").assertIsEnabled()
+    }
+    @Test fun pausedRunOffersContinueWithItsSavedCounts() {
+        var resumed=false
+        awaitTestWindowFocus(ui.activity)
+        ui.setContent{MusicTheme{TrackMetadataSheet(TrackMetadataState(visible=true,total=10,processed=4,updated=1,current=3,
+            resumable=true,message="Проверка сохранена."),{resumed=true},{},{})}}
+        ui.onNodeWithTag("track_metadata_start").assertTextEquals("Продолжить").performClick()
+        ui.runOnIdle{assertTrue(resumed)}
     }
 }

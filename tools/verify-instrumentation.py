@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 107) -> int:
+def verify(results: Path, minimum_tests: int = 109) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')
@@ -40,9 +40,9 @@ def verify(results: Path, minimum_tests: int = 107) -> int:
         raise ValueError('Required download continuity tests did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.LargeAudioAndReuseDeviceTest' for name, _ in executed) < 10:
         raise ValueError('Required large audio and reuse tests did not execute')
-    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest' for name, _ in executed) < 5:
+    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest' for name, _ in executed) < 6:
         raise ValueError('Required track metadata tests did not execute')
-    if not any(name == 'app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest' for name, _ in executed):
+    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest' for name, _ in executed) < 2:
         raise ValueError('Required track metadata interface test did not execute')
     return len(executed)
 

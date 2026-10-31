@@ -56,63 +56,57 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private val _artwork=MutableStateFlow(ArtworkState());val artwork=_artwork.asStateFlow()
     private val _trackMetadata=MutableStateFlow(TrackMetadataState());val trackMetadata=_trackMetadata.asStateFlow()
-    fun showTrackMetadata(){if(_state.value.initialized&&!_state.value.busy)_trackMetadata.update{it.copy(visible=true)}}
+    fun showTrackMetadata() {
+        if(!_state.value.initialized||_state.value.busy)return
+        _trackMetadata.update{it.copy(visible=true)}
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val owner=vault.read()?.accountId?:return@launch
+                val saved=AudioExportStore(getApplication()).use{it.metadataRun(owner)}?:return@launch
+                _trackMetadata.update{if(it.visible&&!it.running&&!_state.value.busy)saved.state()else it}
+            }catch(_: Exception){_trackMetadata.update{it.copy(message="Не удалось прочитать сохранённую проверку.")}}
+        }
+    }
     fun dismissTrackMetadata(){_trackMetadata.update{it.copy(visible=false)}}
     fun updateSavedTrackMetadata() {
         if(!_trackMetadata.value.visible||_trackMetadata.value.running)return
         run("track_metadata"){g->
-            _trackMetadata.value=TrackMetadataState(visible=true,running=true)
+            _trackMetadata.update{it.copy(running=true,message=null)}
             try {
                 withContext(Dispatchers.IO) {
                     AudioExportRuntime.editSaved(getApplication()) {
                         AudioExportStore(getApplication()).use{store->
                             val shared=SharedAudioStore(getApplication())
+                            vault.read()?.accountId?.let{owner->store.metadataRun(owner)}?.let{saved->
+                                _trackMetadata.update{saved.state(it.visible,running=true).copy(message=null)}
+                            }
                             ArtworkRepair(getApplication(),store,shared).recover()
                             val initial=sessions?.current()?:access()
                             val owner=api.library(initial).owner
-                            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==initial.credentialId,MusicError.ACCESS)}
-                            val repair=TrackMetadataRepair(getApplication(),store,shared,beforeWrite=::guard)
-                            val files=store.savedFiles().distinctBy{it.uri}
-                            val metadata=mutableMapOf<String,NativeTrack?>()
-                            _trackMetadata.update{it.copy(total=files.size)}
-                            try {
-                                for((index,row)in files.withIndex()) {
-                                    guard();_trackMetadata.update{it.copy(name=row.displayName)}
-                                    if(!row.catalogueVerified||row.source?.account?.let{it>0&&it!=owner}==true) {
-                                        _trackMetadata.update{it.copy(skipped=it.skipped+1,issues=it.issues+TrackMetadataIssue(row.displayName,
-                                            if(!row.catalogueVerified)"Локальная замена: соответствие записи ВК не подтверждено." else "Файл сохранён из другого аккаунта ВК."))}
-                                    }else try {
-                                        shared.requireValid(row)
-                                        if(!metadata.containsKey(row.track.id)) {
-                                            metadata[row.track.id]=try{api.metadata(sessions?.current()?:initial,row.track.id)}
-                                                catch(e: MusicFailure){if(e.code in setOf(MusicError.UNAVAILABLE,MusicError.DENIED))null else throw e}
-                                        }
-                                        guard()
-                                        val fresh=metadata[row.track.id]
-                                        if(fresh==null)_trackMetadata.update{it.copy(unavailable=it.unavailable+1,
-                                            issues=it.issues+TrackMetadataIssue(row.displayName,"ВК не вернул запись по сохранённому ID или не разрешил доступ к ней."))}
-                                        else {
-                                            val changed=repair.update(row,fresh)
-                                            _trackMetadata.update{if(changed)it.copy(updated=it.updated+1)else it.copy(current=it.current+1)}
-                                        }
-                                    }catch(e: SavedFileFailure) {
-                                        _trackMetadata.update{it.copy(skipped=it.skipped+1,issues=it.issues+TrackMetadataIssue(row.displayName,e.reason.label))}
-                                        repair.recover()
-                                    }catch(e: CancellationException){throw e}
-                                     catch(e: Exception) {
-                                        val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
-                                        _trackMetadata.update{it.copy(failed=it.failed+1,issues=it.issues+TrackMetadataIssue(row.displayName,
-                                            (e as? SavedFileFailure)?.reason?.label?:code.label))}
-                                        repair.recover()
-                                        if(code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.METHOD,MusicError.CAPTCHA,MusicError.VALIDATION,
-                                                MusicError.RATE_LIMIT,MusicError.STORAGE,MusicError.NETWORK,MusicError.HTTP,MusicError.TLS,MusicError.TIMEOUT)||e is java.io.IOException)throw e
-                                    }
-                                    _trackMetadata.update{it.copy(processed=index+1)}
-                                    AudioExportRuntime.refresh()
+                            suspend fun checkedAccess(): MusicAccess {
+                                active(g)
+                                val current=if(sessions!=null)sessions.continueRead(initial)else access().also {
+                                    if(it.credentialId!=initial.credentialId)throw MusicReadChanged()
                                 }
+                                active(g);musicCheck(current.accountId==null||current.accountId==owner,MusicError.ACCOUNT_CHANGED)
+                                return current
+                            }
+                            suspend fun guard(){checkedAccess();Unit}
+                            guard()
+                            val repair=TrackMetadataRepair(getApplication(),store,shared,beforeWrite=::guard)
+                            val files=store.savedFiles()
+                            val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
+                            val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
+                                verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},
+                                progress={snapshot,name->
+                                    _trackMetadata.update{snapshot.state(it.visible,running=true).copy(name=name,message=null)}
+                                    AudioExportRuntime.refresh()
+                                })
+                            try {
+                                val result=batch.run(pending)
+                                _trackMetadata.update{result.state(it.visible,running=true)}
                             }finally {
                                 withContext(NonCancellable+Dispatchers.IO) {
-                                    // Markers also cover playlists from queues that were already cleared.
                                     SharedPlaylistStore(getApplication(),store).repairLocations()
                                     AudioExportRuntime.refresh()
                                 }
@@ -120,10 +114,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                         }
                     }
                 }
-                _trackMetadata.update{it.copy(message="Проверка завершена. Звук и обложки сохранены.")}
-            }catch(e: CancellationException){_trackMetadata.update{it.copy(message="Обработка прервана. Готовые изменения сохранены; проверку можно повторить.")};throw e}
-             catch(e: Exception){_trackMetadata.update{it.copy(message=(e as? MusicFailure)?.code?.label?:"Обработка остановлена. Готовые изменения сохранены.")}}
-            finally {
+            }catch(e: CancellationException){_trackMetadata.update{it.copy(message="Проверка приостановлена. Нажми «Продолжить», чтобы вернуться к необработанной записи.")};throw e}
+             catch(e: Exception) {
+                val code=(e as? MusicFailure)?.code
+                _trackMetadata.update{it.copy(message=when {
+                    e is MusicReadChanged->"Доступ ВК изменился. Сохранённую проверку можно продолжить после входа в тот же аккаунт."
+                    code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS)->"ВК требует повторный вход. Подключись заново и нажми «Продолжить». Готовые позиции сохранены."
+                    else->(code?.label?:"Обработка остановлена.")+" Прогресс сохранён; проверку можно продолжить."
+                })}
+            }finally {
                 _trackMetadata.update{it.copy(running=false,name=null)}
                 Diagnostics.event("audio_track_metadata",mapOf("updated" to _trackMetadata.value.updated,"unavailable" to _trackMetadata.value.unavailable,
                     "skipped" to _trackMetadata.value.skipped,"failed" to _trackMetadata.value.failed))
