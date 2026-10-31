@@ -16,8 +16,9 @@ import java.io.File
     val busy get()=phase in setOf(MaintenancePhase.QUEUED,MaintenancePhase.RUNNING,MaintenancePhase.STOPPING)
 }
 @Serializable internal data class MaintenanceCheckpoint(val status: MaintenanceStatus=MaintenanceStatus(),val owner: Long=0,
-    val targets: List<PublishedAudio> = emptyList(),val next: Int=0,val search: Boolean=false,
+    val targets: List<PublishedAudio> = emptyList(),val next: Int=0,val search: Boolean=false,val queueToken: String="",
     val metadata: TrackMetadataState=TrackMetadataState(),val artwork: ArtworkState=ArtworkState(),val files: SavedFilesState=SavedFilesState())
+@Serializable private data class MaintenanceTargets(val token: String,val stage: String,val owner: Long,val rows: List<PublishedAudio>)
 internal data class MaintenanceBatch(val rows: List<PublishedAudio>,val next: Int,val resumed: Boolean)
 
 /** One owner of long file operations; no Activity/ViewModel scope owns its lifetime. */
@@ -48,7 +49,16 @@ internal object MaintenanceRuntime {
             val file=journal!!
             if(!file.baseFile.exists()&&!File(path+".bak").exists())MaintenanceCheckpoint() else {
                 val bytes=file.openRead().use{it.readNBytes(MAX_BYTES+1)};require(bytes.size<=MAX_BYTES)
-                json.decodeFromString<MaintenanceCheckpoint>(strictUtf8(bytes)).also {
+                val record=json.decodeFromString<MaintenanceCheckpoint>(strictUtf8(bytes))
+                val loaded=if(record.queueToken.isEmpty())record else {
+                    require(Regex("[0-9a-f-]{36}").matches(record.queueToken))
+                    val queueBytes=AtomicFile(File(file.baseFile.parentFile,"maintenance-targets-${record.queueToken}.json")).openRead().use{it.readNBytes(MAX_BYTES+1)}
+                    require(queueBytes.size<=MAX_BYTES)
+                    val queue=json.decodeFromString<MaintenanceTargets>(strictUtf8(queueBytes))
+                    require(queue.token==record.queueToken&&queue.stage==record.status.stage&&queue.owner==record.owner)
+                    record.copy(targets=queue.rows)
+                }
+                loaded.also {
                     require(it.status.stage.isEmpty()||it.status.stage in stages)
                     require(it.next in 0..it.targets.size&&it.targets.size<=20000&&it.owner>=0)
                 }
@@ -65,7 +75,9 @@ internal object MaintenanceRuntime {
     fun checkpoint()=synchronized(lock) {
         snapshot=snapshot.copy(status=status.value,metadata=metadata.value.copy(visible=false),
             artwork=artwork.value.copy(visible=false),files=files.value.copy(visible=false))
-        val bytes=json.encodeToString(snapshot).toByteArray()
+        // The immutable queue is written once, rather than rewriting thousands of full file records per item.
+        val disk=if(snapshot.queueToken.isNotEmpty())snapshot.copy(targets=emptyList())else snapshot
+        val bytes=json.encodeToString(disk).toByteArray()
         musicCheck(bytes.size<=MAX_BYTES,MusicError.STORAGE)
         val file=journal?:throw MusicFailure(MusicError.STORAGE)
         val stream=file.startWrite()
@@ -73,8 +85,20 @@ internal object MaintenanceRuntime {
     }
     fun batch(stage: String,owner: Long,rows: List<PublishedAudio>,search: Boolean=false): MaintenanceBatch=synchronized(lock) {
         val resume=snapshot.status.stage==stage&&snapshot.owner==owner&&snapshot.next<snapshot.targets.size&&snapshot.search==search
-        if(!resume)snapshot=snapshot.copy(owner=owner,targets=rows,next=0,search=search)
-        checkpoint();MaintenanceBatch(snapshot.targets,snapshot.next,resume)
+        if(!resume)snapshot=snapshot.copy(owner=owner,targets=rows,next=0,search=search,queueToken="")
+        if(snapshot.targets.isNotEmpty()&&snapshot.queueToken.isEmpty()) {
+            musicCheck(snapshot.targets.size<=20000,MusicError.TOO_LARGE)
+            val token=java.util.UUID.randomUUID().toString()
+            val file=AtomicFile(File(journal!!.baseFile.parentFile,"maintenance-targets-$token.json"))
+            val bytes=json.encodeToString(MaintenanceTargets(token,stage,owner,snapshot.targets)).toByteArray()
+            musicCheck(bytes.size<=MAX_BYTES,MusicError.STORAGE)
+            val stream=file.startWrite()
+            try{stream.write(bytes);file.finishWrite(stream)}catch(e: Exception){file.failWrite(stream);throw e}
+            snapshot=snapshot.copy(queueToken=token)
+        }
+        checkpoint()
+        journal!!.baseFile.parentFile!!.listFiles().orEmpty().filter{it.name.startsWith("maintenance-targets-")&&it.name!="maintenance-targets-${snapshot.queueToken}.json"}.forEach{it.delete()}
+        MaintenanceBatch(snapshot.targets,snapshot.next,resume)
     }
     fun advance(next: Int)=synchronized(lock){require(next in 0..snapshot.targets.size);snapshot=snapshot.copy(next=next);checkpoint()}
     fun isResuming(stage: String)=synchronized(lock){snapshot.status.stage==stage&&snapshot.next<snapshot.targets.size}

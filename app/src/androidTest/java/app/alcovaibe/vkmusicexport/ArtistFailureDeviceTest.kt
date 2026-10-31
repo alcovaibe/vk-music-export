@@ -17,7 +17,7 @@ class ArtistFailureDeviceTest {
             200 to """{"error":{"error_code":15,"error_msg":"PRIVATE SERVER TEXT"}}""",
             200 to """{"error":{"error_code":3,"error_msg":"PRIVATE SERVER TEXT"}}""",
             403 to "<html>PRIVATE SERVER TEXT</html>",
-            200 to """{"artists":[{"id":"secret-id","name":"PRIVATE ARTIST"}],"catalog":{"sections":[]}}"""
+            200 to """{"response":{"artists":[{"id":"secret-id","name":"PRIVATE ARTIST"}],"catalog":{"sections":[]}}}"""
         )
         for((index,sample)in cases.withIndex()) {
             val fields=mutableListOf<Set<String>>()

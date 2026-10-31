@@ -2,7 +2,6 @@ package app.alcovaibe.vkmusicexport
 
 import android.app.Application
 import android.app.NotificationManager
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.activity.compose.setContent
@@ -45,7 +44,6 @@ class MaintenanceBackgroundDeviceTest {
         val real=ui.activity.application;lateinit var home: NativeMusicViewModel
         ui.runOnUiThread{home=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
         until{home.state.value.initialized}
-        val granted=real.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
         shell("pm grant ${real.packageName} android.permission.POST_NOTIFICATIONS")
         try {
             for((number,stage) in MaintenanceRuntime.stages.withIndex()) {
@@ -98,10 +96,12 @@ class MaintenanceBackgroundDeviceTest {
                     }
                     until{real.getSystemService(NotificationManager::class.java).activeNotifications.any{it.id==MaintenanceService.NOTIFICATION_ID&&it.notification.extras.getString("android.text").orEmpty().contains("Завершено")}}
                     ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-                    ui.runOnUiThread{reopened=model(nextHolder,app,api);ui.activity.setContent{MusicTheme{NativeMusicPanel(reopened,true,{})}}}
+                    ui.runOnUiThread{reopened=model(nextHolder,app,api)}
                     until{reopened.state.value.initialized}
                     val note=real.getSystemService(NotificationManager::class.java).activeNotifications.single{it.id==MaintenanceService.NOTIFICATION_ID}
+                    val previousNavigation=home.maintenanceNavigation.value
                     note.notification.contentIntent.send()
+                    until{home.maintenanceNavigation.value>previousNavigation}
                     until{when(stage){"track_metadata"->reopened.trackMetadata.value.visible;"artwork"->reopened.artwork.value.visible;else->reopened.savedFiles.value.visible}}
                     until{!reopened.state.value.busy}
                     assertFalse(reopened.state.value.busy)
@@ -117,7 +117,7 @@ class MaintenanceBackgroundDeviceTest {
                     withContext(Dispatchers.IO){rows.forEach{real.contentResolver.delete(Uri.parse(it.uri),null,null)};MaintenanceRuntime.initialize(real);dir.deleteRecursively()}
                 }
             }
-        }finally{real.getSystemService(NotificationManager::class.java).cancel(MaintenanceService.NOTIFICATION_ID);if(!granted)shell("pm revoke ${real.packageName} android.permission.POST_NOTIFICATIONS")}
+        }finally{real.getSystemService(NotificationManager::class.java).cancel(MaintenanceService.NOTIFICATION_ID)}
     }
 
     @Test fun savedCheckpointRestoresPausedCursorReportsAndNeverRestoresManualConsent()=runBlocking<Unit>(Dispatchers.IO) {
@@ -139,6 +139,12 @@ class MaintenanceBackgroundDeviceTest {
             val batch=MaintenanceRuntime.batch("saved_files_background",0,emptyList(),search=true)
             assertTrue(batch.resumed);assertEquals(1,batch.next);assertEquals(2,batch.rows.size)
             assertEquals(1,MaintenanceRuntime.files.value.problems.size)
+            val persisted=Json.decodeFromString<MaintenanceCheckpoint>(File(app.noBackupFilesDir,"maintenance.json").readText())
+            assertTrue(persisted.queueToken.isNotEmpty());assertTrue(persisted.targets.isEmpty())
+            MaintenanceRuntime.initialize(real);MaintenanceRuntime.initialize(app)
+            val restored=MaintenanceRuntime.batch("saved_files_background",0,emptyList(),search=true)
+            assertTrue(restored.resumed);assertEquals(1,restored.next);assertEquals(batch.rows,restored.rows)
+            assertNull(MaintenanceRuntime.files.value.forget);assertNull(MaintenanceRuntime.files.value.selecting)
         }finally{MaintenanceRuntime.initialize(real);dir.deleteRecursively()}
     }
 }

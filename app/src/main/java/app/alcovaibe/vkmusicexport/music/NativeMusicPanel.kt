@@ -102,6 +102,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var ascending by rememberSaveable {mutableStateOf(false)}
     var configure by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
+    val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
+    LaunchedEffect(maintenanceNavigation) {
+        if(maintenanceNavigation>0){aboutOpen=false;accessOpen=false;configure=false;toolsOpen=false;destination=MusicDestination.SAVED}
+    }
     if(aboutOpen) {
         app.alcovaibe.vkmusicexport.AboutAppPage(onBack={aboutOpen=false})
         return
@@ -266,7 +270,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             if(!notifications)item("notifications") {TextButton(onClick={notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления процессов")}}
             if(state.busy)item("busy") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(if(state.stopping)"Завершаем операцию…" else state.preparing?:when(state.stage){"artists"->"Загружаем подписки на исполнителей…";"artist_details"->"Загружаем музыку исполнителя…";else->"Обновляем библиотеку…"},style=MaterialTheme.typography.bodySmall)
+                Text(if(state.stopping)"Завершаем операцию…" else state.preparing?:when(state.stage){"artists"->"Загружаем подписки на исполнителей…";"artist_details"->"Загружаем музыку исполнителя…";"track_metadata"->"Обновляем названия и пометки в фоне…";"artwork"->"Добавляем обложки в фоне…";"saved_files_background"->"Проверяем сохранённые файлы в фоне…";else->"Обновляем библиотеку…"},style=MaterialTheme.typography.bodySmall)
                 TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
             }}
             state.error?.let{error->item("error"){Text("${error.label} Код: ${error.name}",color=MaterialTheme.colorScheme.error)}}

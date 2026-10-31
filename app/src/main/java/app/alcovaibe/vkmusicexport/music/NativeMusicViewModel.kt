@@ -38,13 +38,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var sessionMonitor: Job?=null
     private val operations=NativeOperationJournal(application)
     private val _state=MutableStateFlow(NativeMusicState())
-    val state=combine(_state,MaintenanceRuntime.status){own,task->
-        if(task.busy)own.copy(busy=true,stage=task.stage,stopping=task.phase==MaintenancePhase.STOPPING)else own
-    }.stateIn(viewModelScope,SharingStarted.Eagerly,_state.value)
+    val state=_state.asStateFlow()
     private var maintenanceOpen: String?=null
+    private val _maintenanceNavigation=MutableStateFlow(0L);val maintenanceNavigation=_maintenanceNavigation.asStateFlow()
     fun openMaintenanceNotification(stage: String) {
         if(stage !in MaintenanceRuntime.stages)return
         if(!_state.value.initialized){maintenanceOpen=stage;return}
+        _maintenanceNavigation.update{it+1}
         when(stage){
             "track_metadata"->{_trackMetadata.update{it.copy(visible=true)};if(!MaintenanceRuntime.busy)showTrackMetadata()}
             "artwork"->_artwork.update{it.copy(visible=true)}
@@ -112,7 +112,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     fun backFromArtist() {
-        if(_state.value.busy)cancel()
+        if(_state.value.busy&&_state.value.stage !in MaintenanceRuntime.stages)cancel()
         _artists.update{if(it.album!=null)it.copy(album=null,albumTracks=null,error=null,message=null)else it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null)}
     }
     fun selectArtistAlbum(album: NativePlaylist?) {
@@ -235,7 +235,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("artwork"){g->
             val diagnostic=ArtworkDiagnostics{type,fields->Diagnostics.event(type,fields)}
             var outcome="STOPPED"
-            _artwork.update{it.copy(visible=true,running=true,message=null,current=null)}
+            if(MaintenanceRuntime.isResuming("artwork"))_artwork.update{it.copy(visible=true,running=true,message=null,current=null)}
+            else _artwork.value=ArtworkState(visible=true,running=true)
             try {
                 withContext(Dispatchers.IO) {
                     AudioExportRuntime.editSaved(getApplication(),maintenance=true) {
@@ -794,6 +795,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var operationOwner: Int?=null
     @Volatile private var generation=0
     init {
+        viewModelScope.launch {
+            MaintenanceRuntime.status.collect{task->_state.update{own->
+                if(task.busy)own.copy(busy=true,stage=task.stage,stopping=task.phase==MaintenancePhase.STOPPING)
+                else if(own.stage in MaintenanceRuntime.stages)own.copy(busy=false,stage="",stopping=false)
+                else own
+            }}
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val removed=LegacyAudioCleanup(application).run()

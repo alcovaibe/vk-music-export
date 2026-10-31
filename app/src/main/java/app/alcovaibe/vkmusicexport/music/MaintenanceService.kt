@@ -55,7 +55,7 @@ class MaintenanceService: Service() {
             val total=when(s.stage){"track_metadata"->meta.total;"artwork"->cover.total;else->files.total}
             val detail=when(s.stage){"track_metadata"->meta.name?:meta.message;"artwork"->cover.current?:cover.message;else->files.message}
             val phase=when(s.phase){MaintenancePhase.QUEUED->"Подготовка";MaintenancePhase.RUNNING->"Обработано: $done/$total";MaintenancePhase.STOPPING->"Завершаем текущую запись";MaintenancePhase.COMPLETED->"Завершено: $done/$total";else->"Приостановлено: $done/$total"}
-            val open=PendingIntent.getActivity(context,NOTIFICATION_ID,Intent(context,MainActivity::class.java)
+            val open=PendingIntent.getActivity(context,NOTIFICATION_ID,Intent(context,MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                 .putExtra(MaintenanceRuntime.OPEN_EXTRA,s.stage).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             return Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.ic_music_note).setContentTitle(title).setContentText(phase)
                 .setStyle(Notification.BigTextStyle().bigText(listOfNotNull(phase,detail).joinToString("\n")))
