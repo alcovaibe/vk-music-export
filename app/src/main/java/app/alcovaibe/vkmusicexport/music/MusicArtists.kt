@@ -8,9 +8,10 @@ internal data class MusicArtistDetails(val artist: MusicArtist,val tracks: Nativ
 
 /** Catalogue pools contain recommendations too. Only IDs from the user's artist subscription section belong here. */
 internal object MusicArtists {
-    private val subscriptionTitles=setOf("мои исполнители","вы подписаны","подписки","my artists","followed artists","subscriptions")
+    private val subscriptionTitles=setOf("мои исполнители","ваши исполнители","мои артисты","любимые исполнители","музыкальные подписки","вы подписаны","подписки","my artists","your artists","followed artists","artists you follow","subscriptions","following")
     private val ownTitles=setOf("моя музыка","моя библиотека","my music","my library")
-    private val artistTitles=setOf("исполнители","artists")
+    private val artistTitles=setOf("исполнители","артисты","artists")
+    private val showAllTitles=setOf("показать всех","показать все","все","все исполнители","show all","see all","view all","all artists")
     private val releaseTitles=setOf("альбомы","синглы","альбомы и синглы","релизы","все альбомы","albums","singles","releases","albums and singles")
     private fun str(e: JsonElement?)=(e as? JsonPrimitive)?.contentOrNull
     private fun title(o: JsonObject): String {
@@ -56,7 +57,8 @@ internal object MusicArtists {
         }
     }
     private fun ownMusicUrl(raw: JsonElement?,owner: Long?): String? {
-        val url=str(raw)?.toHttpUrlOrNull()?:return null
+        val value=str(raw)?:return null
+        val url=(if(value.startsWith("/"))"https://vk.com$value" else value).toHttpUrlOrNull()?:return null
         if(url.scheme!="https"||url.host !in setOf("vk.com","vk.ru","m.vk.com","m.vk.ru","music.vk.com","music.vk.ru")||url.port!=443||url.username.isNotEmpty()||url.password.isNotEmpty())return null
         val pathOwner=Regex("/audios([1-9][0-9]*)/?").matchEntire(url.encodedPath)?.groupValues?.get(1)?.toLongOrNull()
         if(pathOwner!=null&&owner!=null&&pathOwner!=owner)return null
@@ -64,6 +66,9 @@ internal object MusicArtists {
         if(url.queryParameter("owner_id")?.let{owner!=null&&it.toLongOrNull()!=owner}==true)return null
         return url.toString()
     }
+    private fun sections(o: JsonObject)=(((o["catalog"] as? JsonObject)?.get("sections") as? JsonArray).orEmpty()).mapNotNull{it as? JsonObject}+
+        listOfNotNull(o["section"] as? JsonObject)
+
     private data class Target(val method: String,val id: String,val from: String?=null,val trusted: Boolean=true,val own: Boolean=false)
     private suspend fun collect(initial: JsonObject,subscriptions: Boolean,owner: Long?,
         progress:(List<MusicArtist>,Int)->Unit,fetch:suspend(String,Map<String,String>)->JsonElement): Pair<List<MusicArtist>,List<NativePlaylist>> {
@@ -97,12 +102,19 @@ internal object MusicArtists {
             }
             for(p in (o["playlists"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject})
                 listPool[text(p,"owner_id")+"_"+text(p,"id")]=p
-            val sections=(((o["catalog"] as? JsonObject)?.get("sections") as? JsonArray).orEmpty()).mapNotNull{it as? JsonObject}
+            val sections=sections(o)
             if(subscriptions)for(s in sections) {
-                if(title(s) in ownTitles&&(s["blocks"] as? JsonArray).isNullOrEmpty())schedule("catalog.getSection",s["id"],trusted=false,own=true)
                 if(subscription(s,own)) {
                     recognized=true
-                    if((s["blocks"] as? JsonArray).isNullOrEmpty())schedule("catalog.getSection",s["id"])
+                    if(!trusted&&(s["blocks"] as? JsonArray).isNullOrEmpty())schedule("catalog.getSection",s["id"]?:s["section_id"])
+                }
+            }
+            // Section-level tabs/buttons may carry the only link to the subscriptions.
+            if(subscriptions&&!trusted)for(container in listOf(o)+listOfNotNull(o["catalog"] as? JsonObject)+sections) {
+                val ownContainer=own||title(container) in ownTitles
+                for(action in navigation(container))if(subscription(action,ownContainer)) {
+                    if(cursor(action["section_id"])!=null){recognized=true;schedule("catalog.getSection",action["section_id"])}
+                    else ownMusicUrl(action["url"],owner)?.let{url->schedule("catalog.getAudio",JsonPrimitive(url))}
                 }
             }
             val namedBlocks=sections.filter{subscription(it,own)}.flatMap{(it["blocks"] as? JsonArray).orEmpty()}.toSet()
@@ -128,15 +140,21 @@ internal object MusicArtists {
                     if(cursor(b["next_from"])!=null)schedule("catalog.getBlockItems",b["id"],b["next_from"])
                 }
                 for(action in navigation(b)) {
-                    val wanted=if(subscriptions)subscription(action,ownBlock)else title(action) in releaseTitles
+                    val wanted=if(subscriptions)subscription(action,ownBlock)||accepted&&title(action) in showAllTitles else title(action) in releaseTitles
                     if(wanted&&!trusted) {
                         if(cursor(action["section_id"])!=null) {recognized=true;schedule("catalog.getSection",action["section_id"])}
                         else ownMusicUrl(action["url"],owner)?.let{url->recognized=true;schedule("catalog.getAudio",JsonPrimitive(url))}
                     }
                 }
             }
+            // need_blocks may include only a preview of My Music. Hydrate its section when
+            // the preview exposes neither a subscriptions block nor an explicit followed flag.
+            if(subscriptions&&!recognized&&!own)for(section in sections) {
+                if(title(section) in ownTitles)
+                    schedule("catalog.getSection",section["id"]?:section["section_id"],trusted=false,own=true)
+            }
             val s=o["section"] as? JsonObject
-            if(trusted&&cursor(s?.get("next_from"))!=null)schedule("catalog.getSection",s?.get("id"),s?.get("next_from"),trusted,own)
+            if(trusted&&cursor(s?.get("next_from"))!=null)schedule("catalog.getSection",s?.get("id")?:s?.get("section_id"),s?.get("next_from"),trusted,own)
 
             if(subscriptions) {
                 progress(artists.values.toList(),pages+1)
@@ -150,7 +168,12 @@ internal object MusicArtists {
     }
     suspend fun subscriptions(owner: Long?=null,progress:(List<MusicArtist>,Int)->Unit={_,_->},fetch:suspend(String,Map<String,String>)->JsonElement): List<MusicArtist> {
         val response=fetch("catalog.getAudio",emptyMap()) as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
-        return collect(response,true,owner,progress,fetch).first
+        return try{collect(response,true,owner,progress,fetch).first}
+        catch(e: MusicFailure) {
+            if(e.code!=MusicError.METHOD||owner==null)throw e
+            val own=fetch("catalog.getAudio",mapOf("current_user" to "1")) as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
+            collect(own,true,owner,progress,fetch).first
+        }
     }
     suspend fun albums(response: JsonElement,fetch:suspend(String,Map<String,String>)->JsonElement)=
         collect(response as? JsonObject?:throw MusicFailure(MusicError.RESPONSE),false,null,{_,_->},fetch).second

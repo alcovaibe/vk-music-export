@@ -29,10 +29,12 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MusicLibraryRedesignDeviceTest" name="redesign{i}"/>' for i in range(3))
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.MusicArtistLoadingDeviceTest" name="timeout"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataLookupViewModelDeviceTest" name="workflow"/>'
-        return f'<testsuites tests="118" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.DuplicateResumeDeviceTest" name="completeRepeat{i}"/>' for i in range(2))
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateRemovalViewModelDeviceTest" name="workflow"/>'
+        return f'<testsuites tests="121" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 118)
+        self.assertEqual(self.check([self.successful_report()], '0'), 121)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

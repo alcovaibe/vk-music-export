@@ -15,7 +15,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
     private val credentials: MusicCredentialStore,private val sessions: MusicSessionManager?,
     val state: MutableStateFlow<DuplicatesState> = MutableStateFlow(DuplicatesState()),
     private val hasherFactory:(DuplicateScanCache,(NativeTrack,AudioProgress)->Unit)->DuplicateAudioHasher={cache,progress->
-        DuplicateAudioHasher(context,api,checkpoint=cache,progress=progress)}) {
+        DuplicateAudioHasher(context,api,checkpoint=cache,progress=progress,reuseSaved=true)}) {
     @Volatile private var scheduledAccess: MusicAccess?=null
     private val file=AtomicFile(File(context.noBackupFilesDir,"duplicate-job.json"))
     private data class Request(val id: String,val credential: String,val phase: String)
@@ -82,7 +82,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
             guard();if(!persist(id,"RUNNING"))throw CancellationException()
             hasherFactory(cache){track,p->
                 stage=when(p.stage){"resolve_media"->"RESOLVE_MEDIA";"payload_hash"->"AUDIO_HASH";else->"AUDIO_TRANSFER"}
-                update{it.copy(progress=it.progress.copy(stage=when(p.stage){"resolve_media"->"Получаем ссылку ВК";"payload_hash"->"Считаем SHA-256";"verifying"->"Проверяем аудиоформат";else->"Загружаем временную копию"},track=track,bytes=p.bytes))}
+                update{it.copy(progress=it.progress.copy(stage=when(p.stage){"resolve_media"->"Получаем ссылку ВК";"payload_hash"->"Считаем SHA-256";"saved_hash"->"Проверяем скачанный файл без загрузки";"verifying"->"Проверяем аудиоформат";else->"Загружаем временную копию"},track=track,bytes=p.bytes))}
             }.use{hasher->
                 val report=MusicDuplicates(api,hasher,guard=::guard,progress={p->
                     stage=if(p.track==null)"LIBRARY_READ" else "AUDIO_HASH";reused=maxOf(reused,p.reused)
@@ -91,7 +91,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
                 guard()
                 val current=sessions?.continueRead(access)?:access
                 if(!persist(id,"DONE"))throw CancellationException()
-                update{it.copy(phase=DuplicatePhase.READY,report=report.copy(credentialId=current.credentialId),savedChecks=cache.count(),
+                update{it.copy(phase=DuplicatePhase.READY,report=report.copy(credentialId=current.credentialId,readSessionId=current.readSessionId),savedChecks=cache.count(),
                     message=if(report.libraryChanged)"Поиск завершён. Библиотека изменилась: новые и изменённые записи можно проверить отдельным поиском. Удаление предлагается только для неизменившихся записей."
                         else "Проверка завершена. Для удаления каждого дубликата требуется отдельное подтверждение в приложении.")}
                 Diagnostics.event("audio_duplicates_scan",mapOf("scan_id" to id,"tracks" to report.tracks,"checked" to report.checked,

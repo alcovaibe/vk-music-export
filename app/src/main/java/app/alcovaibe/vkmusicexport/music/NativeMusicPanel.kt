@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,appFooter: @Composable ()->Unit={},onUpdates:()->Unit={}) {
+internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,onUpdates:()->Unit={}) {
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
@@ -92,11 +92,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
+    var aboutOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
     var ascending by rememberSaveable {mutableStateOf(false)}
     var configure by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
+    if(aboutOpen) {
+        app.alcovaibe.vkmusicexport.AboutAppPage(onBack={aboutOpen=false})
+        return
+    }
     if(configure) {
         NativeAccessScreen(onBack={configure=false},onSave={token,agent->model.configure(token,agent);configure=false})
         return
@@ -202,7 +207,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             MusicDestination.SAVED->"Сохранённое"
             MusicDestination.DOWNLOADS->"Загрузки"
             else->if(category==LibraryCategory.ARTISTS)artists.album?.title?:artists.selected?.name?:"Мои исполнители" else state.selected?.title?:"Библиотека"
-        },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,
+        },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         onBack=::back,showBack=state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null,
         menuItems={closeMenu->
             DropdownMenuItem(text={Text("Доступ к музыке")},modifier=Modifier.testTag("open_music_access"),onClick={closeMenu();accessOpen=true})
@@ -352,7 +357,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             }
             if(!state.configured)item("empty_library") {Text("Подключи ВК через карточку сверху. Сохранённые файлы доступны без входа.",style=MaterialTheme.typography.bodyMedium)}
         }
-        item("app_info") {appFooter()}
     }
     if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
         model::cancelDuplicateRemoval,model::skipDuplicate,model::pauseDuplicateCheck,model::dismissDuplicates)

@@ -58,6 +58,8 @@ internal object DuplicateCheckRuntime {
             task(context).execute(id)
         }}finally{active.set(false)}
     }
+    /** A ready result may be tapped before the JobService finishes its cleanup. */
+    suspend fun awaitIdle(){execution.withLock { }}
     fun interrupted(context: Context,id: String){
         task(context).pause(id)
         if(state.value.scanId==id&&state.value.phase==DuplicatePhase.BLOCKED)

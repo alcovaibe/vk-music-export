@@ -38,7 +38,7 @@ import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 
 internal enum class MusicDestination(val label: String,val icon: ImageVector) {
-    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),DOWNLOADS("Друзья",DownloadIcon)
+    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),DOWNLOADS("Друзья",FriendsMusicIcon)
 }
 internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
     TRACKS("Треки",LibraryNoteIcon),PLAYLISTS("Плейлисты",PlaylistIcon),
@@ -48,7 +48,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
-    queue: ExportSnapshot,onDownloads: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
+    queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
     menuItems: @Composable ColumnScope.(()->Unit)->Unit={},tag: String="native_music_screen",content: LazyListScope.()->Unit) {
     BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
@@ -59,7 +59,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
                 IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
                     BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
                 }
-                LatestReportMenu(extraItems=menuItems)
+                LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
             })},
         bottomBar={NavigationBar(containerColor=MaterialTheme.colorScheme.background,tonalElevation=0.dp) {
             MusicDestination.entries.forEach{item->NavigationBarItem(selected=destination==item,onClick={onDestination(item)},

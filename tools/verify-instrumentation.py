@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 118) -> int:
+def verify(results: Path, minimum_tests: int = 121) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')
@@ -50,6 +50,8 @@ def verify(results: Path, minimum_tests: int = 118) -> int:
         raise ValueError('Required artist loading test did not execute')
     if not any(name == 'app.alcovaibe.vkmusicexport.TrackMetadataLookupViewModelDeviceTest' for name, _ in executed):
         raise ValueError('Required metadata lookup workflow test did not execute')
+    if not any(name == 'app.alcovaibe.vkmusicexport.DuplicateRemovalViewModelDeviceTest' for name, _ in executed):
+        raise ValueError('Required duplicate removal workflow test did not execute')
     return len(executed)
 
 
