@@ -1,6 +1,8 @@
 package app.alcovaibe.vkmusicexport
 
 import android.content.Intent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -42,13 +44,14 @@ class UpdateAccessDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class UpdateUiDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun publicUpdatesUseHomeButtonAndNativeSheetWithoutSettingsEntry() {
+    @Test fun menuOpensBottomSheetDirectlyAndThereIsNoStandaloneUpdateButton() {
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
-        ui.onNodeWithTag("check_updates").assertExists()
+        ui.onNodeWithTag("check_updates").assertDoesNotExist()
         ui.onNodeWithContentDescription("Меню").performClick()
         ui.onNodeWithTag("open_app_updates").assertIsDisplayed().performClick()
-        ui.onNodeWithTag("music_app_updates").assertExists()
-        ui.onNodeWithTag("check_updates").assertExists()
+        ui.onNodeWithTag("updates_sheet").assertExists()
+        ui.onNodeWithTag("music_app_updates").assertDoesNotExist()
+        ui.onNodeWithTag("check_updates").assertDoesNotExist()
         androidx.test.espresso.Espresso.pressBack()
         // A fixed local source proves the result sheet; this test never contacts GitHub or installs an APK.
         lateinit var controller: UpdateController
@@ -62,17 +65,23 @@ class UpdateUiDeviceTest {
                 override suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit): File=error("No download")
                 override suspend fun verify(file: File,release: UpdateRelease)=Unit
             },1,36)
-            ui.activity.setContent {MusicTheme {UpdatePanel(controller)}}
+            controller.resume()
+            ui.activity.setContent {MusicTheme {
+                var requested by androidx.compose.runtime.remember {androidx.compose.runtime.mutableStateOf(true)}
+                UpdatePanel(controller,showButton=false,requested=requested,onDismiss={requested=false})
+            }}
         }
         try {
             ui.waitUntil(10000){controller.state.value.initialized}
-            ui.runOnUiThread{controller.resume()}
-            ui.onNodeWithTag("check_updates").performClick()
+            ui.runOnUiThread{controller.resume();controller.check()}
+            ui.onNodeWithTag("check_updates").assertDoesNotExist()
             ui.onNodeWithTag("updates_sheet").assertExists()
+            ui.waitUntil(10000){controller.state.value.release!=null}
             ui.onNodeWithText("Доступно обновление 99.0.0").assertExists()
+            captureMusicFollowupScreenshot("updates-bottom-sheet")
             ui.onNodeWithText("Позже").performClick()
             ui.onNodeWithTag("updates_sheet").assertDoesNotExist()
-            ui.onNodeWithTag("check_updates").assertExists()
+            ui.onNodeWithTag("check_updates").assertDoesNotExist()
             assertFalse(File(ui.activity.noBackupFilesDir,"update-access.bin").exists())
             assertArrayEquals(collection,ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes())
         }finally{ui.runOnUiThread{controller.close();scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()}}

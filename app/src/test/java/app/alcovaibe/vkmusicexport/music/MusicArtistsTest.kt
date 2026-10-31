@@ -69,4 +69,42 @@ class MusicArtistsTest {
         assertNull(MusicArtists.photo(json("""{"url":"http://sun1.userapi.com/image.jpg"}""")))
         assertEquals("https://sun1.userapi.com/photo.jpg",MusicArtists.photo(json("""{"photo_135":"https://sun1.userapi.com/photo.jpg"}""")))
     }
+    @Test fun ownMusicFeedCursorIsNotFollowedAndExplicitFollowedFlagsWorkWithoutHeadings()=runTest {
+        var calls=0
+        val rows=MusicArtists.subscriptions{_,_->calls++;json("""{"artists":[{"id":"1","name":"Подписка","is_followed":true},{"id":"2","name":"Удалённая","is_followed":false}],"section":{"id":"own","title":"Моя музыка","next_from":"general-feed","blocks":[]}}""")}
+        assertEquals(1,calls);assertEquals(listOf("1"),rows.map{it.id})
+    }
+    @Test fun nestedButtonsAndMetaHeadingsNavigateOnlyToTheSubscriptionSection()=runTest {
+        val rows=MusicArtists.subscriptions{method,fields->
+            if(method=="catalog.getAudio")json("""{"catalog":{"sections":[{"title":"Моя музыка","blocks":[{"buttons":[{"text":"Исполнители","action":{"section_id":"subscriptions"}}]}]}]}}""")
+            else {assertEquals("subscriptions",fields["section_id"]);json("""{"artists":[{"id":"1","name":"Подписка"}],"section":{"id":"subscriptions","blocks":[{"artists_ids":["1"]}]}}""")}
+        }
+        assertEquals(listOf("1"),rows.map{it.id})
+        val meta=MusicArtists.subscriptions{method,_->
+            if(method=="catalog.getAudio")json("""{"catalog":{"sections":[{"title":"Моя музыка","blocks":[{"meta":{"show_all_info":{"title":"Исполнители","section_id":"all"}}}]}]}}""")
+            else json("""{"artists":[{"id":"1","name":"Подписка"}],"section":{"blocks":[{"artists_ids":["1"]}]}}""")
+        }
+        assertEquals(listOf("1"),meta.map{it.id})
+    }
+    @Test fun subscriptionOpenUrlStaysOnTheCurrentOwnerAndNeverFetchesAnExternalPage()=runTest {
+        val calls=mutableListOf<Map<String,String>>()
+        val rows=MusicArtists.subscriptions(12){method,fields->
+            assertEquals("catalog.getAudio",method);calls.add(fields)
+            if(fields.isEmpty())json("""{"catalog":{"sections":[{"title":"Моя музыка","blocks":[{"buttons":[{"text":"Исполнители","action":{"url":"https://vk.com/audios12?section=artists"}},{"text":"Исполнители","action":{"url":"https://vk.com/audios99?section=artists"}}]}]}]}}""")
+            else json("""{"artists":[{"id":"1","name":"Подписка"}],"section":{"blocks":[{"artists_ids":["1"]}]}}""")
+        }
+        assertEquals(2,calls.size);assertEquals("https://vk.com/audios12?section=artists",calls[1]["url"])
+        assertEquals(listOf("1"),rows.map{it.id})
+    }
+    @Test fun nonRepeatingEmptyCursorsStopAndVerifiedPartialResultsArePublishedBeforeFailure()=runTest {
+        val snapshots=mutableListOf<List<MusicArtist>>();var n=0
+        try {
+            MusicArtists.subscriptions(progress={rows,_->snapshots.add(rows)}){method,_->
+                if(method=="catalog.getAudio")json("""{"artists":[{"id":"1","name":"Подписка"}],"catalog":{"sections":[{"blocks":[{"title":"Мои исполнители","artists_ids":["1"],"actions":[{"text":"Мои исполнители","section_id":"all"}]}]}]}}""")
+                else {n++;json("""{"section":{"id":"all","next_from":"different-$n","blocks":[]}}""")}
+            };fail("Must stop empty cursor chain")
+        }catch(e: MusicFailure){assertEquals(MusicError.INCOMPLETE,e.code)}
+        assertEquals(2,n);assertEquals(listOf("1"),snapshots.first().map{it.id})
+    }
+
 }

@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 
 internal interface MusicApi {
     suspend fun followedArtists(access: MusicAccess,owner: Long): List<MusicArtist> = throw MusicFailure(MusicError.METHOD)
+    suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> = followedArtists(access,owner).also{progress(it,1)}
     suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails = throw MusicFailure(MusicError.METHOD)
     fun previewArtwork(track: NativeTrack): String? = null
     suspend fun library(access: MusicAccess): NativeProbe
@@ -26,6 +27,7 @@ internal interface MusicApi {
         artwork(access,track)?.let{listOf(ArtworkCandidate(it,ArtworkOrigin.UNSPECIFIED))}?:emptyList()
     suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches=throw MusicFailure(MusicError.METHOD)
     suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch?=throw MusicFailure(MusicError.METHOD)
+    suspend fun searchMetadata(access: MusicAccess,query: String,offset: Int): MetadataMatches = searchArtwork(access,query,offset).let{MetadataMatches(it.matches.map{match->match.track},it.count,it.offset,it.byLink)}
     suspend fun metadata(access: MusicAccess,id: String): NativeTrack?=throw MusicFailure(MusicError.METHOD)
     suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
         musicCheck(!track.restricted&&track.duration>0,MusicError.UNAVAILABLE)
@@ -70,7 +72,8 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             }
         }
     }
-    override suspend fun followedArtists(access: MusicAccess,owner: Long)=MusicArtists.subscriptions {method,fields->
+    override suspend fun followedArtists(access: MusicAccess,owner: Long)=followedArtists(access,owner){_,_->}
+    override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit)=MusicArtists.subscriptions(owner,progress) {method,fields->
         val current=sessions?.continueRead(access)?:access
         request(current,method,fields+mapOf("lang" to "ru")+(if(method=="catalog.getAudio")mapOf("owner_id" to owner.toString(),"need_blocks" to "1")else emptyMap()))
     }
@@ -157,6 +160,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch? {
         musicCheck(Regex("-?[1-9][0-9]*_[1-9][0-9]*").matches(id),MusicError.RESPONSE)
         return NativeProtocol.artworkRecord(request(access,"audio.getById",mapOf("audios" to id)),id)
+    }
+    override suspend fun searchMetadata(access: MusicAccess,query: String,offset: Int): MetadataMatches {
+        val text=ArtworkQuery.text(query)
+        musicCheck(!ArtworkQuery.isLink(text)&&offset>=0&&offset<ArtworkQuery.MAX_RESULTS&&offset%ArtworkQuery.PAGE_SIZE==0,MusicError.RESPONSE)
+        return NativeProtocol.metadataSearch(request(access,"audio.search",mapOf("q" to text,"count" to ArtworkQuery.PAGE_SIZE.toString(),
+            "offset" to offset.toString(),"auto_complete" to "0","search_own" to "0","sort" to "2")),offset)
     }
     override suspend fun metadata(access: MusicAccess,id: String): NativeTrack? {
         musicCheck(Regex("-?[1-9][0-9]*_[1-9][0-9]*").matches(id),MusicError.RESPONSE)

@@ -22,7 +22,8 @@ import kotlinx.serialization.Serializable
 internal class TrackMetadataBatch(private val api: MusicApi,private val access:suspend()->MusicAccess,
     private val find:(TrackMetadataTarget)->PublishedAudio?,private val verify:suspend(PublishedAudio)->Unit,
     private val update:suspend(PublishedAudio,NativeTrack)->Boolean,private val recover:suspend()->Unit,
-    private val save:(TrackMetadataRun)->Unit,private val progress:(TrackMetadataRun,String?)->Unit={_,_->}) {
+    private val save:(TrackMetadataRun)->Unit,private val progress:(TrackMetadataRun,String?)->Unit={_,_->},
+    private val metadataSource:(PublishedAudio)->String?={null}) {
     suspend fun run(initial: TrackMetadataRun): TrackMetadataRun {
         musicCheck(initial.owner>0&&initial.next in 0..initial.targets.size,MusicError.STORAGE)
         var run=initial.copy(error=null)
@@ -44,12 +45,14 @@ internal class TrackMetadataBatch(private val api: MusicApi,private val access:s
                     val saved=row!!
                     musicCheck(saved.track.id==target.trackId,MusicError.INCOMPLETE)
                     verify(saved)
-                    if(!metadata.containsKey(saved.track.id))metadata[saved.track.id]=try{api.metadata(access(),saved.track.id)}
+                    val replacement=metadataSource(saved)
+                    val reference=replacement?:saved.track.id
+                    if(!metadata.containsKey(reference))metadata[reference]=try{api.metadata(access(),reference)}
                         catch(e: MusicFailure){if(e.code in setOf(MusicError.UNAVAILABLE,MusicError.DENIED))null else throw e}
                     access() // Follow verified renewals; reject a new login before touching the file.
-                    val fresh=metadata[saved.track.id]
+                    val fresh=metadata[reference]?.let{musicCheck(it.id==reference,MusicError.RESPONSE);if(replacement!=null)MetadataReplacementText.merge(saved.track,it)else it}
                     run=if(fresh==null)run.copy(unavailable=run.unavailable+1,issues=run.issues+TrackMetadataIssue(target.name,
-                        "ВК не вернул запись по сохранённому ID или не разрешил доступ к ней."))
+                        "ВК не вернул запись по сохранённому ID или не разрешил доступ к ней.",target,replacement))
                     else if(update(saved,fresh))run.copy(updated=run.updated+1)else run.copy(current=run.current+1)
                 }
             }catch(e: SavedFileFailure) {

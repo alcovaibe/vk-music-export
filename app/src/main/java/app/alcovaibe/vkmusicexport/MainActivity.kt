@@ -74,6 +74,7 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
+    var updatesRequested by rememberSaveable{mutableStateOf(false)}
     val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
     val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
     val musicState by nativeMusic.state.collectAsState()
@@ -82,12 +83,12 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
     val context=LocalContext.current
     app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,!downloadsOpen)
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,true,
-        onDismiss={(context as? android.app.Activity)?.finish()},appFooter={
+        onDismiss={(context as? android.app.Activity)?.finish()},onUpdates={updatesRequested=true},appFooter={
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 Text("v ${BuildConfig.VERSION_NAME}",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen)
             }
         })
+    app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen,showButton=false,requested=updatesRequested,onDismiss={updatesRequested=false})
     if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy||duplicates.busy,musicState.error,
         onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
         onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads,

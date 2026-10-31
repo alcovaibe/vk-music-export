@@ -24,14 +24,14 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
 
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
-    val album: NativePlaylist?=null,val albumTracks: NativePage?=null)
+    val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null)
 internal data class SavedLibraryEntry(val file: PublishedAudio,val present: Boolean)
 
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
-    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null): AndroidViewModel(application) {
+    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
@@ -64,26 +64,34 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             try {
                 val a=sessions?.current()?:access()
                 musicCheck(a.accountId==null||a.accountId==owner,MusicError.ACCOUNT_CHANGED)
-                val rows=api.followedArtists(a,owner);active(g)
+                val rows=withTimeout(artistTimeoutMs){api.followedArtists(a,owner){partial,requests->
+                    if(g==generation) {
+                        _artists.update{it.copy(artists=partial.distinctBy{artist->artist.id},requests=requests)}
+                        _state.update{it.copy(preparing="Подписки: ${partial.size} · запросов: $requests")}
+                    }
+                }};active(g)
                 if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
                 _artists.value=MusicArtistsState(owner,true,rows.distinctBy{it.id})
-            }catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,message="ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.")}}
+            catch(e: CancellationException){_artists.update{it.copy(message="Загрузка подписок приостановлена. Уже полученные исполнители доступны.")};throw e}
+            catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
         }
     }
     fun selectArtist(artist: MusicArtist?) {
         if(_state.value.busy)return
         if(artist==null){_artists.update{it.copy(selected=null,details=null,error=null,album=null,albumTracks=null)};return}
         val s=_artists.value
-        if(!s.loaded||s.owner!=_state.value.probe?.owner||s.artists.none{it.id==artist.id})return
-        _artists.update{it.copy(selected=artist,details=null,error=null)}
+        if(s.owner!=_state.value.probe?.owner||s.artists.none{it.id==artist.id})return
+        _artists.update{it.copy(selected=artist,details=null,error=null,message=null,album=null,albumTracks=null)}
         run("artist_details") {g->
             try {
                 val a=sessions?.current()?:access()
                 musicCheck(a.accountId==null||a.accountId==s.owner,MusicError.ACCOUNT_CHANGED)
-                val details=api.artistDetails(a,artist);active(g)
+                val details=withTimeout(artistTimeoutMs){api.artistDetails(a,artist)};active(g)
                 if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)
                 _artists.update{it.copy(details=details)}
-            }catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}
+            catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
         }
     }
     fun backFromArtist() {
@@ -95,14 +103,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(album==null){_artists.update{it.copy(album=null,albumTracks=null,error=null)};return}
         val s=_artists.value
         if(s.owner!=_state.value.probe?.owner||s.details?.albums?.none{it.key==album.key}!=false)return
-        _artists.update{it.copy(album=album,albumTracks=null,error=null)}
+        _artists.update{it.copy(album=album,albumTracks=null,error=null,message=null)}
         run("artist_album") {g->
             try {
                 val a=sessions?.current()?:access()
                 musicCheck(a.accountId==null||a.accountId==s.owner,MusicError.ACCOUNT_CHANGED)
-                val page=MusicPagination.tracks({offset->active(g);api.playlistPage(sessions?.continueRead(a)?:a,album,offset)})
+                val page=withTimeout(artistTimeoutMs){MusicPagination.tracks({offset->active(g);api.playlistPage(sessions?.continueRead(a)?:a,album,offset)})}
                 active(g);_artists.update{it.copy(albumTracks=page)}
-            }catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}
+            catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
         }
     }
     private val _queueAccount=MutableStateFlow<Long?>(null);val queueAccount=_queueAccount.asStateFlow()
@@ -169,6 +178,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
                             val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
                                 verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},
+                                metadataSource={store.metadataReplacement(owner,it)?.referenceId},
                                 progress={snapshot,name->
                                     _trackMetadata.update{snapshot.state(it.visible,running=true).copy(name=name,message=null)}
                                     AudioExportRuntime.refresh()
@@ -253,6 +263,125 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }catch(e: CancellationException){outcome="INTERRUPTED";_artwork.update{it.copy(message="Обработка прервана. Оставь музыкальный экран открытым для продолжения. Готовые обложки будут пропущены.")};throw e}
              catch(e: Exception){diagnostic.result("STOPPED",e);_artwork.update{it.copy(message="Обработка остановлена (${(e as? MusicFailure)?.code?.name?:"STORAGE"}). Уже готовые файлы сохранены; при незавершённой записи резервная копия остаётся до восстановления.")}}
             finally{_artwork.update{it.copy(running=false,current=null)};diagnostic.summary(outcome,_artwork.value)}
+        }
+    }
+    private val _metadataLookup=MutableStateFlow(MetadataLookupState());val metadataLookup=_metadataLookup.asStateFlow()
+    private fun metadataLookupUpdate(id: String,block:(MetadataLookupState)->MetadataLookupState){_metadataLookup.update{if(it.id==id)block(it)else it}}
+    fun showMetadataLookup(target: TrackMetadataTarget) {
+        if(!_state.value.initialized||_state.value.busy||_trackMetadata.value.running||DuplicateCheckRuntime.transferring||
+            _trackMetadata.value.issues.none{it.target==target})return
+        val id=UUID.randomUUID().toString()
+        _metadataLookup.value=MetadataLookupState(visible=true,id=id,phase=LookupPhase.OPENING)
+        metadataLookupWork("open",id){g->
+            AudioExportRuntime.editSaved(getApplication()) {
+                AudioExportStore(getApplication()).use{store->
+                    val shared=SharedAudioStore(getApplication())
+                    ArtworkRepair(getApplication(),store,shared).recover();TrackMetadataRepair(getApplication(),store,shared).recover()
+                    val row=store.metadataTarget(target)?:throw MusicFailure(MusicError.INCOMPLETE)
+                    musicCheck(row.catalogueVerified,MusicError.INCOMPLETE);shared.requireValid(row);active(g)
+                    metadataLookupUpdate(id){it.copy(phase=LookupPhase.READY,target=row,query=(row.track.artist+" "+row.track.displayTitle).take(500))}
+                }
+            }
+        }
+    }
+    fun dismissMetadataLookup(){if(_metadataLookup.value.busy)cancel();_metadataLookup.value=MetadataLookupState()}
+    fun metadataLookupQuery(value: String) {
+        if(_metadataLookup.value.busy||_state.value.busy)return
+        _metadataLookup.update{it.copy(query=value.take(500),results=null,choice=null,readSessionId="",phase=LookupPhase.READY,message=null)}
+    }
+    private suspend fun metadataAccess(initial: MusicAccess,owner: Long,g: Int): MusicAccess {
+        active(g)
+        val current=if(sessions!=null)sessions.continueRead(initial)else access().also{
+            musicCheck(it.readSessionId==initial.readSessionId,MusicError.ACCESS)
+        }
+        musicCheck(current.accountId==null||current.accountId==owner,MusicError.ACCOUNT_CHANGED);active(g)
+        return current
+    }
+    fun findMetadataReplacement(offset: Int=0) {
+        val s=_metadataLookup.value;val row=s.target?:return
+        if(!s.visible||s.busy||_state.value.busy||DuplicateCheckRuntime.transferring)return
+        _metadataLookup.update{it.copy(phase=LookupPhase.SEARCHING,choice=null,message=null)}
+        metadataLookupWork("search",s.id){g->
+            val a=sessions?.current()?:access()
+            val owner=a.accountId?:api.library(a).owner
+            musicCheck(row.source?.account?.let{it>0&&it!=owner}!=true,MusicError.ACCOUNT_CHANGED)
+            suspend fun guard(){metadataAccess(a,owner,g);Unit}
+            val page=TrackMetadataLookup(api,guard=::guard).find(a,s.query,offset)
+            metadataLookupUpdate(s.id){it.copy(phase=LookupPhase.READY,results=page,resultsAt=lookupNow(),readSessionId=a.readSessionId,owner=owner,
+                message=if(page.tracks.isEmpty())"ВК не вернул вариантов. Измени запрос или вставь полную ссылку на песню." else "Выбери запись и проверь название и версию перед подтверждением.")}
+        }
+    }
+    fun previewMetadataReplacement(track: NativeTrack) {
+        val s=_metadataLookup.value;val row=s.target?:return
+        if(!s.visible||s.busy||_state.value.busy||DuplicateCheckRuntime.transferring||track !in s.results?.tracks.orEmpty())return
+        _metadataLookup.update{it.copy(phase=LookupPhase.PREVIEWING,choice=null,message=null)}
+        metadataLookupWork("preview",s.id){g->
+            val a=sessions?.current()?:access()
+            suspend fun guard(){
+                musicCheck(a.readSessionId==s.readSessionId,MusicError.ACCESS);metadataAccess(a,s.owner,g)
+                if(lookupNow()-s.resultsAt>=10*60_000)throw MetadataChoiceExpired()
+            }
+            val choice=TrackMetadataLookup(api,guard=::guard).preview(a,row,track)
+            metadataLookupUpdate(s.id){it.copy(phase=LookupPhase.CONFIRM,choice=choice,message=null)}
+        }
+    }
+    fun backMetadataReplacement(){if(!_metadataLookup.value.busy)_metadataLookup.update{it.copy(phase=LookupPhase.READY,choice=null,message=null)}}
+    fun confirmMetadataReplacement() {
+        val s=_metadataLookup.value;val choice=s.choice?:return
+        if(!s.visible||s.phase!=LookupPhase.CONFIRM||_state.value.busy||DuplicateCheckRuntime.transferring)return
+        _metadataLookup.update{it.copy(phase=LookupPhase.APPLYING,message=null)}
+        metadataLookupWork("apply",s.id){g->
+            val a=sessions?.current()?:access()
+            suspend fun guard(){musicCheck(authForeground.value,MusicError.ACCESS);metadataAccess(a,s.owner,g);Unit}
+            val changed=TrackMetadataLookup(api,guard=::guard).apply(a,choice){row,text,reference->
+                AudioExportRuntime.editSaved(getApplication()) {
+                    AudioExportStore(getApplication()).use{store->
+                        val shared=SharedAudioStore(getApplication())
+                        val repair=TrackMetadataRepair(getApplication(),store,shared,beforeWrite=::guard)
+                        ArtworkRepair(getApplication(),store,shared).recover();repair.recover();guard()
+                        musicCheck(store.metadataTarget(TrackMetadataTarget(row.taskKey,row.uri,row.track.id,row.displayName))==row,MusicError.INCOMPLETE)
+                        musicCheck(row.source?.account?.let{it>0&&it!=s.owner}!=true,MusicError.ACCOUNT_CHANGED)
+                        shared.requireValid(row)
+                        // The confirmed source survives interrupted file edits; the repair journal owns the bytes.
+                        store.metadataReplacement(TrackMetadataReplacement(s.owner,row.track.id,row.uri,reference))
+                        try {
+                            val written=repair.update(row,text)
+                            store.metadataRun(s.owner)?.let{run->
+                                val count=run.issues.count{it.target?.uri==row.uri&&it.target.trackId==row.track.id&&!it.resolved}
+                                val updated=run.copy(unavailable=(run.unavailable-count).coerceAtLeast(0),
+                                    updated=run.updated+if(written)count else 0,current=run.current+if(written)0 else count,
+                                    issues=run.issues.map{if(it.target?.uri==row.uri&&it.target.trackId==row.track.id)
+                                        it.copy(resolved=true,selectedId=reference,reason="Название и версия проверены по выбранной записи ВК.")else it})
+                                store.metadataRun(updated);_trackMetadata.update{updated.state(it.visible)}
+                            }
+                            written
+                        }finally {withContext(NonCancellable+Dispatchers.IO){SharedPlaylistStore(getApplication(),store).repairLocations();AudioExportRuntime.refresh()}}
+                    }
+                }
+            }
+            metadataLookupUpdate(s.id){it.copy(phase=LookupPhase.DONE,choice=null,results=null,
+                message=if(changed)"Название и пометка версии обновлены. Выбор сохранён для следующих проверок." else "Название уже актуально. Выбор сохранён для следующих проверок.")}
+        }
+    }
+    private fun metadataLookupWork(step: String,id: String,block:suspend(Int)->Unit) {
+        run("metadata_lookup_$step"){g->
+            try{withTimeout(60_000){withContext(Dispatchers.IO){block(g)}}}
+            catch(_: TimeoutCancellationException){metadataLookupUpdate(id){it.copy(phase=LookupPhase.READY,choice=null,message="ВК не ответил вовремя. Повтори поиск.")}}
+            catch(e: CancellationException){metadataLookupUpdate(id){it.copy(phase=LookupPhase.READY,choice=null,message="Операция приостановлена. Выбери запись заново.")};throw e}
+            catch(e: Exception){
+                val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
+                val message=when(e) {
+                    is MetadataChoiceExpired->"Время выбора истекло. Повтори поиск."
+                    is MetadataCandidateChanged->"Данные выбранной записи изменились. Просмотри её заново."
+                    is ArtworkLookupFailure->e.reason.label
+                    is SavedFileFailure->e.reason.label
+                    else->when(code){MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.ACCOUNT_CHANGED->"Доступ ВК изменился. Подключись к тому же аккаунту и повтори поиск."
+                        MusicError.DENIED,MusicError.METHOD->"ВК не разрешил запрос. Попробуй полную ссылку на другую запись песни."
+                        else->code.label}
+                }
+                metadataLookupUpdate(id){it.copy(phase=LookupPhase.READY,choice=null,message=message)}
+                Diagnostics.event("audio_metadata_lookup",mapOf("phase" to step,"code" to code.name))
+            }
         }
     }
     private val _artworkLookup=MutableStateFlow(ArtworkLookupState());val artworkLookup=_artworkLookup.asStateFlow()
@@ -663,10 +792,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
         if(stage!="availability")_availability.value=AvailabilityState()
         if(stage in setOf("browser_auth","configure","forget"))_duplicates.value=DuplicatesState()
+        if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
         if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
         if(!stage.startsWith("duplicates_"))_duplicates.update{it.copy(visible=false,consent=null)}
         if(stage !in setOf("remove_inspect","remove_confirm"))_removal.value=LibraryRemovalState()
         val lookupRunId=_artworkLookup.value.id.takeIf{stage.startsWith("cover_lookup_")}
+        val metadataRunId=_metadataLookup.value.id.takeIf{stage.startsWith("metadata_lookup_")}
         val duplicateRunId=_duplicates.value.scanId.takeIf{stage=="duplicates_delete"}
         val g=++generation;val id=UUID.randomUUID().toString()
         operationOwner=g
@@ -706,6 +837,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "failed","code" to error.name,"vk_code" to (e as? MusicFailure)?.remoteCode))
                 }
             }finally {
+                if(metadataRunId!=null)metadataLookupUpdate(metadataRunId){if(it.busy)it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Повтори поиск.")else it}
                 if(lookupRunId!=null)lookupUpdate(lookupRunId){if(it.busy)it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Повтори поиск.") else it}
                 // Cancellation can happen while waiting for the shared gate, before block() starts.
                 if(duplicateRunId!=null)_duplicates.update{if(it.scanId==duplicateRunId&&it.busy)
@@ -1034,8 +1166,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     fun cancel()=stop("native_stop_button")
-    fun stopForWindow(){_artworkLookup.value=ArtworkLookupState();stop("native_window_closed")}
+    fun stopForWindow(){_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();stop("native_window_closed")}
     fun stopInBackground() {
+        _metadataLookup.value=MetadataLookupState()
         _artworkLookup.value=ArtworkLookupState()
         _duplicates.update{it.copy(consent=null)}
         setForeground(false)

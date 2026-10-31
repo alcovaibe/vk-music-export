@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import kotlinx.serialization.json.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 internal data class MusicArtist(val id: String,val name: String,val photo: String?=null)
 internal data class MusicArtistDetails(val artist: MusicArtist,val tracks: NativePage,val albums: List<NativePlaylist>)
@@ -17,7 +18,10 @@ internal object MusicArtists {
         val raw=o["title"]?:o["text"]?:layout?.get("title")?:((layout?.get("header") as? JsonObject)?.get("title"))
         return (str(raw)?:str((raw as? JsonObject)?.get("text"))).orEmpty().trim().lowercase()
     }
-    private fun flag(o: JsonObject,key: String)=str(o[key]) in setOf("1","true")
+    private fun following(o: JsonObject): Boolean? {
+        val values=listOf("is_following","is_followed").mapNotNull{key->when(str(o[key])){"0","false"->false;"1","true"->true;else->null}}
+        return if(false in values)false else if(true in values)true else null
+    }
     private fun text(o: JsonObject,key: String): String {
         val s=str(o[key])?:throw MusicFailure(MusicError.RESPONSE)
         musicCheck(s.isNotBlank()&&s.length<=500&&s.none{it<' '||it=='\u007f'})
@@ -44,14 +48,30 @@ internal object MusicArtists {
         return sections.flatMapIndexed{index,section->(section["blocks"] as? JsonArray).orEmpty().mapNotNull{b->(b as? JsonObject)?.let{Triple(it,title(section),index)}}}+
             listOfNotNull((o["block"] as? JsonObject)?.let{Triple(it,"",-1)})
     }
+    private fun navigation(o: JsonObject): List<JsonObject> = listOf("actions","buttons").flatMap{key->
+        (o[key] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}.flatMap{button->
+            listOf(button)+listOfNotNull((button["action"] as? JsonObject)?.let{action->
+                if(action["title"]==null&&action["text"]==null)JsonObject(action+((button["title"]?:button["text"])?.let{mapOf("title" to it)}?:emptyMap()))else action
+            })
+        }
+    }
+    private fun ownMusicUrl(raw: JsonElement?,owner: Long?): String? {
+        val url=str(raw)?.toHttpUrlOrNull()?:return null
+        if(url.scheme!="https"||url.host !in setOf("vk.com","vk.ru","m.vk.com","m.vk.ru","music.vk.com","music.vk.ru")||url.port!=443||url.username.isNotEmpty()||url.password.isNotEmpty())return null
+        val pathOwner=Regex("/audios([1-9][0-9]*)/?").matchEntire(url.encodedPath)?.groupValues?.get(1)?.toLongOrNull()
+        if(pathOwner!=null&&owner!=null&&pathOwner!=owner)return null
+        if(pathOwner==null&&url.encodedPath !in setOf("/audio","/music","/music/"))return null
+        if(url.queryParameter("owner_id")?.let{owner!=null&&it.toLongOrNull()!=owner}==true)return null
+        return url.toString()
+    }
     private data class Target(val method: String,val id: String,val from: String?=null,val trusted: Boolean=true,val own: Boolean=false)
-    private suspend fun collect(initial: JsonObject,subscriptions: Boolean,
-        fetch:suspend(String,Map<String,String>)->JsonElement): Pair<List<MusicArtist>,List<NativePlaylist>> {
+    private suspend fun collect(initial: JsonObject,subscriptions: Boolean,owner: Long?,
+        progress:(List<MusicArtist>,Int)->Unit,fetch:suspend(String,Map<String,String>)->JsonElement): Pair<List<MusicArtist>,List<NativePlaylist>> {
         val artists=linkedMapOf<String,MusicArtist>();val playlists=linkedMapOf<String,NativePlaylist>()
         val pool=mutableMapOf<String,JsonObject>();val listPool=mutableMapOf<String,JsonObject>()
         val pending=java.util.ArrayDeque<Triple<JsonObject,Boolean,Boolean>>();pending.add(Triple(initial,false,false))
         val targets=java.util.ArrayDeque<Target>();val visited=mutableSetOf<Target>()
-        var recognized=!subscriptions;var pages=0
+        var recognized=!subscriptions;var pages=0;var stalled=0
         fun schedule(method: String,id: JsonElement?,from: JsonElement?=null,trusted: Boolean=true,own: Boolean=false) {
             cursor(id)?.let{val target=Target(method,it,cursor(from),trusted,own);if(target !in targets)targets.add(target)}
         }
@@ -59,14 +79,22 @@ internal object MusicArtists {
         while(pending.isNotEmpty()||targets.isNotEmpty()) {
             if(pending.isEmpty()) {
                 val t=targets.removeFirst();musicCheck(visited.add(t),MusicError.INCOMPLETE)
-                musicCheck(++pages<=1000,MusicError.TOO_LARGE)
-                val fields=mapOf((if(t.method=="catalog.getSection")"section_id" else "block_id") to t.id)+
+                musicCheck(++pages<=200,MusicError.TOO_LARGE)
+                val fields=mapOf((when(t.method){"catalog.getSection"->"section_id";"catalog.getAudio"->"url";else->"block_id"}) to t.id)+
                     (t.from?.let{mapOf("start_from" to it)}?:emptyMap())
                 val response=fetch(t.method,fields) as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
                 pending.add(Triple(response,t.trusted,t.own))
             }
             val (o,trusted,own)=pending.removeFirst()
-            for(a in (o["artists"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject})pool[text(a,"id")]=a
+            val before=artists.size
+            for(a in (o["artists"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}) {
+                val id=text(a,"id");pool[id]=a
+                if(subscriptions)when(following(a)) {
+                    true->{recognized=true;artist(a).let{artists[it.id]=it}}
+                    false->artists.remove(id)
+                    null->Unit
+                }
+            }
             for(p in (o["playlists"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject})
                 listPool[text(p,"owner_id")+"_"+text(p,"id")]=p
             val sections=(((o["catalog"] as? JsonObject)?.get("sections") as? JsonArray).orEmpty()).mapNotNull{it as? JsonObject}
@@ -83,38 +111,47 @@ internal object MusicArtists {
                 if(parent!=parentIndex){heading="";parent=parentIndex}
                 val caption=title(b);if(caption.isNotEmpty())heading=caption
                 val ownBlock=own||parentTitle in ownTitles
-                val accepted=trusted||if(subscriptions)b in namedBlocks||caption in subscriptionTitles||heading in subscriptionTitles||ownBlock&&(caption in artistTitles||heading in artistTitles) else caption in releaseTitles||heading in releaseTitles
+                val meta=(b["meta"] as? JsonObject)?.get("show_all_info") as? JsonObject
+                val accepted=trusted||if(subscriptions)(meta!=null&&subscription(meta,ownBlock))||b in namedBlocks||caption in subscriptionTitles||heading in subscriptionTitles||ownBlock&&(caption in artistTitles||heading in artistTitles) else caption in releaseTitles||heading in releaseTitles
                 if(subscriptions&&accepted)recognized=true
                 if(accepted) {
                     if(subscriptions)for(id in (b["artists_ids"] as? JsonArray).orEmpty()) {
                         val raw=pool[str(id)]?:throw MusicFailure(MusicError.INCOMPLETE)
-                        if(!raw.containsKey("is_following")||flag(raw,"is_following"))artist(raw).let{artists[it.id]=it}
+                        if(following(raw)!=false)artist(raw).let{artists[it.id]=it}
                     }else for(id in (b["playlists_ids"] as? JsonArray).orEmpty()) {
                         val key=str(id)?.split('_')?.take(2)?.joinToString("_")
                         val raw=listPool[key]?:throw MusicFailure(MusicError.INCOMPLETE)
                         val parsed=NativeProtocol.catalog(buildJsonObject{put("count",1);put("items",JsonArray(listOf(raw)))})
                         parsed.lists.single().let{playlists[it.key]=it.classified(PlaylistKind.ALBUM)}
                     }
-                    val meta=(b["meta"] as? JsonObject)?.get("show_all_info") as? JsonObject
                     if(meta!=null&&!trusted)schedule("catalog.getSection",meta["section_id"])
                     if(cursor(b["next_from"])!=null)schedule("catalog.getBlockItems",b["id"],b["next_from"])
                 }
-                for(action in (b["actions"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}) {
+                for(action in navigation(b)) {
                     val wanted=if(subscriptions)subscription(action,ownBlock)else title(action) in releaseTitles
-                    if(wanted&&!trusted) {recognized=true;schedule("catalog.getSection",action["section_id"])}
+                    if(wanted&&!trusted) {
+                        if(cursor(action["section_id"])!=null) {recognized=true;schedule("catalog.getSection",action["section_id"])}
+                        else ownMusicUrl(action["url"],owner)?.let{url->recognized=true;schedule("catalog.getAudio",JsonPrimitive(url))}
+                    }
                 }
             }
             val s=o["section"] as? JsonObject
-            if((trusted||own)&&cursor(s?.get("next_from"))!=null)schedule("catalog.getSection",s?.get("id"),s?.get("next_from"),trusted,own)
+            if(trusted&&cursor(s?.get("next_from"))!=null)schedule("catalog.getSection",s?.get("id"),s?.get("next_from"),trusted,own)
 
+            if(subscriptions) {
+                progress(artists.values.toList(),pages+1)
+                val hasMore=cursor(s?.get("next_from"))!=null||blocks(o).any{cursor(it.first["next_from"])!=null}
+                stalled=if(trusted&&artists.size==before&&hasMore)stalled+1 else 0
+                musicCheck(stalled<2,MusicError.INCOMPLETE)
+            }
         }
         musicCheck(recognized,MusicError.METHOD)
         return artists.values.toList() to playlists.values.toList()
     }
-    suspend fun subscriptions(fetch:suspend(String,Map<String,String>)->JsonElement): List<MusicArtist> {
+    suspend fun subscriptions(owner: Long?=null,progress:(List<MusicArtist>,Int)->Unit={_,_->},fetch:suspend(String,Map<String,String>)->JsonElement): List<MusicArtist> {
         val response=fetch("catalog.getAudio",emptyMap()) as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
-        return collect(response,true,fetch).first
+        return collect(response,true,owner,progress,fetch).first
     }
     suspend fun albums(response: JsonElement,fetch:suspend(String,Map<String,String>)->JsonElement)=
-        collect(response as? JsonObject?:throw MusicFailure(MusicError.RESPONSE),false,fetch).second
+        collect(response as? JsonObject?:throw MusicFailure(MusicError.RESPONSE),false,null,{_,_->},fetch).second
 }

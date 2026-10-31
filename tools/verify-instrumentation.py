@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 114) -> int:
+def verify(results: Path, minimum_tests: int = 118) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')
@@ -40,12 +40,16 @@ def verify(results: Path, minimum_tests: int = 114) -> int:
         raise ValueError('Required download continuity tests did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.LargeAudioAndReuseDeviceTest' for name, _ in executed) < 10:
         raise ValueError('Required large audio and reuse tests did not execute')
-    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest' for name, _ in executed) < 6:
+    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest' for name, _ in executed) < 7:
         raise ValueError('Required track metadata tests did not execute')
-    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest' for name, _ in executed) < 2:
+    if sum(name == 'app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest' for name, _ in executed) < 3:
         raise ValueError('Required track metadata interface test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.MusicLibraryRedesignDeviceTest' for name, _ in executed) < 3:
         raise ValueError('Required music library redesign tests did not execute')
+    if not any(name == 'app.alcovaibe.vkmusicexport.MusicArtistLoadingDeviceTest' for name, _ in executed):
+        raise ValueError('Required artist loading test did not execute')
+    if not any(name == 'app.alcovaibe.vkmusicexport.TrackMetadataLookupViewModelDeviceTest' for name, _ in executed):
+        raise ValueError('Required metadata lookup workflow test did not execute')
     return len(executed)
 
 

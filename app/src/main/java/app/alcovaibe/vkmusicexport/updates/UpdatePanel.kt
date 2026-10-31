@@ -35,8 +35,9 @@ internal object UpdateInstaller {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
+internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true,showButton: Boolean=true,requested: Boolean=false,onDismiss:()->Unit={}) {
     val state by controller.state.collectAsState()
+    LaunchedEffect(requested,state.initialized){if(requested&&state.initialized)controller.check()}
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     var installing by remember{mutableStateOf(false)}
@@ -47,7 +48,7 @@ internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
     }
     val permission=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
     val installer=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()){installing=false}
-    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");controller.defer()}
+    fun close(){Diagnostics.button(if(state.status==UpdateStatus.DOWNLOADING)"cancel_update_download" else "close_updates");controller.defer();onDismiss()}
     fun install() {
         if(installing)return
         installing=true;Diagnostics.button("install_update")
@@ -63,7 +64,7 @@ internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
             finally{if(!launched)installing=false}
         }
     }
-    Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
+    if(showButton)Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
         IconButton(onClick={Diagnostics.button("check_updates");controller.check()},
             enabled=state.initialized&&state.status !in setOf(UpdateStatus.CHECKING,UpdateStatus.DOWNLOADING),
             modifier=Modifier.testTag("check_updates")) {
@@ -72,12 +73,14 @@ internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
         if(state.status==UpdateStatus.CHECKING)CircularProgressIndicator(Modifier.size(42.dp).testTag("updates_progress"),strokeWidth=2.dp)
     }
     val showResult=state.status in setOf(UpdateStatus.CURRENT,UpdateStatus.ACCESS,UpdateStatus.ERROR,UpdateStatus.RATE_LIMIT)
-    if(showSheet&&(state.release!=null||showResult)) {
+    if(showSheet&&(requested||state.release!=null||showResult)) {
         ModalBottomSheet(onDismissRequest=::close,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
             Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("updates_sheet")) {
                 Column(Modifier.heightIn(max=360.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     Text(state.release?.let{"Доступно обновление ${it.name}"}?:"Проверка обновлений",style=MaterialTheme.typography.titleLarge)
                     Text(when(state.status) {
+                        UpdateStatus.IDLE->"Нажми «Проверить», чтобы узнать о доступных обновлениях."
+                        UpdateStatus.CHECKING->"Проверяем наличие обновлений…"
                         UpdateStatus.CURRENT->"Новых совместимых версий нет."
                         UpdateStatus.ACCESS->"Источник обновлений недоступен. Повтори позже."
                         UpdateStatus.ERROR->"Не удалось проверить или загрузить обновление. Проверь сеть и повтори."
@@ -88,6 +91,7 @@ internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
                         UpdateStatus.INSTALL_ERROR->"Не удалось открыть установку. APK сохранён; повтори попытку."
                         else->"Скачать и установить новую версию приложения?"
                     },Modifier.testTag("update_status"))
+                    if(state.status==UpdateStatus.CHECKING)LinearProgressIndicator(Modifier.fillMaxWidth())
                     if(state.status==UpdateStatus.DOWNLOADING)LinearProgressIndicator(
                         progress={if(state.total>0)(state.received.toFloat()/state.total).coerceIn(0f,1f)else 0f},
                         modifier=Modifier.fillMaxWidth().testTag("download_progress"))
@@ -96,6 +100,7 @@ internal fun UpdatePanel(controller: UpdateController,showSheet: Boolean=true) {
                 Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.End) {
                     TextButton(onClick=::close){Text(if(state.status==UpdateStatus.DOWNLOADING)"Отменить" else if(state.release!=null)"Позже" else "Закрыть")}
                     when {
+                        state.status==UpdateStatus.IDLE->TextButton(enabled=state.initialized,onClick={controller.check()}){Text("Проверить")}
                         state.apk!=null->TextButton(enabled=!installing,onClick=::install){Text("Установить")}
                         state.release!=null&&state.status!=UpdateStatus.DOWNLOADING->TextButton(onClick={Diagnostics.button("download_update");controller.download()}){Text(if(state.status==UpdateStatus.AVAILABLE)"Скачать" else "Повторить")}
                         showResult&&state.status!=UpdateStatus.CURRENT->TextButton(enabled=retryEnabled,onClick={controller.cancel();controller.check()}){Text("Повторить")}
