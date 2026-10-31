@@ -4,12 +4,13 @@
   "channel": "stable",
   "applicationId": "app.alcovaibe.vkmusicexport",
   "release": {
-    "versionName": "0.11.3",
-    "versionCode": 1263,
+    "versionName": "0.11.4",
+    "versionCode": 1272,
     "minSdk": 36,
-    "tag": "v0.11.3-build.1263",
-    "apk": "VK-Music-Export-0.11.3-1263.apk",
-    "size": 4189809,
-    "sha256": "1cb0ff3d50d60f83761fcffa09c312f5093872f660433ab60e7f84b181245bba"
+    "tag": "v0.11.4-build.1272",
+    "apk": "VK-Music-Export-0.11.4-1272.apk",
+    "size": 4239125,
+    "sha256": "245e6a226de5d0f10b7620ff0a83b7869fa46e954614d1ce93ba6207a67d973e"
   }
 }
+
