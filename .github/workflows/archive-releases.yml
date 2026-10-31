@@ -1,11 +1,11 @@
-name: Archive releases before 0.9.15
+name: Archive releases before 0.10.0
 on:
   push:
     branches: [codex/hide-old-releases]
   workflow_dispatch:
     inputs:
       mode:
-        description: Hide releases older than 0.9.15 and privately retain their APK artifacts
+        description: Hide releases older than 0.10.0 and privately retain their APK artifacts
         type: choice
         options: [plan, hide]
         default: plan

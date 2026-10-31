@@ -1,4 +1,4 @@
-"""Archive releases older than 0.9.15 without deleting their files or tags."""
+"""Archive releases older than 0.10.0 without deleting their files or tags."""
 import base64
 import hashlib
 import json
@@ -13,7 +13,7 @@ import urllib.request
 import zipfile
 
 REPO = 'alcovaibe/vk-music-export'
-CUTOFF = (0, 9, 15)
+CUTOFF = (0, 10, 0)
 
 
 def version(tag):
@@ -109,7 +109,7 @@ def main(apply=False):
     latest = api(f'repos/{REPO}/releases/latest')
     assert latest['id'] not in {r['id'] for r in targets}, 'Refusing to hide Latest'
     assert all(not r.get('immutable') for r in targets), 'An immutable release cannot become a draft'
-    report = {'cutoff_exclusive': '0.9.15', 'apply': apply, 'before': releases,
+    report = {'cutoff_exclusive': '0.10.0', 'apply': apply, 'before': releases,
               'latest_before': latest['tag_name'], 'hidden': [], 'artifacts': []}
     def save():
         (out/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')

@@ -56,12 +56,12 @@ class ArchiveTest(unittest.TestCase):
                 report=json.loads(Path('release-archive-audit/report.json').read_text())
                 self.assertEqual(report['status'],'passed')
             finally:os.chdir(old)
-        self.assertFalse(backend[2]['draft']);self.assertFalse(backend[3]['draft'])
+        self.assertEqual(backend[2]['draft'],apply);self.assertFalse(backend[3]['draft'])
         return backend,mutations
 
-    def test_cutoff_excludes_0915_and_compares_numbers(self):
+    def test_cutoff_excludes_0100_and_compares_numbers(self):
         rows=[self.release(i,tag) for i,tag in enumerate(['v0.9.14-build.1','v0.9.15-build.2','v0.10.0-build.3','v0.8.4-build.4','unrelated'])]
-        self.assertEqual([r['tag_name'] for r in module.selected(rows)],['v0.9.14-build.1','v0.8.4-build.4'])
+        self.assertEqual([r['tag_name'] for r in module.selected(rows)],['v0.9.14-build.1','v0.9.15-build.2','v0.8.4-build.4'])
 
     def test_plan_never_changes_release_or_artifact(self):
         backend,mutations=self.run_archive(False,artifact=True)
@@ -69,16 +69,16 @@ class ArchiveTest(unittest.TestCase):
 
     def test_only_older_release_becomes_draft(self):
         backend,mutations=self.run_archive(True)
-        self.assertTrue(backend[1]['draft']);self.assertEqual(mutations,[('draft',1)])
+        self.assertTrue(backend[1]['draft']);self.assertEqual(mutations,[('draft',1),('draft',2)])
 
     def test_original_asset_change_stops_archiving(self):
         with self.assertRaisesRegex(AssertionError,'assets changed'):self.run_archive(True,break_assets=True)
 
     def test_apk_artifact_is_preserved_privately_before_removal(self):
         backend,mutations=self.run_archive(True,artifact=True)
-        self.assertEqual(mutations,[('draft',1),('artifact',9)])
+        self.assertEqual(mutations,[('draft',1),('draft',2),('artifact',9)])
         self.assertEqual(backend[1]['assets'][0]['id'],10)
-        self.assertEqual(backend[1]['assets'][-1]['name'],'actions-artifact-9.zip')
+        self.assertEqual(backend[2]['assets'][-1]['name'],'actions-artifact-9.zip')
 
     def test_artifact_archive_endpoint_requests_json_redirect(self):
         with tempfile.TemporaryDirectory() as temp,patch.object(module.subprocess,'run') as run:
