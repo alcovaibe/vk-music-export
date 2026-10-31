@@ -218,9 +218,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         onBack=::back,showBack=state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null,
         menuItems={closeMenu->
-            DropdownMenuItem(text={Text("Доступ к музыке")},modifier=Modifier.testTag("open_music_access"),onClick={closeMenu();accessOpen=true})
             DropdownMenuItem(text={Text("Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck,onClick={closeMenu();model.checkAccess()})
-            DropdownMenuItem(text={Text("Инструменты сохранённых файлов")},onClick={closeMenu();destination=MusicDestination.SAVED})
             DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();onUpdates()})
             HorizontalDivider()
         }) {

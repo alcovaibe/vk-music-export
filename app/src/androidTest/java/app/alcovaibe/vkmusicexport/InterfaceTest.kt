@@ -84,6 +84,8 @@ class InterfaceTest {
         ui.runOnUiThread{noEmbeddedBrowser(ui.activity.window.decorView)}
         ui.onNodeWithContentDescription("Меню").performClick()
         ui.onNodeWithText("Поделиться JSON-отчётом").assertIsDisplayed()
+        ui.onNodeWithText("Доступ к музыке").assertDoesNotExist()
+        ui.onNodeWithText("Инструменты сохранённых файлов").assertDoesNotExist()
         capture("05-library-menu")
         ui.onNodeWithText("Лицензия").assertDoesNotExist()
         ui.onNodeWithText("Данные и доступ").assertDoesNotExist()
