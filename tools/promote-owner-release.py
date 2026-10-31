@@ -1,4 +1,4 @@
-"""One explicit owner-requested PR publication. Never represents manual device acceptance as passed."""
+"""One explicit owner-requested publication from a pinned branch. Never represents manual device acceptance as passed."""
 import argparse
 import datetime as dt
 import hashlib
@@ -10,7 +10,8 @@ import subprocess
 import tempfile
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
-            50: ('codex/music-followups', '0.11.2')}
+            50: ('codex/music-followups', '0.11.2'),
+            52: ('main', '0.11.3')}
 
 
 def request_path(env):
@@ -29,7 +30,8 @@ def validate_context(request, env, event, now):
     assert request['branch'] == branch and request['version_name'] == version
     assert env['GITHUB_REF'] == 'refs/heads/' + request['branch']
     assert env['GITHUB_EVENT_NAME'] == 'push'
-    assert f'[publish-pr-{number}]' in event['head_commit']['message']
+    marker = '[publish-main-0.11.3]' if number == 52 else f'[publish-pr-{number}]'
+    assert marker in event['head_commit']['message']
     assert now <= dt.datetime.fromisoformat(request['expires_at'].replace('Z', '+00:00'))
     assert re.fullmatch(r'[0-9a-f]{40}', env['GITHUB_SHA'])
     return request
@@ -55,10 +57,31 @@ def validate_assets(info, release, apk, latest, version_name='0.11.0'):
 def api(endpoint, method='GET', payload=None):
     command = ['gh', 'api', endpoint, '--method', method]
     if payload is None:
-        return json.loads(subprocess.check_output(command, text=True))
+        output = subprocess.check_output(command, text=True)
+        return json.loads(output) if output.strip() else None
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as body:
         json.dump(payload, body); body.flush()
-        return json.loads(subprocess.check_output(command + ['--input', body.name], text=True))
+        output = subprocess.check_output(command + ['--input', body.name], text=True)
+        return json.loads(output) if output.strip() else None
+
+
+def delete_requested_branches(request):
+    if not request.get('delete_other_branches'):
+        return
+    assert request['pull_request'] == 52 and request['branch'] == 'main'
+    repo = 'repos/' + request['repository']
+    assert api(repo)['default_branch'] == 'main'
+    expected = request['branches_to_delete']
+    assert expected and 'main' not in expected
+    refs = api(repo + '/git/matching-refs/heads/')
+    actual = {row['ref'].removeprefix('refs/heads/'): row['object']['sha'] for row in refs if row['ref'] != 'refs/heads/main'}
+    assert actual == expected, 'Branch list changed while building; do not delete unreviewed heads'
+    for branch, sha in actual.items():
+        assert branch and branch != 'main' and re.fullmatch(r'[0-9a-f]{40}', sha)
+        api(repo + '/git/refs/heads/' + branch, 'DELETE')
+        print('DELETED_BRANCH=' + branch)
+    remaining = api(repo + '/git/matching-refs/heads/')
+    assert [row['ref'] for row in remaining] == ['refs/heads/main']
 
 
 def main(promote):
@@ -99,7 +122,11 @@ def main(promote):
         'name': f"VK Music Export {info['versionName']} · {info['versionCode']}", 'body': notes, 'make_latest': 'true'})
     assert not updated['prerelease'] and not updated['draft'] and updated['tag_name'] == stable_tag
     assert api(repo + '/releases/latest')['id'] == updated['id']
+    from update_channel import channel_manifest
+    manifest = channel_manifest(info, updated, apk)
+    Path('release-output/public-update-channel.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
     print('OWNER_REQUESTED_LATEST=' + updated['html_url'])
+    delete_requested_branches(request)
 
 
 if __name__ == '__main__':

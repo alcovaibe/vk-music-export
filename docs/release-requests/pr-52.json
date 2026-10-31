@@ -1,0 +1,25 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 52,
+  "version_name": "0.11.3",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-02T23:59:59Z",
+  "build_inputs": {
+    "app": "26fb81d90dd64670942dc3f8fb2574d93eb2ae0c",
+    "gradle": "c76c2cb5b79e3f5cb2fcff30c01d531049772314",
+    "config": "0b5e837d9fecfcf825e60178a576708862b20840",
+    "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "625c75d0e702ba89981847fae5ddab72c04bfeb7",
+    "version.properties": "5cfe6ce79f0a7c09552b9db962bd0f6eb45bce2b",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e"
+  },
+  "delete_other_branches": true,
+  "branches_to_delete": {
+    "codex/artists-duplicates-about": "2d2a5b4cf96091c5b1f884d698f10c29d9a48f89"
+  },
+  "request": "Владелец явно запросил сборку из main, публикацию релиза как Latest и удаление всех веток кроме main после слияния PR #52. Ручная приёмка на реальном аккаунте не заявляется."
+}

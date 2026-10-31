@@ -152,11 +152,12 @@ jobs:
         run: echo 'Interface checks passed on API 36 and API 37.'
 
   release:
-    # Normal pushes/PRs run checks only. This exact owner-requested PR release requires its marker and pinned build inputs.
+    # Normal pushes/PRs run checks only. An owner-requested release requires its marker and pinned build inputs.
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]')) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-followups' && contains(github.event.head_commit.message, '[publish-pr-50]'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-followups' && contains(github.event.head_commit.message, '[publish-pr-50]')) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[publish-main-0.11.3]'))
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -182,7 +183,7 @@ jobs:
         run: echo "APP_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Require committed dependency verification before signing
         run: test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
-      - name: Check exact owner request and pinned PR build inputs
+      - name: Check exact owner request and pinned build inputs
         if: github.event_name == 'push'
         run: python3 tools/promote-owner-release.py --check
       - name: Restore permanent signing key
@@ -224,7 +225,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_CHANNEL: rc
         run: python3 tools/publish-release.py
-      - name: Publish this owner-requested PR build as Latest
+      - name: Publish this owner-requested build as Latest
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
