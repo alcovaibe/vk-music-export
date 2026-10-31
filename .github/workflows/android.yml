@@ -1,7 +1,7 @@
 name: Android checks and APK
 on:
   push:
-    branches: [main]
+    branches: [main, codex/music-library-redesign]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -152,8 +152,10 @@ jobs:
         run: echo 'Interface checks passed on API 36 and API 37.'
 
   release:
-    # Pushes/PRs run checks only. An owner can explicitly build an RC from a selected repository branch.
-    if: github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')
+    # Normal pushes/PRs run checks only. This exact owner-requested PR release requires its marker and pinned build inputs.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]'))
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -179,6 +181,9 @@ jobs:
         run: echo "APP_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
       - name: Require committed dependency verification before signing
         run: test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
+      - name: Check exact owner request and pinned PR build inputs
+        if: github.event_name == 'push'
+        run: python3 tools/promote-owner-release.py --check
       - name: Restore permanent signing key
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
@@ -218,6 +223,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_CHANNEL: rc
         run: python3 tools/publish-release.py
+      - name: Publish this owner-requested PR build as Latest
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/promote-owner-release.py --promote
       - name: Upload release and upgrade evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
