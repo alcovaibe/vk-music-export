@@ -35,7 +35,7 @@ class CatalogRefreshDeviceTest {
             override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No music network allowed")
         }
         lateinit var model: NativeMusicViewModel
-        var published: PublishedAudio?=null
+        var published: PublishedAudio?=null;var localDeleted=false
         val task=ExportLayout.playlist(NativePage(listOf(track),1),album,PlaylistKind.ALBUM,12).single()
         try {
             withContext(Dispatchers.IO) {
@@ -82,7 +82,7 @@ class CatalogRefreshDeviceTest {
             ui.runOnUiThread{changed=false;model.refreshCatalog()}
             ui.waitUntil(15000){!model.state.value.busy}
             assertEquals(setOf(album.key),model.state.value.hiddenCatalog)
-            withContext(Dispatchers.IO){assertTrue(SharedAudioStore(app).valid(published!!));app.contentResolver.delete(Uri.parse(published!!.uri),null,null)}
+            withContext(Dispatchers.IO){assertTrue(SharedAudioStore(app).valid(published!!));app.contentResolver.delete(Uri.parse(published!!.uri),null,null);localDeleted=true}
             ui.runOnUiThread{model.refreshCatalog()}
             ui.waitUntil(15000){!model.state.value.busy}
             assertTrue(model.state.value.hiddenCatalog.isEmpty())
@@ -93,7 +93,7 @@ class CatalogRefreshDeviceTest {
             assertEquals(MusicError.NETWORK,model.state.value.catalogError)
         }finally {
             withContext(Dispatchers.IO){
-                published?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)}
+                if(!localDeleted)published?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)}
                 AudioExportRuntime.clear(app);AudioExportRuntime.clearRecentFiles(app)
                 AudioExportStore(app).use{store->store.catalogKind(12,playlist,PlaylistKind.UNKNOWN);store.savedFiles().filter{it.source?.id in setOf(album.key,deleted.key)}.forEach{store.forgetFile(it)}}
                 MusicAccessStore(app).delete()

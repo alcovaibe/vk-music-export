@@ -51,4 +51,18 @@ class MusicCatalogTest {
         assertFalse(MusicPagination.catalog({NativeCatalog(listOf(a,b),4)}).complete)
         assertFalse(MusicPagination.catalog({offset->NativeCatalog(if(offset==0)listOf(a)else emptyList(),4)}).complete)
     }
+    @Test fun unsupportedAlbumFilterLeavesUntypedCollectionsDownloadableWithoutConsultingOldChoices()=runBlocking {
+        val unknown=list(7,PlaylistKind.UNKNOWN)
+        val api=object: MusicApi {
+            override suspend fun library(access: MusicAccess)=error("unused")
+            override suspend fun catalog(access: MusicAccess,owner: Long)=NativeCatalog(listOf(unknown),1)
+            override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog=throw MusicFailure(MusicError.METHOD)
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=error("unused")
+            override suspend fun media(access: MusicAccess,track: NativeTrack)=error("unused")
+        }
+        val catalog=MusicCatalog.load(api,MusicAccess("synthetic","CI/1"),12)
+        assertTrue(catalog.complete)
+        assertEquals(listOf(unknown),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,mapOf(unknown.key to PlaylistKind.ALBUM)))
+    }
+
 }

@@ -43,8 +43,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
     DisposableEffect(lifecycle,model) {
+        // Adding an observer to a resumed owner immediately replays ON_RESUME.
+        // The home entry already refreshed the catalog; refresh again only on a later return.
+        var skipInitialResume=lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         val observer=LifecycleEventObserver{_,event->
-            if(event==Lifecycle.Event.ON_RESUME&&model.state.value.probe!=null&&!model.state.value.busy)model.refreshCatalog()
+            if(event==Lifecycle.Event.ON_RESUME) {
+                if(skipInitialResume)skipInitialResume=false
+                else if(model.state.value.probe!=null&&!model.state.value.busy)model.refreshCatalog()
+            }
         }
         lifecycle.lifecycle.addObserver(observer)
         onDispose{lifecycle.lifecycle.removeObserver(observer)}
