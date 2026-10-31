@@ -29,7 +29,7 @@ internal fun ArtworkLookupSheet(state: ArtworkLookupState,onQuery:(String)->Unit
             LazyColumn(Modifier.fillMaxWidth().weight(1f,fill=false).heightIn(max=460.dp).padding(top=12.dp).testTag("artwork_lookup_list"),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 target?.let{item {
                     Text("Сохранённый файл",style=MaterialTheme.typography.labelLarge)
-                    Text("${it.track.title}\n${it.track.artist} · ${audioTime(it.track.duration)}")
+                    Text("${it.track.displayTitle}\n${it.track.artist} · ${audioTime(it.track.duration)}")
                 }}
                 if(state.busy)item {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -42,7 +42,7 @@ internal fun ArtworkLookupSheet(state: ArtworkLookupState,onQuery:(String)->Unit
                     bitmap?.let{Image(it,contentDescription="Обложка выбранной записи",modifier=Modifier.fillMaxWidth().height(180.dp).testTag("artwork_lookup_image"),contentScale=ContentScale.Fit)}
                     HorizontalDivider(Modifier.padding(vertical=12.dp))
                     Text("Обложка из найденной записи",style=MaterialTheme.typography.labelLarge)
-                    Text(choice.match.track.title,style=MaterialTheme.typography.titleMedium)
+                    Text(choice.match.track.displayTitle,style=MaterialTheme.typography.titleMedium)
                     Text("${choice.match.track.artist} · ${audioTime(choice.match.track.duration)}")
                     choice.match.track.album?.let{Text("Альбом: ${it.title}")}
                     val delta=abs(choice.match.track.duration-choice.target.track.duration)
@@ -64,7 +64,7 @@ internal fun ArtworkLookupSheet(state: ArtworkLookupState,onQuery:(String)->Unit
                         }
                         items(page.matches,key={it.track.id}){match->
                             Column(Modifier.fillMaxWidth().testTag("artwork_match_${match.track.id}")) {
-                                Text(match.track.title,style=MaterialTheme.typography.titleMedium)
+                                Text(match.track.displayTitle,style=MaterialTheme.typography.titleMedium)
                                 Text("${match.track.artist} · ${audioTime(match.track.duration)}")
                                 match.track.album?.let{Text(it.title,style=MaterialTheme.typography.bodySmall)}
                                 if(!match.selectable)Text(when{match.track.restricted||match.track.duration<=0->"Запись недоступна.";

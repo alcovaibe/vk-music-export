@@ -264,6 +264,14 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         musicCheck(before.uri==after.uri&&before.taskKey==after.taskKey&&before.track==after.track,MusicError.STORAGE)
         updateReferences(before,after)
     }
+    /** Exact saved ID/URI only; source memberships and cleared display history are retained. */
+    @Synchronized fun metadataUpdated(before: PublishedAudio,after: PublishedAudio)=transaction {
+        musicCheck(before.uri==after.uri&&before.taskKey==after.taskKey&&before.track.id==after.track.id&&
+            before.track.duration==after.track.duration&&before.track.artist==after.track.artist&&
+            before.extension==after.extension&&before.mime==after.mime&&before.durationMs==after.durationMs&&
+            before.relativePath==after.relativePath,MusicError.STORAGE)
+        updateReferences(before,after,metadata=true)
+    }
     /** Compare-and-swap a location or explicitly confirmed replacement. Never changes queue states. */
     @Synchronized fun relinked(before: PublishedAudio,after: PublishedAudio)=transaction {
         musicCheck(before.taskKey==after.taskKey&&before.track==after.track,MusicError.STORAGE)
@@ -275,12 +283,13 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun canShareLocation(before: PublishedAudio,after: PublishedAudio)=savedFiles()
         .filter{it.uri==after.uri&&it.uri!=before.uri}.all{sameFile(it,after)}
     /** Moving or tagging one physical file must update every membership in one transaction. */
-    private fun updateReferences(before: PublishedAudio,after: PublishedAudio) {
+    private fun updateReferences(before: PublishedAudio,after: PublishedAudio,metadata: Boolean=false) {
         if(existing(before.taskKey)==after)return
         musicCheck(existing(before.taskKey)==before,MusicError.STORAGE)
         val aliases=savedFiles().filter{it.uri==before.uri}
         musicCheck(aliases.all{sameFile(it,before)&&AudioCompleteness.matchesCatalogue(after.durationMs,it.track.duration,it.track.duration)},MusicError.INCOMPLETE)
-        fun changed(row: PublishedAudio)=after.copy(taskKey=row.taskKey,track=row.track,source=row.source,occurrence=row.occurrence,
+        fun changedTrack(track: NativeTrack)=if(metadata)track.copy(title=after.track.title,subtitle=after.track.subtitle)else track
+        fun changed(row: PublishedAudio)=after.copy(taskKey=row.taskKey,track=changedTrack(row.track),source=row.source,occurrence=row.occurrence,
             catalogueVerified=row.catalogueVerified&&after.catalogueVerified)
         val recent=recentFiles()
         val doneKeys=taskRows().filter{it.second=="DONE"}.map{it.first.key}.toSet()
@@ -293,11 +302,19 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             }
             if(prepared?.uri==before.uri)writableDatabase.execSQL("UPDATE tasks SET prepared=? WHERE task_key=?",
                 arrayOf(json.encodeToString(changed(prepared)),alias.taskKey))
+            if(metadata) {
+                val task=readableDatabase.rawQuery("SELECT payload FROM tasks WHERE task_key=?",arrayOf(alias.taskKey)).use{c->
+                    if(c.moveToFirst())json.decodeFromString<AudioExportTask>(c.getString(0))else null
+                }
+                if(task!=null&&task.track.id==before.track.id)writableDatabase.execSQL("UPDATE tasks SET payload=? WHERE task_key=?",
+                    arrayOf(json.encodeToString(task.copy(track=changedTrack(task.track))),alias.taskKey))
+            }
         }
         put("recent_files",json.encodeToString(recent.map{if(it.uri==before.uri)changed(it)else it}.distinctBy{it.uri}))
-        if(before.relativePath+before.displayName!=after.relativePath+after.displayName) {
+        if(before.relativePath+before.displayName!=after.relativePath+after.displayName||metadata) {
             val move=PlaylistRelocation(before.relativePath+before.displayName,after.relativePath+after.displayName,
-                after.durationMs,aliases.mapNotNull{it.source?.key}.distinct())
+                after.durationMs,aliases.mapNotNull{it.source?.key}.distinct(),
+                if(metadata)after.track.artist+" - "+after.track.displayTitle else null)
             put("m3u-relocation:"+java.util.UUID.randomUUID(),json.encodeToString(move))
         }
     }

@@ -59,6 +59,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
     val artwork by model.artwork.collectAsState()
+    val trackMetadata by model.trackMetadata.collectAsState()
     val lookup by model.artworkLookup.collectAsState()
     val duplicates by model.duplicates.collectAsState()
     val savedFiles by model.savedFiles.collectAsState()
@@ -117,6 +118,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showArtwork,
                     modifier=Modifier.testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showTrackMetadata,
+                    modifier=Modifier.testTag("saved_track_metadata")){Text("Обновить названия и пометки")}
                 OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showSavedFiles,
                     modifier=Modifier.testTag("saved_file_recovery")){Text("Проверить сохранённые файлы")}
                 if(queue.recent.isNotEmpty()) {
@@ -222,7 +225,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         ElevatedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                                    Text("${i+1}. ${track.title}",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
+                                    Text("${i+1}. ${track.displayTitle}",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
                                     LibraryRemoveButton(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY,
                                         enabled=!state.busy&&!backgroundCheck,onClick={model.inspectRemoval(track)})
                                 }
@@ -245,6 +248,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         onConfirm=model::confirmSavedFile,onForget=model::requestForgetFile,onConfirmForget=model::confirmForgetFile,
         onBack=model::backSavedFiles,onStop=model::cancel,onDismiss=model::dismissSavedFiles)
     if(artwork.visible&&!lookup.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork,model::showArtworkLookup)
+    if(trackMetadata.visible)TrackMetadataSheet(trackMetadata,model::updateSavedTrackMetadata,model::cancel,model::dismissTrackMetadata)
     if(lookup.visible)ArtworkLookupSheet(lookup,model::artworkLookupQuery,model::findArtworkReplacement,model::previewArtworkReplacement,
         model::confirmArtworkReplacement,model::backArtworkReplacement,model::cancel,model::dismissArtworkLookup)
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})

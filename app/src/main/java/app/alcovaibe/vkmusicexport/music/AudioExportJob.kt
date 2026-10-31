@@ -122,6 +122,7 @@ internal object AudioExportRuntime {
         return controls.withLock {
             musicCheck(duplicateCheck||!DuplicateCheckRuntime.transferring,MusicError.BUSY)
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
+            TrackMetadataRepair(context,database,SharedAudioStore(context)).recover()
             block()
         }
     }

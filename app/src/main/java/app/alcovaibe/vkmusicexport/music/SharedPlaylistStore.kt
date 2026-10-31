@@ -15,7 +15,7 @@ import java.io.ByteArrayOutputStream
 import java.util.Locale
 
 @Serializable internal data class PlaylistRelocation(val beforePath: String,val afterPath: String,
-    val durationMs: Long,val sources: List<String>)
+    val durationMs: Long,val sources: List<String>,val title: String?=null)
 
 /** Plain portable M3U8 files; does not use the deprecated Android playlist database. */
 internal class SharedPlaylistStore(private val context: Context,private val store: AudioExportStore) {
@@ -94,7 +94,7 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
                 for(index in lines.indices)if(lines[index]==before) {
                     lines[index]=after;changed=true
                     if(index>0&&lines[index-1].startsWith("#EXTINF:"))lines[index-1]=
-                        "#EXTINF:"+String.format(Locale.ROOT,"%.3f",move.durationMs/1000.0)+","+lines[index-1].substringAfter(',')
+                        "#EXTINF:"+String.format(Locale.ROOT,"%.3f",move.durationMs/1000.0)+","+(move.title?:lines[index-1].substringAfter(','))
                 }
                 if(changed)publish(key,previous.directory,lines.joinToString("\n").toByteArray(Charsets.UTF_8))
             }

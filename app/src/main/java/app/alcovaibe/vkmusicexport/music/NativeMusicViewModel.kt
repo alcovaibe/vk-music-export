@@ -55,6 +55,78 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         AudioExportRuntime.start(getApplication(),retry)
     }
     private val _artwork=MutableStateFlow(ArtworkState());val artwork=_artwork.asStateFlow()
+    private val _trackMetadata=MutableStateFlow(TrackMetadataState());val trackMetadata=_trackMetadata.asStateFlow()
+    fun showTrackMetadata(){if(_state.value.initialized&&!_state.value.busy)_trackMetadata.update{it.copy(visible=true)}}
+    fun dismissTrackMetadata(){_trackMetadata.update{it.copy(visible=false)}}
+    fun updateSavedTrackMetadata() {
+        if(!_trackMetadata.value.visible||_trackMetadata.value.running)return
+        run("track_metadata"){g->
+            _trackMetadata.value=TrackMetadataState(visible=true,running=true)
+            try {
+                withContext(Dispatchers.IO) {
+                    AudioExportRuntime.editSaved(getApplication()) {
+                        AudioExportStore(getApplication()).use{store->
+                            val shared=SharedAudioStore(getApplication())
+                            ArtworkRepair(getApplication(),store,shared).recover()
+                            val initial=sessions?.current()?:access()
+                            val owner=api.library(initial).owner
+                            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==initial.credentialId,MusicError.ACCESS)}
+                            val repair=TrackMetadataRepair(getApplication(),store,shared,beforeWrite=::guard)
+                            val files=store.savedFiles().distinctBy{it.uri}
+                            val metadata=mutableMapOf<String,NativeTrack?>()
+                            _trackMetadata.update{it.copy(total=files.size)}
+                            try {
+                                for((index,row)in files.withIndex()) {
+                                    guard();_trackMetadata.update{it.copy(name=row.displayName)}
+                                    if(!row.catalogueVerified||row.source?.account?.let{it>0&&it!=owner}==true) {
+                                        _trackMetadata.update{it.copy(skipped=it.skipped+1,issues=it.issues+TrackMetadataIssue(row.displayName,
+                                            if(!row.catalogueVerified)"Локальная замена: соответствие записи ВК не подтверждено." else "Файл сохранён из другого аккаунта ВК."))}
+                                    }else try {
+                                        shared.requireValid(row)
+                                        if(!metadata.containsKey(row.track.id)) {
+                                            metadata[row.track.id]=try{api.metadata(sessions?.current()?:initial,row.track.id)}
+                                                catch(e: MusicFailure){if(e.code in setOf(MusicError.UNAVAILABLE,MusicError.DENIED))null else throw e}
+                                        }
+                                        guard()
+                                        val fresh=metadata[row.track.id]
+                                        if(fresh==null)_trackMetadata.update{it.copy(unavailable=it.unavailable+1,
+                                            issues=it.issues+TrackMetadataIssue(row.displayName,"ВК не вернул запись по сохранённому ID или не разрешил доступ к ней."))}
+                                        else {
+                                            val changed=repair.update(row,fresh)
+                                            _trackMetadata.update{if(changed)it.copy(updated=it.updated+1)else it.copy(current=it.current+1)}
+                                        }
+                                    }catch(e: CancellationException){throw e}
+                                     catch(e: Exception) {
+                                        val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
+                                        _trackMetadata.update{it.copy(failed=it.failed+1,issues=it.issues+TrackMetadataIssue(row.displayName,
+                                            (e as? SavedFileFailure)?.reason?.label?:code.label))}
+                                        repair.recover()
+                                        if(code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.METHOD,MusicError.CAPTCHA,MusicError.VALIDATION,
+                                                MusicError.RATE_LIMIT,MusicError.STORAGE,MusicError.NETWORK,MusicError.HTTP,MusicError.TLS,MusicError.TIMEOUT)||e is java.io.IOException)throw e
+                                    }
+                                    _trackMetadata.update{it.copy(processed=index+1)}
+                                    AudioExportRuntime.refresh()
+                                }
+                            }finally {
+                                withContext(NonCancellable+Dispatchers.IO) {
+                                    // Markers also cover playlists from queues that were already cleared.
+                                    SharedPlaylistStore(getApplication(),store).repairLocations()
+                                    AudioExportRuntime.refresh()
+                                }
+                            }
+                        }
+                    }
+                }
+                _trackMetadata.update{it.copy(message="Проверка завершена. Звук и обложки сохранены.")}
+            }catch(e: CancellationException){_trackMetadata.update{it.copy(message="Обработка прервана. Готовые изменения сохранены; проверку можно повторить.")};throw e}
+             catch(e: Exception){_trackMetadata.update{it.copy(message=(e as? MusicFailure)?.code?.label?:"Обработка остановлена. Готовые изменения сохранены.")}}
+            finally {
+                _trackMetadata.update{it.copy(running=false,name=null)}
+                Diagnostics.event("audio_track_metadata",mapOf("updated" to _trackMetadata.value.updated,"unavailable" to _trackMetadata.value.unavailable,
+                    "skipped" to _trackMetadata.value.skipped,"failed" to _trackMetadata.value.failed))
+            }
+        }
+    }
     fun showArtwork(){if(_state.value.initialized&&!_state.value.busy)_artwork.update{it.copy(visible=true)}}
     fun dismissArtwork(){_artwork.update{it.copy(visible=false)}}
     fun addSavedArtwork() {
@@ -77,19 +149,19 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             val source=ArtworkLoader(api,onAttempt=diagnostic::candidate,onStep={diagnostic.step=it})
                             for((index,row) in files.withIndex()) {
                                 active(g);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
-                                _artwork.update{it.copy(current="${row.track.artist} — ${row.track.title}")}
+                                _artwork.update{it.copy(current="${row.track.artist} — ${row.track.displayTitle}")}
                                 try {
                                     val changed=repair.add(row,source){sessions?.current()?:access()}
                                     val marked=store.existing(row.taskKey)?.coverEmbedded==true
-                                    _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.title,ArtworkSkipReason.NO_COVER))}}
+                                    _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.displayTitle,ArtworkSkipReason.NO_COVER))}}
                                     diagnostic.result(if(changed)"ADDED" else if(marked)"EXISTING" else "NO_COVER")
                                 }catch(e: CancellationException){throw e}
                                  catch(e: Exception) {
                                     val unavailable=(e as? MusicFailure)?.code==MusicError.UNAVAILABLE&&diagnostic.step==ArtworkStep.RESOLVE_COVER
                                     if(unavailable) {
-                                        _artwork.update{it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.title,ArtworkSkipReason.TRACK_UNAVAILABLE,row.taskKey))};diagnostic.result("UNAVAILABLE",e)
+                                        _artwork.update{it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.displayTitle,ArtworkSkipReason.TRACK_UNAVAILABLE,row.taskKey))};diagnostic.result("UNAVAILABLE",e)
                                     }else {
-                                        val issue=artworkIssue(index+1,row.displayName,diagnostic.step,e,row.track.artist,row.track.title)
+                                        val issue=artworkIssue(index+1,row.displayName,diagnostic.step,e,row.track.artist,row.track.displayTitle)
                                         _artwork.update{it.copy(issues=it.issues+issue)}
                                         diagnostic.result("FAILED",e)
                                         try{repair.recover()}catch(recovery: Exception){diagnostic.step=ArtworkStep.RECOVERY;throw recovery}
@@ -124,7 +196,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     val shared=SharedAudioStore(getApplication());ArtworkRepair(getApplication(),store,shared).recover()
                     val row=store.existing(taskKey)?:throw MusicFailure(MusicError.INCOMPLETE)
                     musicCheck(!row.coverEmbedded,MusicError.INCOMPLETE);shared.requireValid(row);active(g)
-                    lookupUpdate(id){it.copy(phase=LookupPhase.READY,target=row,query=(row.track.artist+" "+row.track.title).take(500))}
+                    lookupUpdate(id){it.copy(phase=LookupPhase.READY,target=row,query=(row.track.artist+" "+row.track.displayTitle).take(500))}
                 }
             }
         }

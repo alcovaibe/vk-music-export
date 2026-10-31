@@ -22,7 +22,7 @@ internal object M3uPlaylist {
             musicCheck(file.relativePath.startsWith("Music/")&&!file.displayName.contains('/'),MusicError.STORAGE)
             val relative=reference(directory,file.relativePath+file.displayName)
             append("#EXTINF:").append(String.format(Locale.ROOT,"%.3f",file.durationMs/1000.0)).append(',')
-                .append((task.track.artist+" - "+task.track.title).replace('\n',' ').replace('\r',' ')).append('\n')
+                .append((file.track.artist+" - "+file.track.displayTitle).replace('\n',' ').replace('\r',' ')).append('\n')
             append(relative).append('\n')
             musicCheck(length<=4*1024*1024,MusicError.TOO_LARGE)
         }

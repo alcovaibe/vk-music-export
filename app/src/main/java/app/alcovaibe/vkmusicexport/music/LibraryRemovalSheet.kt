@@ -33,7 +33,7 @@ internal fun LibraryRemovalSheet(state: LibraryRemovalState,onConfirm: ()->Unit,
         Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("library_removal_sheet")) {
             Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text(if(state.phase==LibraryRemovalPhase.CONFIRM)"Удалить из «Моей музыки» ВК?" else "Удаление из ВК",style=MaterialTheme.typography.titleLarge)
-                state.track?.let{Text("${it.artist} — ${it.title}")}
+                state.track?.let{Text("${it.artist} — ${it.displayTitle}")}
                 when(state.phase) {
                     LibraryRemovalPhase.CHECKING->{LinearProgressIndicator(Modifier.fillMaxWidth());Text("Проверяем скачанную копию…")}
                     LibraryRemovalPhase.CONFIRM->{

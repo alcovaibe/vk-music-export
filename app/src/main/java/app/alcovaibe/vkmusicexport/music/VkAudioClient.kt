@@ -23,6 +23,7 @@ internal interface MusicApi {
         artwork(access,track)?.let{listOf(ArtworkCandidate(it,ArtworkOrigin.UNSPECIFIED))}?:emptyList()
     suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches=throw MusicFailure(MusicError.METHOD)
     suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch?=throw MusicFailure(MusicError.METHOD)
+    suspend fun metadata(access: MusicAccess,id: String): NativeTrack?=throw MusicFailure(MusicError.METHOD)
     suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
         musicCheck(!track.restricted&&track.duration>0,MusicError.UNAVAILABLE)
         return ResolvedAudio(track,media(access,track))
@@ -128,6 +129,10 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch? {
         musicCheck(Regex("-?[1-9][0-9]*_[1-9][0-9]*").matches(id),MusicError.RESPONSE)
         return NativeProtocol.artworkRecord(request(access,"audio.getById",mapOf("audios" to id)),id)
+    }
+    override suspend fun metadata(access: MusicAccess,id: String): NativeTrack? {
+        musicCheck(Regex("-?[1-9][0-9]*_[1-9][0-9]*").matches(id),MusicError.RESPONSE)
+        return NativeProtocol.metadataRecord(request(access,"audio.getById",mapOf("audios" to id)),id)
     }
     private data class CoverHint(val token: String,val result: Result<List<ArtworkCandidate>>)
     private val coverHints=object: LinkedHashMap<String,CoverHint>(4,.75f,true){override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,CoverHint>?)=size>8}

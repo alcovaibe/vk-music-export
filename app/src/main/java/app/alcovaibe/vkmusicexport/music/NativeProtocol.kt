@@ -46,7 +46,11 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
 
 @Serializable internal data class MusicAlbum(val id: String, val title: String)
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
-    val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null)
+    val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null) {
+    val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
+        if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
+    }?:title
+}
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
     val kind: PlaylistKind=PlaylistKind.UNKNOWN,val following: Boolean?=null,val deleted: Boolean=false) {
@@ -126,7 +130,12 @@ internal object NativeProtocol {
         }
         // URL availability is a separate fact; never filter the position out of the library.
         val restricted = o["is_restricted"]?.jsonPrimitive?.let { it.booleanOrNull == true || it.intOrNull == 1 } ?: false
-        return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(), restricted, album)
+        val subtitle=o["subtitle"]?.takeUnless{it is JsonNull}?.let {
+            val p=it as? JsonPrimitive;musicCheck(p?.isString==true)
+            musicCheck(p!!.content.length<=500&&p.content.none{c->c<' '||c=='\u007f'})
+            if(p.content.isBlank())null else text(o,"subtitle")
+        }
+        return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(), restricted, album,subtitle)
     }
     fun page(response: JsonElement): NativePage = parse {
         val o = response as? JsonObject ?: throw MusicFailure(MusicError.RESPONSE)
@@ -175,6 +184,13 @@ internal object NativeProtocol {
         musicCheck(items.size==1,MusicError.RESPONSE)
         artworkMatch(items[0].jsonObject).also{musicCheck(it.track.id==id,MusicError.RESPONSE)}
     }
+    /** Metadata lookup does not require an audio URL or a cover, or membership in My Music. */
+    fun metadataRecord(response: JsonElement,id: String): NativeTrack? = parse {
+        val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
+        if(items.isEmpty())return@parse null
+        musicCheck(items.size==1)
+        track(items[0].jsonObject).also{musicCheck(it.id==id)}
+    }
     fun artwork(response: JsonElement,expected: NativeTrack): String? = artworkCandidates(response,expected).firstOrNull()?.url
     fun artworkCandidates(response: JsonElement,expected: NativeTrack): List<ArtworkCandidate> = parse {
         val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
@@ -207,7 +223,7 @@ internal object NativeProtocol {
         if(actual.duration<=0)throw TrackUnavailable(TrackAccessIssue.NO_DURATION)
         val url=(o["url"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotBlank()}
             ?:throw TrackUnavailable(TrackAccessIssue.NO_STREAM)
-        ResolvedAudio(actual,MediaAddress.require(url).toString())
+        ResolvedAudio(if("subtitle" in o)actual else actual.copy(subtitle=expected.subtitle),MediaAddress.require(url).toString())
     }
 
 }
