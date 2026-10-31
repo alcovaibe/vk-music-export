@@ -28,12 +28,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 
-private val Ink = Color(0xFF202337)
-private val Accent = Color(0xFF5B4DE8)
-
-@Composable
-private fun musicIcon() = ImageVector.vectorResource(R.drawable.ic_music_note)
-
 class MainActivity : ComponentActivity() {
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
@@ -79,44 +73,15 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
-    var screen by rememberSaveable{mutableStateOf<String?>("native")}
     val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
     val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
     val musicState by nativeMusic.state.collectAsState()
     val duplicates by nativeMusic.duplicates.collectAsState()
     val queueAccount by nativeMusic.queueAccount.collectAsState()
     val context=LocalContext.current
-    LaunchedEffect(duplicates.visible){if(duplicates.visible)screen="native"}
     app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,!downloadsOpen)
-    if(screen!="native")Scaffold(
-        modifier=Modifier.testTag("home_screen"),containerColor=MaterialTheme.colorScheme.background,
-        bottomBar={
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
-                verticalAlignment=Alignment.CenterVertically) {
-                Text("v ${BuildConfig.VERSION_NAME}",Modifier.weight(1f),
-                    style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen)
-            }
-        },
-        topBar={
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=24.dp,vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
-                Surface(shape=RoundedCornerShape(12.dp),color=Accent,modifier=Modifier.size(38.dp)) {
-                    Box(contentAlignment=Alignment.Center){Icon(musicIcon(),null,tint=Color.White,modifier=Modifier.size(23.dp))}
-                }
-                Spacer(Modifier.width(10.dp))
-                Text("VK Music Export",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                LatestReportMenu()
-            }
-        }
-    ){padding->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            HomeScreen(onMusic={
-                Diagnostics.button("open_native_music");nativeMusic.openMusic();screen="native"
-            })
-        }
-    }
-    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,screen=="native",
-        onDismiss={screen=null},appFooter={
+    app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,true,
+        onDismiss={(context as? android.app.Activity)?.finish()},appFooter={
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 Text("v ${BuildConfig.VERSION_NAME}",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen)
@@ -131,48 +96,4 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
         text={Text("В старой версии аккаунт очереди не сохранялся. Сейчас проверен аккаунт ВК $owner. Подтверди, что эта очередь принадлежит ему. Готовые файлы сохранятся.")},
         confirmButton={TextButton(onClick=nativeMusic::confirmQueueAccount){Text("Привязать и продолжить")}},
         dismissButton={TextButton(onClick=nativeMusic::dismissQueueAccount){Text("Отмена")}})}
-}
-
-@Composable
-private fun HomeScreen(onMusic: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            Button(onClick=onMusic,modifier=Modifier.fillMaxWidth().heightIn(min=56.dp),shape=RoundedCornerShape(16.dp)) {
-                Icon(musicIcon(),null,Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Text("VK Music")
-            }
-        }
-        item { WelcomeArtwork() }
-    }
-}
-
-@Composable
-private fun WelcomeArtwork() {
-    Surface(shape = RoundedCornerShape(28.dp), color = Ink, modifier = Modifier.fillMaxWidth().height(188.dp)) {
-        Box {
-            Canvas(Modifier.fillMaxSize()) {
-                val center = Offset(size.width * .76f, size.height * .53f)
-                val radius = size.height * .61f
-                drawCircle(Color(0xFF333749), radius, center)
-                for (i in 1..7) drawCircle(Color(0xFF474B60), radius * (0.35f + i * 0.08f), center, style = Stroke(1.dp.toPx()))
-                drawCircle(Color(0xFFBFB5FF), radius * .30f, center)
-                drawCircle(Ink, radius * .055f, center)
-                drawCircle(Color(0xFF8575F5), 5.dp.toPx(), Offset(26.dp.toPx(), size.height - 30.dp.toPx()))
-            }
-            Column(Modifier.padding(24.dp)) {
-                Text("ТВОЯ МУЗЫКА ИЗ ВК", color = Color(0xFFC7C3DE), style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp)
-                Spacer(Modifier.height(20.dp))
-                Icon(musicIcon(), null, tint = Color.White, modifier = Modifier.size(38.dp))
-                Spacer(Modifier.weight(1f))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("MP3", "M4A").forEach { label ->
-                        Surface(color = Color(0xFF414457), shape = RoundedCornerShape(6.dp)) {
-                            Text(label, Modifier.padding(horizontal = 8.dp, vertical = 5.dp), color = Color.White,
-                                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

@@ -86,6 +86,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }catch(e: CancellationException){throw e}catch(e: Exception){active(g);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
         }
     }
+    fun backFromArtist() {
+        if(_state.value.busy)cancel()
+        _artists.update{if(it.album!=null)it.copy(album=null,albumTracks=null,error=null)else it.copy(selected=null,details=null,error=null)}
+    }
     fun selectArtistAlbum(album: NativePlaylist?) {
         if(_state.value.busy)return
         if(album==null){_artists.update{it.copy(album=null,albumTracks=null,error=null)};return}

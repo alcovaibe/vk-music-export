@@ -86,6 +86,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
     var notifications by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
+    var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
+    var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
+    LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
+    var accessOpen by rememberSaveable {mutableStateOf(false)}
+    var toolsOpen by rememberSaveable {mutableStateOf(false)}
+    var ascending by rememberSaveable {mutableStateOf(false)}
     var configure by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
     if(configure) {
@@ -96,12 +102,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
         return
     }
-    var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
-    var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
-    LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
-    var accessOpen by rememberSaveable {mutableStateOf(false)}
-    var toolsOpen by rememberSaveable {mutableStateOf(false)}
-    var ascending by rememberSaveable {mutableStateOf(false)}
     val artists by model.artists.collectAsState()
     val localFiles by model.savedLibrary.collectAsState()
     val localError by model.savedLibraryError.collectAsState()
@@ -133,8 +133,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         when {
             accessOpen->accessOpen=false
             destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
-            category==LibraryCategory.ARTISTS&&artists.album!=null->model.selectArtistAlbum(null)
-            category==LibraryCategory.ARTISTS&&artists.selected!=null->model.selectArtist(null)
+            category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
+            category==LibraryCategory.ARTISTS&&artists.selected!=null->model.backFromArtist()
             state.selected!=null->model.section(state.catalogSection)
             else->{model.stopForWindow();onDismiss()}
         }

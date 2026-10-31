@@ -90,6 +90,8 @@ adb shell am start -W -n "$package/.MainActivity"
 # a matching 1087 manifest as false because aapt receives SIGPIPE.
 if "$build_tools/aapt" dump badging upgrade-input/previous.apk | grep -F "versionCode='1087'" >/dev/null; then
 assert_visible before "Открыть мою музыку"
+elif "$build_tools/aapt" dump badging upgrade-input/previous.apk | python3 -c 'import re,sys; m=re.search(r"versionName=.([0-9]+)[.]([0-9]+)[.]([0-9]+).",sys.stdin.read()); sys.exit(0 if m and tuple(map(int,m.groups()))>=(0,11,0) else 1)'; then
+assert_visible before "Библиотека"
 else
 assert_visible before "VK Music"
 fi
