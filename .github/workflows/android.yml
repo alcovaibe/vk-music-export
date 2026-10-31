@@ -1,7 +1,7 @@
 name: Android checks and APK
 on:
   push:
-    branches: [main, codex/music-library-redesign]
+    branches: [main, codex/music-library-redesign, codex/music-followups]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -155,7 +155,8 @@ jobs:
     # Normal pushes/PRs run checks only. This exact owner-requested PR release requires its marker and pinned build inputs.
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]')) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-followups' && contains(github.event.head_commit.message, '[publish-pr-50]'))
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30

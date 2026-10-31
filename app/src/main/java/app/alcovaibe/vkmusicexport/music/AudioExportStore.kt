@@ -154,8 +154,17 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         musicCheck(run.owner>0&&run.next in 0..run.targets.size,MusicError.STORAGE)
         put("track-metadata-run:${run.owner}",json.encodeToString(run))
     }
+    private fun metadataChoiceKey(owner: Long,trackId: String,uri: String)=
+        "track-metadata-choice:$owner:"+java.security.MessageDigest.getInstance("SHA-256").digest((trackId+"\u0000"+uri).toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
+    @Synchronized fun metadataReplacement(owner: Long,row: PublishedAudio): TrackMetadataReplacement? = get(metadataChoiceKey(owner,row.track.id,row.uri))?.let{
+        json.decodeFromString<TrackMetadataReplacement>(it).also{choice->musicCheck(choice.owner==owner&&choice.trackId==row.track.id&&choice.uri==row.uri,MusicError.STORAGE)}
+    }
+    @Synchronized fun metadataReplacement(choice: TrackMetadataReplacement) {
+        musicCheck(choice.owner>0&&Regex("-?[1-9][0-9]*_[1-9][0-9]*").matches(choice.referenceId),MusicError.STORAGE)
+        put(metadataChoiceKey(choice.owner,choice.trackId,choice.uri),json.encodeToString(choice))
+    }
     @Synchronized fun metadataTarget(target: TrackMetadataTarget): PublishedAudio? {
-        existing(target.taskKey)?.takeIf{it.track.id==target.trackId}?.let{return it}
+        existing(target.taskKey)?.takeIf{it.track.id==target.trackId&&it.uri==target.uri}?.let{return it}
         return readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid",arrayOf(target.trackId)).use{c->
             while(c.moveToNext()) {
                 val row=json.decodeFromString<PublishedAudio>(c.getString(0))

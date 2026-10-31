@@ -1,0 +1,21 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "codex/music-followups",
+  "pull_request": 50,
+  "version_name": "0.11.2",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-02T23:59:59Z",
+  "build_inputs": {
+    "app": "b44d84c9c95f5eda6acc44d23c300d192b1503cd",
+    "gradle": "c76c2cb5b79e3f5cb2fcff30c01d531049772314",
+    "config": "0b5e837d9fecfcf825e60178a576708862b20840",
+    "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "625c75d0e702ba89981847fae5ddab72c04bfeb7",
+    "version.properties": "2d456af2db0e71c43c4eb649205fbe439dd987ed",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e"
+  },
+  "request": "Владелец явно запросил релиз 0.11.2 из PR #50 и публикацию как Latest. Ручная приёмка реального аккаунта не заявляется."
+}

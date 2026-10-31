@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Cyan-to-violet note and download mark, inset for Android's circle and squircle masks. -->
+    <path
+        android:pathData="M43,33C43,30.6 43.8,29.4 46.4,28.8L66,24.5C68,24.1 69,25 69,27V49C69,53.9 65.2,57.7 60.7,57.7C56.8,57.7 54.3,55.3 54.3,52C54.3,48 58.3,45.6 62.4,45.6C63.2,45.6 64,45.7 64.5,46V33L47,36.7V57.8C47,62.6 43.4,66 38.8,66C34.5,66 31,63.5 31,60C31,56 35,53.4 39,53.4C40.4,53.4 41.7,53.7 43,54.1Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="31" android:startY="54" android:endX="77" android:endY="54"
+                android:startColor="#00E7EA" android:centerColor="#7185F5" android:endColor="#D72AF5" />
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#00000000"
+        android:strokeWidth="1.8" android:strokeLineJoin="miter"
+        android:pathData="M55.2,52.6V66H45L61,82L77,66H68.1V52.6">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="31" android:startY="54" android:endX="77" android:endY="54"
+                android:startColor="#00E7EA" android:centerColor="#7185F5" android:endColor="#D72AF5" />
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#00000000"
+        android:strokeWidth="0.85" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M48.5,69.4H54C56,69.4 56.3,67.3 57.4,67.3C58.8,67.3 58.8,73.7 60.3,73.7C61.8,73.7 61.2,65.7 62.5,65.7C64,65.7 63.5,71.4 65.1,71.4C66.1,71.4 66.2,69.4 67.6,69.4H73.5">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="31" android:startY="54" android:endX="77" android:endY="54"
+                android:startColor="#00E7EA" android:centerColor="#7185F5" android:endColor="#D72AF5" />
+        </aapt:attr>
+    </path>
+</vector>

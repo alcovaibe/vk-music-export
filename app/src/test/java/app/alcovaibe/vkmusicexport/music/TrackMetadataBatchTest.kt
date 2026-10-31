@@ -90,4 +90,17 @@ class TrackMetadataBatchTest {
         assertEquals(0,result.failed);assertEquals(3,result.next)
         assertFalse(Json.encodeToString(result).contains(credential.token))
     }
+    @Test fun chosenReferenceIsUsedInsteadOfDeletedIdWhileOriginalIdentityStaysWithTheFile()=runTest {
+        val saved=row(1);val selected=saved.track.copy(id="56_9",artist="Another artist",duration=200,subtitle="sped up")
+        val fetched=mutableListOf<String>()
+        val batch=TrackMetadataBatch(api{_,id->fetched.add(id);selected},{credential},find={saved},verify={},
+            update={file,text->assertEquals(saved,file);assertEquals(saved.track.copy(subtitle="sped up"),text);true},
+            recover={},save={},metadataSource={"56_9"})
+        assertEquals(1,batch.run(TrackMetadataRun.start(12,listOf(saved))).updated)
+        assertEquals(listOf("56_9"),fetched)
+        val missing=TrackMetadataBatch(api{_,_->null},{credential},find={saved},verify={},update={_,_->error("No write")},recover={},save={})
+            .run(TrackMetadataRun.start(12,listOf(saved)))
+        assertEquals(saved.uri,missing.issues.single().target!!.uri)
+    }
+
 }

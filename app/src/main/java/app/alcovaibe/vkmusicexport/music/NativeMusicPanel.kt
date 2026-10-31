@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,appFooter: @Composable ()->Unit={}) {
+internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,appFooter: @Composable ()->Unit={},onUpdates:()->Unit={}) {
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
@@ -63,6 +63,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val artwork by model.artwork.collectAsState()
     val trackMetadata by model.trackMetadata.collectAsState()
     val lookup by model.artworkLookup.collectAsState()
+    val metadataLookup by model.metadataLookup.collectAsState()
     val duplicates by model.duplicates.collectAsState()
     val savedFiles by model.savedFiles.collectAsState()
     val availability by model.availability.collectAsState()
@@ -91,7 +92,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
-    var updatesOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
     var ascending by rememberSaveable {mutableStateOf(false)}
@@ -134,7 +134,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     fun back() {
         when {
-            updatesOpen->updatesOpen=false
             accessOpen->accessOpen=false
             destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
             category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
@@ -143,8 +142,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->{model.stopForWindow();onDismiss()}
         }
     }
-    if(updatesOpen)AppPage("Обновления приложения",onBack={updatesOpen=false},tag="music_app_updates") {appFooter()}
-    else if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
+    if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
         item("access") {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
                 Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
@@ -210,7 +208,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             DropdownMenuItem(text={Text("Доступ к музыке")},modifier=Modifier.testTag("open_music_access"),onClick={closeMenu();accessOpen=true})
             DropdownMenuItem(text={Text("Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck,onClick={closeMenu();model.checkAccess()})
             DropdownMenuItem(text={Text("Инструменты сохранённых файлов")},onClick={closeMenu();destination=MusicDestination.SAVED})
-            DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();updatesOpen=true})
+            DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();onUpdates()})
             HorizontalDivider()
         }) {
         if(destination==MusicDestination.DOWNLOADS) {
@@ -273,8 +271,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }else {
                         TextButton(enabled=!state.busy,onClick={if(artists.album!=null)model.selectArtistAlbum(null)else model.selectArtist(null)}){Text(if(artists.album!=null)"К исполнителю" else "Мои исполнители")}
                     }
+                    artists.message?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
+                    if(!state.busy&&!artists.loaded&&artists.artists.isNotEmpty())Text("Получено: ${artists.artists.size}. Список загружен не полностью.",style=MaterialTheme.typography.bodySmall)
                     artists.error?.let{error->
-                        Text(if(error==MusicError.METHOD||error==MusicError.DENIED)"ВК не предоставил этот музыкальный раздел текущему подключению." else error.label,color=MaterialTheme.colorScheme.error)
+                        Text(if(error==MusicError.METHOD||error==MusicError.DENIED)"ВК не предоставил этот музыкальный раздел текущему подключению." else if(error==MusicError.TIMEOUT)"Истекло время ожидания ВК." else error.label,color=MaterialTheme.colorScheme.error)
                         if(artists.selected!=null)TextButton(enabled=!state.busy,onClick={val album=artists.album;if(album!=null)model.selectArtistAlbum(album)else model.selectArtist(artists.selected)}){Text("Повторить загрузку")}
                     }
                 }}
@@ -363,7 +363,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         onConfirm=model::confirmSavedFile,onForget=model::requestForgetFile,onConfirmForget=model::confirmForgetFile,
         onBack=model::backSavedFiles,onStop=model::cancel,onDismiss=model::dismissSavedFiles)
     if(artwork.visible&&!lookup.visible)ArtworkSheet(artwork,model::addSavedArtwork,model::cancel,model::dismissArtwork,model::showArtworkLookup)
-    if(trackMetadata.visible)TrackMetadataSheet(trackMetadata,model::updateSavedTrackMetadata,model::cancel,model::dismissTrackMetadata)
+    if(trackMetadata.visible&&!metadataLookup.visible)TrackMetadataSheet(trackMetadata,model::updateSavedTrackMetadata,model::cancel,model::dismissTrackMetadata,model::showMetadataLookup)
+    if(metadataLookup.visible)TrackMetadataLookupSheet(metadataLookup,model::metadataLookupQuery,model::findMetadataReplacement,model::previewMetadataReplacement,
+        model::confirmMetadataReplacement,model::backMetadataReplacement,model::cancel,model::dismissMetadataLookup)
     if(lookup.visible)ArtworkLookupSheet(lookup,model::artworkLookupQuery,model::findArtworkReplacement,model::previewArtworkReplacement,
         model::confirmArtworkReplacement,model::backArtworkReplacement,model::cancel,model::dismissArtworkLookup)
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})

@@ -179,6 +179,11 @@ internal object NativeProtocol {
         musicCheck(matches.map{it.track.id}.distinct().size==matches.size,MusicError.RESPONSE)
         ArtworkMatches(matches,total,offset)
     }
+    fun metadataSearch(response: JsonElement,offset: Int): MetadataMatches = parse {
+        val page=page(response)
+        musicCheck(page.tracks.size<=ArtworkQuery.PAGE_SIZE&&offset+page.tracks.size<=page.count&&page.tracks.map{it.id}.distinct().size==page.tracks.size)
+        MetadataMatches(page.tracks,page.count,offset)
+    }
     fun artworkRecord(response: JsonElement,id: String): ArtworkMatch? = parse {
         val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
         if(items.isEmpty())return@parse null

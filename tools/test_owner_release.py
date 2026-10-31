@@ -35,3 +35,28 @@ class OwnerReleaseTest(unittest.TestCase):
                 with self.assertRaises(AssertionError): owner.validate_assets(info,release,apk,{'tag_name':tag})
             apk.write_bytes(b'changed')
             with self.assertRaises(AssertionError): owner.validate_assets(info,release,apk,{'tag_name':'v0.10.5-build.1236'})
+
+    def test_pr50_requires_its_own_branch_marker_version_and_unexpired_request(self):
+        request = dict(authorization='owner_requested_latest', manual_acceptance='pending', repository='alcovaibe/vk-music-export',
+                       branch='codex/music-followups', pull_request=50, version_name='0.11.2', expires_at='2026-11-02T23:59:59Z')
+        env = dict(GITHUB_REPOSITORY=request['repository'], GITHUB_REF='refs/heads/' + request['branch'], GITHUB_EVENT_NAME='push', GITHUB_SHA='b'*40)
+        event = {'head_commit': {'message': 'Release 0.11.2 [publish-pr-50]'}}
+        now = dt.datetime(2026,10,31,tzinfo=dt.timezone.utc)
+        owner.validate_context(request,env,event,now)
+        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-50.json'))
+        for key,value in [('branch','codex/music-library-redesign'),('version_name','0.11.0'),('pull_request',51)]:
+            with self.subTest(key=key), self.assertRaises(AssertionError):
+                owner.validate_context(dict(request,**{key:value}),env,event,now)
+        with self.assertRaises(AssertionError): owner.validate_context(request,env,{'head_commit':{'message':'[publish-pr-48]'}},now)
+        with self.assertRaises(AssertionError): owner.validate_context(request,env,event,now+dt.timedelta(days=4))
+        with self.assertRaises(AssertionError): owner.request_path(dict(env,GITHUB_REF='refs/heads/main'))
+
+    def test_pr50_assets_require_the_requested_new_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            apk=Path(d)/'app.apk';apk.write_bytes(b'fixture')
+            info=dict(versionName='0.11.2',applicationId='app.alcovaibe.vkmusicexport',minSdk=36,versionCode=1255,
+                      tag='v0.11.2-build.1255',commit='b'*40,apk='app.apk')
+            asset=dict(name='app.apk',state='uploaded',size=7,digest='sha256:'+hashlib.sha256(b'fixture').hexdigest())
+            release=dict(target_commitish='b'*40,assets=[asset,{'name':'SHA256SUMS.txt'}])
+            owner.validate_assets(info,release,apk,{'tag_name':'v0.11.0-build.1244'},'0.11.2')
+            with self.assertRaises(AssertionError): owner.validate_assets(info,release,apk,{'tag_name':'v0.11.0-build.1244'},'0.11.0')

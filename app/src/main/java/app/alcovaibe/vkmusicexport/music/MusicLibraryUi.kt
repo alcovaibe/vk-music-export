@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import app.alcovaibe.vkmusicexport.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,7 +38,7 @@ import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 
 internal enum class MusicDestination(val label: String,val icon: ImageVector) {
-    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),DOWNLOADS("Загрузки",DownloadIcon)
+    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),DOWNLOADS("Друзья",DownloadIcon)
 }
 internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
     TRACKS("Треки",LibraryNoteIcon),PLAYLISTS("Плейлисты",PlaylistIcon),
@@ -78,9 +80,7 @@ internal fun MusicConnectionCard(configured: Boolean,session: MusicSessionState,
     Surface(onClick=onClick,shape=RoundedCornerShape(20.dp),color=if(active)MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         modifier=Modifier.fillMaxWidth().testTag("music_connection")) {
         Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            Surface(color=androidx.compose.ui.graphics.Color(0xFF0077FF),shape=RoundedCornerShape(12.dp)) {
-                Box(Modifier.size(44.dp),contentAlignment=Alignment.Center){Text("VK",color=androidx.compose.ui.graphics.Color.White,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium)}
-            }
+            Image(painterResource(R.drawable.ic_vk_logo),contentDescription="ВКонтакте",modifier=Modifier.size(44.dp).testTag("vk_connection_logo"))
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(if(configured)"ВК подключён" else "Подключить ВК",fontWeight=FontWeight.SemiBold)
                 Text(when {

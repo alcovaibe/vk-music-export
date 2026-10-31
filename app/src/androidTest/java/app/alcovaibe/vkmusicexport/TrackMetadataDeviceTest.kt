@@ -208,6 +208,47 @@ class TrackMetadataDeviceTest {
             assertTrue(store.snapshot().recent.isEmpty())
         }finally{clean(store,rows);store.close();dir.deleteRecursively()}
     }
+    @Test fun manuallyChosenTextSurvivesReopenAndFutureChecksUseItWithoutRebindingAudio()=runBlocking<Unit>(Dispatchers.IO) {
+        val(context,dir)=isolated("metadata-manual");var store=AudioExportStore(context)
+        val shared=SharedAudioStore(context);val rows=mutableListOf<PublishedAudio>()
+        try {
+            val tasks=listOf(task(10),task(11));store.replace(tasks,account=12)
+            rows.add(publish(dir,shared,store,tasks[0],"mp3"));rows.add(publish(dir,shared,store,tasks[1],"m4a"))
+            SharedPlaylistStore(context,store).publishAll()
+            val credential=MusicAccess("a".repeat(64),"CI/1",accountId=12)
+            val chosen=tasks.mapIndexed{i,t->t.track.copy(id="56_${i+1}",artist="Different source artist",duration=5,subtitle="Cover sped up")}
+            val fetched=mutableListOf<String>()
+            val api=object: MusicApi {
+                override suspend fun library(access: MusicAccess): NativeProbe=error("No library scan")
+                override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("No catalog")
+                override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No playlist")
+                override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio download")
+                override suspend fun metadata(access: MusicAccess,id: String): NativeTrack? {fetched.add(id);return chosen.firstOrNull{it.id==id}}
+            }
+            for((i,row)in rows.withIndex()) {
+                val original=File(dir,"before-${row.extension}");shared.copyTo(row,original)
+                val fingerprint=EmbeddedArtwork.audioFingerprint(original,row.extension)
+                val lookup=TrackMetadataLookup(api);val choice=lookup.preview(credential,row,chosen[i])
+                assertTrue(lookup.apply(credential,choice){file,text,id->
+                    store.metadataReplacement(TrackMetadataReplacement(12,file.track.id,file.uri,id))
+                    TrackMetadataRepair(context,store,shared).update(file,text)
+                })
+                val after=store.existing(row.taskKey)!!;assertEquals(row.track.copy(subtitle="Cover sped up"),after.track)
+                val output=File(dir,"after-${row.extension}");shared.copyTo(after,output)
+                assertEquals(row.uri,after.uri);assertEquals(fingerprint,EmbeddedArtwork.audioFingerprint(output,row.extension))
+                assertTrue(shared.valid(after))
+            }
+            store.close();store=AudioExportStore(context);fetched.clear()
+            val repair=TrackMetadataRepair(context,store,shared)
+            val result=TrackMetadataBatch(api,{credential},find=store::metadataTarget,verify=shared::requireValid,
+                update=repair::update,recover=repair::recover,save={store.metadataRun(it)},metadataSource={store.metadataReplacement(12,it)?.referenceId})
+                .run(TrackMetadataRun.start(12,store.savedFiles()))
+            assertEquals(chosen.map{it.id},fetched);assertEquals(2,result.current);assertEquals(0,result.unavailable)
+            assertNull(store.metadataReplacement(99,store.existing(rows.first().taskKey)!!))
+            SharedPlaylistStore(context,store).repairLocations()
+            tasks.forEach{assertTrue(playlist(store,it.source!!).contains("(Cover sped up)"))}
+        }finally{clean(store,rows);store.close();dir.deleteRecursively()}
+    }
 }
 
 @RunWith(AndroidJUnit4::class)
@@ -232,4 +273,37 @@ class TrackMetadataUiDeviceTest {
         ui.onNodeWithTag("track_metadata_start").assertTextEquals("Продолжить").performClick()
         ui.runOnIdle{assertTrue(resumed)}
     }
+    @Test fun unavailableRecordOffersManualLookupAndThePreviewRequiresConfirmation() {
+        val track=NativeTrack("12_1","Миражи","whiteSpot",161)
+        val target=TrackMetadataTarget("task","content://media/external_primary/audio/media/1",track.id,"Миражи.mp3")
+        val file=PublishedAudio(target.taskKey,track,target.uri,target.name,ExportLayout.ROOT+"Моя музыка/","mp3","audio/mpeg",161000,100,"a".repeat(64))
+        val selected=track.copy(id="56_2",subtitle="hehehe Cover sped up")
+        val opened=androidx.compose.runtime.mutableStateOf(false);var confirmed=false
+        awaitTestWindowFocus(ui.activity)
+        ui.setContent{MusicTheme{
+            if(opened.value)TrackMetadataLookupSheet(MetadataLookupState(visible=true,target=file,phase=LookupPhase.CONFIRM,
+                choice=MetadataChoice(file,selected,"synthetic",Long.MAX_VALUE)),{}, {}, {},{confirmed=true},{},{},{})
+            else TrackMetadataSheet(TrackMetadataState(visible=true,message="Готово",issues=listOf(
+                TrackMetadataIssue(target.name,"ВК не вернул запись",target))),{}, {}, {},{opened.value=it==target})
+        }}
+        ui.onNodeWithTag("track_metadata_results").performScrollToNode(hasTestTag("metadata_lookup_0"))
+        ui.onNodeWithTag("metadata_lookup_0").performClick();ui.runOnIdle{assertTrue(opened.value);assertFalse(confirmed)}
+        ui.onNodeWithTag("metadata_before").assertTextEquals("Миражи")
+        ui.onNodeWithTag("metadata_after").assertTextEquals("Миражи (hehehe Cover sped up)")
+        ui.onNodeWithTag("confirm_metadata_choice").assertIsDisplayed()
+        ui.mainClock.advanceTimeBy(500);ui.waitForIdle()
+        captureMusicFollowupScreenshot("metadata-title-choice")
+        ui.runOnIdle{assertFalse(confirmed)}
+        ui.onNodeWithTag("confirm_metadata_choice").performClick();ui.runOnIdle{assertTrue(confirmed)}
+    }
+
+}
+
+internal fun captureMusicFollowupScreenshot(name: String) {
+    val inst=InstrumentationRegistry.getInstrumentation();inst.waitForIdleSync();inst.uiAutomation.waitForIdle(300,5000)
+    val bitmap=inst.uiAutomation.takeScreenshot()
+    val file=File(inst.targetContext.getExternalFilesDir(null),"screenshots/$name.png").apply{parentFile!!.mkdirs()}
+    file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+    for(command in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png"))
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
 }
