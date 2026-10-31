@@ -23,7 +23,10 @@ class MusicLibraryRedesignDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
     private fun screenshot(name: String) {
         ui.waitForIdle()
-        val i=InstrumentationRegistry.getInstrumentation();val bitmap=i.uiAutomation.takeScreenshot()
+        saveScreenshot(name,InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+    }
+    private fun saveScreenshot(name: String,bitmap: Bitmap) {
+        val i=InstrumentationRegistry.getInstrumentation()
         val file=File(i.targetContext.getExternalFilesDir(null),"screenshots/$name.png").apply{parentFile!!.mkdirs()}
         file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
         for(cmd in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png"))
@@ -58,6 +61,16 @@ class MusicLibraryRedesignDeviceTest {
         }finally{ui.runOnUiThread{vmStore.clear()};vault.delete()}
     }
     @Test fun warmLibraryKeepsToolsAndShowsVersionSeparatelyWithoutArtistLinks()=fixture {
+        ui.onNodeWithTag("vk_connection_logo").assertIsDisplayed()
+        ui.onNodeWithText("VK").assertDoesNotExist()
+        ui.onNodeWithText("Друзья").assertIsDisplayed()
+        run {
+            val icon=ui.activity.applicationInfo.loadIcon(ui.activity.packageManager)
+            assertTrue(icon is android.graphics.drawable.AdaptiveIconDrawable)
+            val bitmap=Bitmap.createBitmap(512,512,Bitmap.Config.ARGB_8888)
+            icon.setBounds(0,0,512,512);icon.draw(android.graphics.Canvas(bitmap))
+            saveScreenshot("launcher-icon",bitmap)
+        }
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_1_12_1"))
         ui.onNodeWithText("Миражи").assertIsDisplayed();ui.onNodeWithText("hehehe Cover sped up").assertIsDisplayed()
         ui.onNodeWithText("Егор Крид").assertHasNoClickAction()
