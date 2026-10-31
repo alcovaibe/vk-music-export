@@ -152,8 +152,8 @@ jobs:
         run: echo 'Interface checks passed on API 36 and API 37.'
 
   release:
-    # Main pushes run checks only. Stable promotion uses recover-release.yml after manual acceptance.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.channel == 'rc'
+    # Pushes/PRs run checks only. An owner can explicitly build an RC from a selected repository branch.
+    if: github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30

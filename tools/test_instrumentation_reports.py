@@ -18,7 +18,7 @@ class InstrumentationReportTest(unittest.TestCase):
             return verify(root)
 
     def successful_report(self):
-        cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(72))
+        cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(74))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest" name="audit{i}"/>' for i in range(9))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.AccessRecoveryDeviceTest" name="access{i}"/>' for i in range(2))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MediaFinalizationDeviceTest" name="finalization{i}"/>' for i in range(4))
@@ -26,10 +26,11 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.LargeAudioAndReuseDeviceTest" name="reuse{i}"/>' for i in range(10))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataDeviceTest" name="metadata{i}"/>' for i in range(6))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.TrackMetadataUiDeviceTest" name="metadataUi{i}"/>' for i in range(2))
-        return f'<testsuites tests="109" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MusicLibraryRedesignDeviceTest" name="redesign{i}"/>' for i in range(2))
+        return f'<testsuites tests="113" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 109)
+        self.assertEqual(self.check([self.successful_report()], '0'), 113)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

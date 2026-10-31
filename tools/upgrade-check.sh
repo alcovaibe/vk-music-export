@@ -150,7 +150,7 @@ assert re.search(r'versionCode=' + str(info['versionCode']) + r'\b', package)
 assert 'DEBUGGABLE' not in package
 PY
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible after "VK Music"
+assert_visible after "Библиотека"
 assert_collection
 # Wait for the one-time IO migration, then verify the public audio and paused queue are intact.
 for attempt in $(seq 1 10); do
@@ -205,7 +205,7 @@ Path('upgrade-results/legacy-cleanup.txt').write_text('PASS: original private au
 print('PASS: original private audio retained and migrated; public Music and paused queue retained.')
 PYQUEUECHECK
 adb shell am start -W -n "$package/.MainActivity"
-assert_visible restarted "VK Music"
+assert_visible restarted "Библиотека"
 adb pull "$appdata/no_backup/diagnostics" upgrade-results/diagnostics >/dev/null
 python3 - <<'PYDIAG'
 import json

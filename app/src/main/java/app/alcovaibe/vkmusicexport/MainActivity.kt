@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
             SideEffect {
                 val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
                     WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                window.insetsController?.setSystemBarsAppearance(0, lightBars)
+                window.insetsController?.setSystemBarsAppearance(lightBars, lightBars)
             }
             MusicTheme { MusicApp(updates.controller,nativeMusic) }
         }
@@ -63,9 +63,14 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 internal fun MusicTheme(content: @Composable () -> Unit) {
-    val colors = darkColorScheme(
-        primary = Color(0xFFB9AFFF), background = Color.Black, surface = Color(0xFF1C1D28),
-        surfaceVariant = Color(0xFF2A2B3C), onSurfaceVariant = Color(0xFFB9B9CA)
+    val colors = lightColorScheme(
+        primary=Color(0xFF786859),onPrimary=Color.White,
+        primaryContainer=Color(0xFFE9DFD3),onPrimaryContainer=Color(0xFF30271F),
+        secondary=Color(0xFF756758),secondaryContainer=Color(0xFFE9E0D5),onSecondaryContainer=Color(0xFF382C21),
+        tertiary=Color(0xFF327943),tertiaryContainer=Color(0xFFE5EBD9),onTertiaryContainer=Color(0xFF233B26),
+        background=Color(0xFFF7F4EE),surface=Color.White,onBackground=Color(0xFF20211F),onSurface=Color(0xFF20211F),
+        surfaceVariant=Color(0xFFEEEAE3),onSurfaceVariant=Color(0xFF62645D),outline=Color(0xFF89877F),
+        error=Color(0xFFAD3229),errorContainer=Color(0xFFFFDAD6)
     )
     MaterialTheme(colorScheme = colors, shapes = Shapes(
         small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(28.dp)
@@ -74,7 +79,7 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
-    var screen by rememberSaveable{mutableStateOf<String?>(null)}
+    var screen by rememberSaveable{mutableStateOf<String?>("native")}
     val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
     val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
     val musicState by nativeMusic.state.collectAsState()
@@ -82,7 +87,7 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
     val queueAccount by nativeMusic.queueAccount.collectAsState()
     val context=LocalContext.current
     LaunchedEffect(duplicates.visible){if(duplicates.visible)screen="native"}
-    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,screen!="native"&&!downloadsOpen)
+    app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,!downloadsOpen)
     if(screen!="native")Scaffold(
         modifier=Modifier.testTag("home_screen"),containerColor=MaterialTheme.colorScheme.background,
         bottomBar={
@@ -111,7 +116,12 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
         }
     }
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,screen=="native",
-        onDismiss={screen=null})
+        onDismiss={screen=null},appFooter={
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                Text("v ${BuildConfig.VERSION_NAME}",Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen)
+            }
+        })
     if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy||duplicates.busy,musicState.error,
         onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
         onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads,

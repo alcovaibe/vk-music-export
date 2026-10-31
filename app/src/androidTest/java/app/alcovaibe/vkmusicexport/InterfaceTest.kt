@@ -60,40 +60,23 @@ class InterfaceTest {
 
     @Test fun nativeMusicEntryAndHomeSurviveRecreationWithoutRetiredScreens() {
         awaitTestWindowFocus(ui.activity)
-        ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
-        ui.onNodeWithTag("check_updates").assertIsDisplayed()
-        val updateBounds=ui.onNodeWithTag("check_updates").fetchSemanticsNode().boundsInRoot
-        val settingsBounds=ui.onNodeWithContentDescription("Меню").fetchSemanticsNode().boundsInRoot
-        val versionBounds=ui.onNodeWithText("v ${BuildConfig.VERSION_NAME}").fetchSemanticsNode().boundsInRoot
-        assertTrue(updateBounds.top>settingsBounds.bottom)
-        assertTrue(updateBounds.left>versionBounds.left)
-        assertTrue(updateBounds.top<=versionBounds.center.y&&updateBounds.bottom>=versionBounds.center.y)
-        ui.onNodeWithText("VK Music").performScrollTo().assertIsDisplayed()
-        for(label in listOf("Открыть ВК в Chrome","Сбор из Chrome","Импорт JSON","Экспорт"))ui.onNodeWithText(label).assertDoesNotExist()
-        val pixels=ui.onNodeWithTag("home_screen").captureToImage().toPixelMap()
-        assertEquals(androidx.compose.ui.graphics.Color.Black,pixels[1,pixels.height/2])
-        ui.onNodeWithText("Музыка и плейлисты ВК").assertDoesNotExist()
-        ui.onNodeWithText("Открой музыкальный раздел, подключи ВК и сохраняй треки в Music/VK Music Export.").assertDoesNotExist()
-        ui.onNodeWithText("Данные и доступ").assertDoesNotExist()
-        ui.onNodeWithText("Лицензия").assertDoesNotExist()
-        ui.onNodeWithTag("open_home_downloads").assertDoesNotExist()
-        capture("01-home")
-        ui.onNodeWithText("VK Music").performClick()
         ui.onNodeWithTag("native_music_screen").assertExists()
+        ui.onNodeWithTag("library_category_TRACKS").assertIsDisplayed()
+        ui.onNodeWithTag("library_category_ARTISTS").assertIsDisplayed()
+        ui.onNodeWithTag("music_nav_SAVED").assertIsDisplayed()
+        val pixels=ui.onNodeWithTag("native_music_screen").captureToImage().toPixelMap()
+        assertEquals(androidx.compose.ui.graphics.Color(0xFFF7F4EE),pixels[1,pixels.height/2])
+        for(label in listOf("Музыка и плейлисты ВК","Ручной доступ","Изменить доступ ВК","Данные и доступ","Лицензия"))
+            ui.onNodeWithText(label).assertDoesNotExist()
+        capture("01-library")
+        ui.onNodeWithTag("music_connection").performClick()
         ui.onNodeWithText("Доступ к музыке").assertIsDisplayed()
         ui.onNodeWithText("Прямой доступ ВК").assertDoesNotExist()
-        ui.onNodeWithText("Файлы из предыдущей версии").assertDoesNotExist()
-        ui.onNodeWithText("Данные и доступ").assertDoesNotExist()
-        ui.onNodeWithText("Лицензии").assertDoesNotExist()
-        ui.onNodeWithText("Ручной доступ").assertDoesNotExist()
-        ui.onNodeWithText("Изменить доступ ВК").assertDoesNotExist()
-        capture("02-native-music")
+        capture("02-music-access")
         ui.onNodeWithContentDescription("Назад").performClick()
-        ui.onNodeWithText("VK Music").assertExists()
-        val context=InstrumentationRegistry.getInstrumentation().targetContext
         ui.activityRule.scenario.recreate()
-        ui.onNodeWithText("VK Music").assertExists()
-        capture("03-home-recreated")
+        ui.onNodeWithTag("native_music_screen").assertExists()
+        capture("03-library-recreated")
         fun noEmbeddedBrowser(view: android.view.View) {
             assertFalse(view.javaClass.name.startsWith("android.webkit."))
             if(view is android.view.ViewGroup)repeat(view.childCount){noEmbeddedBrowser(view.getChildAt(it))}
@@ -101,26 +84,30 @@ class InterfaceTest {
         ui.runOnUiThread{noEmbeddedBrowser(ui.activity.window.decorView)}
         ui.onNodeWithContentDescription("Меню").performClick()
         ui.onNodeWithText("Поделиться JSON-отчётом").assertIsDisplayed()
-        for(label in listOf("Настройки","Диагностика","Копировать лог","Другие логи","Поделиться предыдущим JSON","Музыка ВК","Открыть мою музыку"))
-            ui.onNodeWithText(label).assertDoesNotExist()
-        ui.onNodeWithTag("settings_screen").assertDoesNotExist()
-        ui.onNodeWithTag("check_updates").assertExists()
-        capture("05-home-report-menu")
+        capture("05-library-menu")
         ui.onNodeWithTag("open_privacy").performClick()
         ui.onNodeWithTag("legal_sheet").assertIsDisplayed()
         ui.onNodeWithText("Данные и доступ к ВК").assertIsDisplayed()
         ui.onNodeWithText("Закрыть").performClick()
-        ui.onNodeWithTag("legal_sheet").assertDoesNotExist()
         ui.onNodeWithContentDescription("Меню").performClick()
         ui.onNodeWithTag("open_licenses").performClick()
         ui.onNodeWithText("Лицензии компонентов").assertIsDisplayed()
         androidx.test.espresso.Espresso.pressBack()
-        ui.onNodeWithTag("legal_sheet").assertDoesNotExist()
+        ui.onNodeWithTag("music_nav_SAVED").performClick()
+        ui.onNodeWithTag("saved_artwork").assertIsDisplayed()
+        ui.onNodeWithTag("saved_track_metadata").assertIsDisplayed()
+        ui.onNodeWithTag("saved_file_recovery").assertIsDisplayed()
+        capture("06-saved-tools")
+        ui.onNodeWithTag("music_nav_DOWNLOADS").performClick()
+        ui.onNodeWithTag("downloads_status").assertIsDisplayed()
+        capture("07-downloads")
+        ui.onNodeWithTag("music_nav_LIBRARY").performClick()
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
         ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
         ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&
-            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)==0}
-        ui.onNodeWithText("VK Music").assertExists()
-        capture("04-dark-home")
+            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0}
+        ui.onNodeWithTag("native_music_screen").assertExists()
+        capture("04-library-system-dark")
         ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)}
     }
 }

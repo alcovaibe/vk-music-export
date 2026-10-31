@@ -57,16 +57,16 @@ class CompleteMusicListsDeviceTest {
             assertEquals(tracks,model.state.value.page!!.tracks)
             assertEquals(tracks,model.state.value.probe!!.library.tracks)
             ui.runOnUiThread{ui.activity.setContent{MusicTheme{NativeMusicPanel(model,true,{})}}}
-            ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(207)
-            ui.onNodeWithText("205. Track 205").assertIsDisplayed()
+            ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_205_12_205"))
+            ui.onNodeWithTag("music_track_205_12_205").assertIsDisplayed()
             ui.runOnUiThread{model.section(CatalogSection.PLAYLISTS)}
-            ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(206)
+            ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("catalog_list_12_205"))
             ui.onNodeWithTag("catalog_list_12_205").assertIsDisplayed().performClick()
             ui.waitUntil(15000){!model.state.value.busy&&model.state.value.selected?.id==205L}
             assertEquals(listOf(0,100,200),playlistOffsets)
             assertEquals(tracks,model.state.value.page!!.tracks)
-            ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(412)
-            ui.onNodeWithText("205. Track 205").assertIsDisplayed()
+            ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_205_12_205"))
+            ui.onNodeWithTag("music_track_205_12_205").assertIsDisplayed()
             for(label in listOf("Ещё подборки","Следующие треки","Предыдущие треки","Изменить доступ ВК"))
                 ui.onNodeWithText(label).assertDoesNotExist()
             ui.runOnUiThread{model.section(CatalogSection.LIBRARY)}

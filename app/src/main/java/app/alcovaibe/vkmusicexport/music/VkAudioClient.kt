@@ -13,6 +13,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal interface MusicApi {
+    suspend fun followedArtists(access: MusicAccess,owner: Long): List<MusicArtist> = throw MusicFailure(MusicError.METHOD)
+    suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails = throw MusicFailure(MusicError.METHOD)
+    fun previewArtwork(track: NativeTrack): String? = null
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
     suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog? = null
@@ -53,6 +56,31 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) : MusicApi {
     private val mutationClient=client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
         .authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).build()
+    private val previews=object: java.util.LinkedHashMap<String,String>(128,.75f,true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,String>?)=size>2000
+    }
+    override fun previewArtwork(track: NativeTrack): String? = synchronized(previews){previews[track.id]}
+    private fun rememberPreviews(value: JsonElement) {
+        val o=value as? kotlinx.serialization.json.JsonObject?:return
+        for(key in listOf("items","audios"))for(item in (o[key] as? kotlinx.serialization.json.JsonArray).orEmpty()) {
+            val row=item as? kotlinx.serialization.json.JsonObject?:continue
+            val id=(row["owner_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content+"_"+(row["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            MusicArtists.photo(row["thumb"]?:((row["album"] as? kotlinx.serialization.json.JsonObject)?.get("thumb")))?.let{url->
+                synchronized(previews){previews[id]=url}
+            }
+        }
+    }
+    override suspend fun followedArtists(access: MusicAccess,owner: Long)=MusicArtists.subscriptions {method,fields->
+        val current=sessions?.continueRead(access)?:access
+        request(current,method,fields+mapOf("lang" to "ru")+(if(method=="catalog.getAudio")mapOf("owner_id" to owner.toString(),"need_blocks" to "1")else emptyMap()))
+    }
+    override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
+        val catalogue=request(access,"catalog.getAudioArtist",mapOf("artist_id" to artist.id,"need_blocks" to "1","lang" to "ru"))
+        val albums=MusicArtists.albums(catalogue){method,fields->request(sessions?.continueRead(access)?:access,method,fields)}
+        val page=MusicPagination.tracks({offset->NativeProtocol.page(request(sessions?.continueRead(access)?:access,
+            "audio.getAudiosByArtist",mapOf("artist_id" to artist.id,"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))})
+        return MusicArtistDetails(artist,page,albums)
+    }
     private suspend fun request(access: MusicAccess, method: String, fields: Map<String,String> = emptyMap()): JsonElement {
         return sessions?.request(access){requestRaw(it,method,fields)}?:requestRaw(access,method,fields)
     }
@@ -78,7 +106,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             }
             if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
             musicCheck(response.status==200,MusicError.HTTP)
-            withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes))}
+            withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes)).also(::rememberPreviews)}
         } catch(e: CancellationException){throw e}
           catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
           catch(e: Exception){

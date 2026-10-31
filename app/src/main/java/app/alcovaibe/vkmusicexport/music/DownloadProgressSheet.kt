@@ -41,13 +41,25 @@ internal fun DownloadQueueButton(queue: ExportSnapshot,onClick: ()->Unit) {
 internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,actionError: MusicError?=null,
     onPause: ()->Unit,onResume: ()->Unit,onRetry: ()->Unit,onClear: ()->Unit,onDismiss: ()->Unit,
     onSourceRetry: (ExportSourceFailure)->Unit={},onExportReport: (()->Unit)?=null) {
+    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("downloads_sheet")) {
+            DownloadProgressContent(queue,busy,actionError,onPause,onResume,onRetry,onClear,onSourceRetry,onExportReport,scrollable=true)
+            Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
+                TextButton(onClick=onDismiss,modifier=Modifier.testTag("downloads_dismiss")){Text("Свернуть")}
+            }
+        }
+    }
+}
+
+@Composable
+internal fun DownloadProgressContent(queue: ExportSnapshot,busy: Boolean=false,actionError: MusicError?=null,
+    onPause: ()->Unit,onResume: ()->Unit,onRetry: ()->Unit,onClear: ()->Unit,
+    onSourceRetry: (ExportSourceFailure)->Unit={},onExportReport: (()->Unit)?=null,scrollable: Boolean=false) {
     val working=queue.status in setOf("RUNNING","QUEUED")
     var problemPage by rememberSaveable{mutableIntStateOf(0)}
     val pages=(maxOf(queue.failures.size,queue.sourceFailures.size)+49)/50
     val page=problemPage.coerceIn(0,(pages-1).coerceAtLeast(0))
-    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
-        Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("downloads_sheet")) {
-            Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Column(if(scrollable)Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState())else Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Скачивание музыки",style=MaterialTheme.typography.titleLarge)
                 if(queue.account>0)Text("Аккаунт ВК: ${queue.account}",style=MaterialTheme.typography.bodySmall)
                 else if(queue.total>0)Text("У старой очереди не указан аккаунт. При продолжении попросим подтвердить привязку.",style=MaterialTheme.typography.bodySmall)
@@ -115,9 +127,4 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                 }}
                 if(working)Text("Панель можно свернуть — скачивание продолжится. Android может приостановить задачу; продолжение доступно здесь.",style=MaterialTheme.typography.bodySmall)
             }
-            Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
-                TextButton(onClick=onDismiss,modifier=Modifier.testTag("downloads_dismiss")){Text("Свернуть")}
-            }
-        }
-    }
 }

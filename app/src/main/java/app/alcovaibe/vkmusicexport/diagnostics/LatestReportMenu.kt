@@ -15,7 +15,7 @@ import kotlinx.coroutines.*
 
 /** Both reports are regenerated from their journal. Never substitute the new run for the previous failure. */
 @Composable
-internal fun LatestReportMenu() {
+internal fun LatestReportMenu(extraItems: @Composable androidx.compose.foundation.layout.ColumnScope.(()->Unit)->Unit={}) {
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var busy by remember{mutableStateOf(false)}
     var expanded by remember{mutableStateOf(false)}
@@ -27,6 +27,7 @@ internal fun LatestReportMenu() {
             Icon(Icons.Default.MoreVert,if(busy)"Готовим JSON-отчёт" else "Меню")
         }
         DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+            extraItems{expanded=false}
             DropdownMenuItem(text={Text("Данные и доступ")},modifier=Modifier.testTag("open_privacy"),onClick={expanded=false;legalPage="privacy"})
             DropdownMenuItem(text={Text("Лицензия")},modifier=Modifier.testTag("open_licenses"),onClick={expanded=false;legalPage="licenses"})
             HorizontalDivider()

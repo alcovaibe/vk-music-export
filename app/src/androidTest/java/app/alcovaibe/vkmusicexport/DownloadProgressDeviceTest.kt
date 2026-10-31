@@ -84,7 +84,6 @@ class DownloadProgressEntryDeviceTest {
         withContext(Dispatchers.IO){AudioExportRuntime.initialize(context);AudioExportRuntime.clear(context)}
         try {
             ui.onNodeWithTag("open_home_downloads").assertDoesNotExist()
-            ui.onNodeWithText("VK Music").performClick()
             ui.onNodeWithTag("open_music_downloads").performClick()
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             ui.activityRule.scenario.recreate()
