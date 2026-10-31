@@ -26,10 +26,11 @@ internal object MusicPagination {
             currentCoroutineContext().ensureActive();val page=fetch(offset)
             musicCheck(expected==null||page.count==expected,MusicError.LIBRARY_CHANGED);expected=page.count
             if(page.lists.isEmpty()||!pages.add(page.lists.map{it.key}))break
+            musicCheck(offset+page.lists.size<=page.count,MusicError.LIBRARY_CHANGED)
             page.lists.forEach{lists.putIfAbsent(it.key,it)};offset+=page.lists.size
             musicCheck(offset<=1_000_000)
             progress(lists.size,page.count)
         }while(offset<expected!!)
-        return NativeCatalog(lists.values.toList(),expected?:0)
+        return NativeCatalog(lists.values.toList(),expected?:0,offset==(expected?:0))
     }
 }

@@ -6,6 +6,8 @@ import android.content.ContextWrapper
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -48,4 +50,18 @@ internal fun SecureCredentialContent(content: @Composable ()->Unit) {
         onDispose{if(!wasSecure)window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)}
     }
     content()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LazyAppPage(title: String,onBack: ()->Unit,tag: String,
+    actions: @Composable RowScope.()->Unit={},content: LazyListScope.()->Unit) {
+    BackHandler {Diagnostics.event("page_navigation",mapOf("screen" to tag,"detector" to "system_back"));onBack()}
+    Scaffold(modifier=Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
+        topBar={TopAppBar(title={Text(title)},actions=actions,navigationIcon={
+            IconButton(onClick={Diagnostics.button(tag+"_back");onBack()}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}
+        })}) {padding->
+        LazyColumn(Modifier.fillMaxSize().padding(padding).imePadding().testTag(tag+"_list"),
+            contentPadding=PaddingValues(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+    }
 }

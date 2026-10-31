@@ -105,8 +105,8 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
         }
     ){padding->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            HomeScreen(queue,onDownloads=nativeMusic::showDownloads,onMusic={
-                Diagnostics.button("open_native_music");screen="native"
+            HomeScreen(onMusic={
+                Diagnostics.button("open_native_music");nativeMusic.openMusic();screen="native"
             })
         }
     }
@@ -124,7 +124,7 @@ private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateControll
 }
 
 @Composable
-private fun HomeScreen(queue: app.alcovaibe.vkmusicexport.music.ExportSnapshot,onDownloads: ()->Unit,onMusic: () -> Unit) {
+private fun HomeScreen(onMusic: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
@@ -132,16 +132,7 @@ private fun HomeScreen(queue: app.alcovaibe.vkmusicexport.music.ExportSnapshot,o
                 Icon(musicIcon(),null,Modifier.size(20.dp));Spacer(Modifier.width(10.dp));Text("VK Music")
             }
         }
-        item {app.alcovaibe.vkmusicexport.music.DownloadQueueButton(queue,onDownloads)}
         item { WelcomeArtwork() }
-        item {
-            Text("Музыка и плейлисты ВК", style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
-            Spacer(Modifier.height(10.dp))
-            Text("Открой музыкальный раздел, подключи ВК и сохраняй треки в Music/VK Music Export.",
-                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {LegalInformationLinks()}
     }
 }
 

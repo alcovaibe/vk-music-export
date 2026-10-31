@@ -101,7 +101,7 @@ class NativeMusicUiDeviceTest {
         ui.onNodeWithText("Сохранить и проверить ВК").performScrollTo().performClick()
         ui.onNodeWithText(MusicError.INVALID_ACCESS.label).assertExists()
         assertFalse(File(ui.activity.noBackupFilesDir,"native-music-access.bin").exists())
-        ui.onNodeWithText("Отмена").performScrollTo().performClick();ui.onNodeWithText("Закрыть").performScrollTo().performClick()
+        ui.onNodeWithText("Отмена").performScrollTo().performClick();ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasText("Закрыть"));ui.onNodeWithText("Закрыть").performClick()
         assertArrayEquals(collection,ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes())
     }
 }

@@ -51,6 +51,12 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
     }
     private suspend fun valid(row: Playlist)=read(row)!=null
     private fun row(key: String)=store.checkpoint(key)?.takeIf{it.isNotEmpty()}?.let{runCatching{json.decodeFromString<Playlist>(it)}.getOrNull()}
+    suspend fun matches(source: ExportSource,tasks: List<AudioExportTask>,files: List<PublishedAudio>): Boolean {
+        val stored=row("m3u:"+source.key)?:return false
+        val current=read(stored)?:return false
+        val expected=M3uPlaylist.render(stored.directory,tasks,files.associateBy{it.taskKey}).toByteArray(Charsets.UTF_8)
+        return current.contentEquals(expected)
+    }
     suspend fun publishAll() {
         val rows=store.taskRows()
         val groups=rows.groupBy{it.first.source?.key?:it.first.folders.joinToString("/")}

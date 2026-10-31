@@ -11,31 +11,58 @@ class MusicCatalogTest {
         val input=(1L..100L).map{list(it,PlaylistKind.PLAYLIST)}+list(101,PlaylistKind.ALBUM)+list(102,PlaylistKind.UNKNOWN)
         val offsets=mutableListOf<Int>()
         val catalog=MusicPagination.catalog({offset->offsets.add(offset);NativeCatalog(input.drop(offset).take(100),input.size)})
-        assertEquals(listOf(0,100),offsets)
+        assertEquals(listOf(0,100),offsets);assertTrue(catalog.complete)
         assertEquals(100,MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS,emptyMap()).size)
         assertEquals(listOf(input[100]),MusicCatalog.lists(catalog,CatalogSection.ALBUMS,emptyMap()))
         assertEquals(listOf(input[101]),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,emptyMap()))
     }
-    @Test fun explicitTypesAndManualUnknownChoicesStaySeparateWithoutGuessingFromTitlesOrNumbers() {
-        val response=Json.parseToJsonElement("""{"count":5,"items":[
-            {"owner_id":12,"id":1,"title":"Album title","count":1,"type":1},
-            {"owner_id":12,"id":2,"title":"Playlist","count":1,"type":"album"},
-            {"owner_id":12,"id":3,"title":"Album","count":1,"type":"playlist"},
-            {"owner_id":12,"id":4,"title":"Single","count":1,"album_type":"single"},
-            {"owner_id":12,"id":5,"title":"EP","count":1,"album_type":"ep"}]}""")
-        val catalog=NativeProtocol.catalog(response)
-        val choices=mapOf(catalog.lists[0].key to PlaylistKind.ALBUM,catalog.lists[2].key to PlaylistKind.ALBUM)
-        assertEquals(PlaylistKind.UNKNOWN,catalog.lists[0].kind)
-        assertEquals(4,MusicCatalog.lists(catalog,CatalogSection.ALBUMS,choices).size)
-        assertEquals(listOf(catalog.lists[2]),MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS,choices))
+    @Test fun numericTypesAreResolvedByServerAlbumMembershipAndOldChoicesCannotMisclassifyPlaylists()=runBlocking {
+        val raw=NativeProtocol.catalog(Json.parseToJsonElement("""{"count":4,"items":[
+            {"owner_id":12,"id":1,"title":"Плейлист 28.10.2026","count":1,"type":0},
+            {"owner_id":-9,"id":2,"title":"I AM","count":1,"type":1,"is_following":1},
+            {"owner_id":-9,"id":3,"title":"Removed","count":1,"type":1,"is_following":false},
+            {"owner_id":12,"id":4,"title":"Deleted own","count":1,"type":0,"is_deleted":true}]}"""))
+        val api=object: MusicApi {
+            override suspend fun library(access: MusicAccess)=error("unused")
+            override suspend fun catalog(access: MusicAccess,owner: Long)=raw
+            override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int)=NativeCatalog(listOf(raw.lists[1],raw.lists[2]),2)
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=error("unused")
+            override suspend fun media(access: MusicAccess,track: NativeTrack)=error("unused")
+        }
+        val catalog=MusicCatalog.load(api,MusicAccess("synthetic","CI/1"),12)
+        assertEquals(2,catalog.lists.size);assertTrue(catalog.complete)
+        val choices=mapOf(raw.lists[0].key to PlaylistKind.ALBUM)
+        assertEquals(listOf("I AM"),MusicCatalog.lists(catalog,CatalogSection.ALBUMS,choices).map{it.title})
+        assertEquals(listOf("Плейлист 28.10.2026"),MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS,choices).map{it.title})
         assertTrue(MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,choices).isEmpty())
     }
-    @Test fun unknownCollectionCannotSilentlyCreatePlaylistTasksAndLibraryAlbumGroupsAreExplicit() {
+    @Test fun untypedCollectionCanBeDownloadedWithoutManualChoiceAndLibraryAlbumGroupsRemainExplicit() {
         val track=NativeTrack("12_1","Song","Artist",1,album=MusicAlbum("album:9","Release"))
         val page=NativePage(listOf(track),1);val unknown=list(7,PlaylistKind.UNKNOWN)
-        assertEquals(MusicError.COLLECTION_TYPE,assertThrows(MusicFailure::class.java){ExportLayout.playlist(page,unknown)}.code)
-        assertTrue(ExportLayout.relative(ExportLayout.playlist(page,unknown,PlaylistKind.ALBUM).single()).contains("/Альбомы/"))
+        assertTrue(ExportLayout.relative(ExportLayout.playlist(page,unknown).single()).contains("/Подборки/"))
         assertEquals(1,ExportLayout.library(page,albums=false).size)
         assertEquals(2,ExportLayout.library(page,albums=true).size)
     }
+    @Test fun repeatedCollectionPositionsDoNotProduceFalseIncompleteWarningsButStuckPagesDo()=runBlocking {
+        val a=list(1,PlaylistKind.PLAYLIST);val b=list(2,PlaylistKind.ALBUM);val c=list(3,PlaylistKind.PLAYLIST)
+        val offsets=mutableListOf<Int>()
+        val result=MusicPagination.catalog({offset->offsets.add(offset);NativeCatalog(if(offset==0)listOf(a,b)else listOf(b,c),4)})
+        assertEquals(listOf(0,2),offsets);assertEquals(listOf(a,b,c),result.lists);assertTrue(result.complete)
+        assertFalse(MusicPagination.catalog({NativeCatalog(listOf(a,b),4)}).complete)
+        assertFalse(MusicPagination.catalog({offset->NativeCatalog(if(offset==0)listOf(a)else emptyList(),4)}).complete)
+    }
+    @Test fun unsupportedAlbumFilterLeavesUntypedCollectionsDownloadableWithoutConsultingOldChoices()=runBlocking {
+        val unknown=list(7,PlaylistKind.UNKNOWN)
+        val api=object: MusicApi {
+            override suspend fun library(access: MusicAccess)=error("unused")
+            override suspend fun catalog(access: MusicAccess,owner: Long)=NativeCatalog(listOf(unknown),1)
+            override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog=throw MusicFailure(MusicError.METHOD)
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=error("unused")
+            override suspend fun media(access: MusicAccess,track: NativeTrack)=error("unused")
+        }
+        val catalog=MusicCatalog.load(api,MusicAccess("synthetic","CI/1"),12)
+        assertTrue(catalog.complete)
+        assertEquals(listOf(unknown),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,mapOf(unknown.key to PlaylistKind.ALBUM)))
+    }
+
 }

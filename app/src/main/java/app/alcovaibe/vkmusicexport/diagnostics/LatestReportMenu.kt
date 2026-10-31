@@ -19,6 +19,7 @@ internal fun LatestReportMenu() {
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     var busy by remember{mutableStateOf(false)}
     var expanded by remember{mutableStateOf(false)}
+    var legalPage by androidx.compose.runtime.saveable.rememberSaveable{mutableStateOf<String?>(null)}
     var previousAvailable by remember{mutableStateOf(false)}
     LaunchedEffect(expanded){if(expanded)previousAvailable=withContext(Dispatchers.IO){runCatching{Diagnostics.hasPreviousRun()}.getOrDefault(false)}}
     Box {
@@ -26,6 +27,9 @@ internal fun LatestReportMenu() {
             Icon(Icons.Default.MoreVert,if(busy)"Готовим JSON-отчёт" else "Меню")
         }
         DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+            DropdownMenuItem(text={Text("Данные и доступ")},modifier=Modifier.testTag("open_privacy"),onClick={expanded=false;legalPage="privacy"})
+            DropdownMenuItem(text={Text("Лицензия")},modifier=Modifier.testTag("open_licenses"),onClick={expanded=false;legalPage="licenses"})
+            HorizontalDivider()
             DropdownMenuItem(text={Text("Поделиться JSON-отчётом")},modifier=Modifier.testTag("share_latest_report"),onClick={
                 expanded=false
                 if(!busy) {
@@ -56,6 +60,7 @@ internal fun LatestReportMenu() {
                 })
         }
     }
+    legalPage?.let{app.alcovaibe.vkmusicexport.LegalInformationSheet(it){legalPage=null}}
 }
 
 internal object LatestReportShare {
