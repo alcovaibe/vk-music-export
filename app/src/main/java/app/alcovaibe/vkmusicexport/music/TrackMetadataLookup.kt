@@ -1,6 +1,8 @@
 package app.alcovaibe.vkmusicexport.music
 
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -19,8 +21,9 @@ internal object MetadataReplacementText {
 }
 internal class TrackMetadataLookup(private val api: MusicApi,private val now:()->Long={System.nanoTime()/1_000_000},
     private val guard:suspend()->Unit={}) {
+    private suspend fun checked(){currentCoroutineContext().ensureActive();guard();currentCoroutineContext().ensureActive()}
     suspend fun find(access: MusicAccess,input: String,offset: Int=0): MetadataMatches {
-        val query=ArtworkQuery.text(input);guard()
+        val query=ArtworkQuery.text(input);checked()
         val result=if(ArtworkQuery.isLink(query)) {
             musicCheck(offset==0,MusicError.RESPONSE)
             val id=ArtworkQuery.reference(query)
@@ -31,23 +34,23 @@ internal class TrackMetadataLookup(private val api: MusicApi,private val now:()-
             api.searchMetadata(access,query,offset)
         }
         musicCheck(result.tracks.size<=ArtworkQuery.PAGE_SIZE&&result.count>=result.tracks.size&&result.offset==offset,MusicError.RESPONSE)
-        guard();return result
+        checked();return result
     }
     suspend fun preview(access: MusicAccess,target: PublishedAudio,selected: NativeTrack): MetadataChoice {
-        guard()
+        checked()
         val fresh=api.metadata(access,selected.id)?:throw MusicFailure(MusicError.UNAVAILABLE)
-        musicCheck(fresh.id==selected.id,MusicError.RESPONSE);guard()
+        musicCheck(fresh.id==selected.id,MusicError.RESPONSE);checked()
         return MetadataChoice(target,fresh,access.readSessionId,now()+5*60_000)
     }
     suspend fun apply(access: MusicAccess,choice: MetadataChoice,write:suspend(PublishedAudio,NativeTrack,String)->Boolean): Boolean {
         musicCheck(choice.claim(),MusicError.BUSY)
         musicCheck(access.readSessionId==choice.readSessionId,MusicError.ACCESS)
         if(now()>=choice.expiresAt)throw MetadataChoiceExpired()
-        guard()
+        checked()
         val fresh=api.metadata(access,choice.selected.id)?:throw MusicFailure(MusicError.UNAVAILABLE)
         if(fresh.id!=choice.selected.id||fresh.title!=choice.selected.title||fresh.subtitle!=choice.selected.subtitle||
             fresh.artist!=choice.selected.artist||fresh.duration!=choice.selected.duration)throw MetadataCandidateChanged()
-        guard()
+        checked()
         return write(choice.target,MetadataReplacementText.merge(choice.target.track,fresh),fresh.id)
     }
 }

@@ -58,7 +58,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun showArtists(refresh: Boolean=false) {
         val owner=_state.value.probe?.owner?:return
         if(_state.value.busy)return
-        if(!refresh&&_artists.value.owner==owner&&_artists.value.loaded) {_artists.update{it.copy(selected=null,details=null,error=null)};return}
+        if(!refresh&&_artists.value.owner==owner&&_artists.value.loaded) {_artists.update{it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null)};return}
         _artists.value=MusicArtistsState(owner=owner)
         run("artists") {g->
             try {
@@ -79,7 +79,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     fun selectArtist(artist: MusicArtist?) {
         if(_state.value.busy)return
-        if(artist==null){_artists.update{it.copy(selected=null,details=null,error=null,album=null,albumTracks=null)};return}
+        if(artist==null){_artists.update{it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null)};return}
         val s=_artists.value
         if(s.owner!=_state.value.probe?.owner||s.artists.none{it.id==artist.id})return
         _artists.update{it.copy(selected=artist,details=null,error=null,message=null,album=null,albumTracks=null)}
@@ -96,11 +96,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     fun backFromArtist() {
         if(_state.value.busy)cancel()
-        _artists.update{if(it.album!=null)it.copy(album=null,albumTracks=null,error=null)else it.copy(selected=null,details=null,error=null)}
+        _artists.update{if(it.album!=null)it.copy(album=null,albumTracks=null,error=null,message=null)else it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null)}
     }
     fun selectArtistAlbum(album: NativePlaylist?) {
         if(_state.value.busy)return
-        if(album==null){_artists.update{it.copy(album=null,albumTracks=null,error=null)};return}
+        if(album==null){_artists.update{it.copy(album=null,albumTracks=null,error=null,message=null)};return}
         val s=_artists.value
         if(s.owner!=_state.value.probe?.owner||s.details?.albums?.none{it.key==album.key}!=false)return
         _artists.update{it.copy(album=album,albumTracks=null,error=null,message=null)}

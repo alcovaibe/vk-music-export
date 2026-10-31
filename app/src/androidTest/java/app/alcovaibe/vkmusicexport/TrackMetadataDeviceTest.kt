@@ -290,6 +290,8 @@ class TrackMetadataUiDeviceTest {
         ui.onNodeWithTag("metadata_lookup_0").performClick();ui.runOnIdle{assertTrue(opened.value);assertFalse(confirmed)}
         ui.onNodeWithTag("metadata_before").assertTextEquals("Миражи")
         ui.onNodeWithTag("metadata_after").assertTextEquals("Миражи (hehehe Cover sped up)")
+        ui.onNodeWithTag("confirm_metadata_choice").assertIsDisplayed()
+        ui.mainClock.advanceTimeBy(500);ui.waitForIdle()
         captureMusicFollowupScreenshot("metadata-title-choice")
         ui.runOnIdle{assertFalse(confirmed)}
         ui.onNodeWithTag("confirm_metadata_choice").performClick();ui.runOnIdle{assertTrue(confirmed)}
@@ -298,7 +300,8 @@ class TrackMetadataUiDeviceTest {
 }
 
 internal fun captureMusicFollowupScreenshot(name: String) {
-    val inst=InstrumentationRegistry.getInstrumentation();val bitmap=inst.uiAutomation.takeScreenshot()
+    val inst=InstrumentationRegistry.getInstrumentation();inst.waitForIdleSync();inst.uiAutomation.waitForIdle(300,5000)
+    val bitmap=inst.uiAutomation.takeScreenshot()
     val file=File(inst.targetContext.getExternalFilesDir(null),"screenshots/$name.png").apply{parentFile!!.mkdirs()}
     file.outputStream().use{bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
     for(command in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png"))

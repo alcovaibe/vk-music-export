@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -11,12 +12,12 @@ class TrackMetadataLookupTest {
     private val row=PublishedAudio("task",saved,"content://media/external_primary/audio/media/1","Song.mp3",ExportLayout.ROOT+"Моя музыка/","mp3","audio/mpeg",120000,100,"a".repeat(64))
     private val selected=NativeTrack("56_2","Song","Other artist",121,subtitle="Cover sped up")
     private class Api(var track: NativeTrack?): MusicApi {
-        val ids=mutableListOf<String>();var searches=0
+        val ids=mutableListOf<String>();var searches=0;var cancelOnRead=false
         override suspend fun library(access: MusicAccess): NativeProbe=error("No library scan")
         override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("No catalog")
         override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No playlist")
         override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio request")
-        override suspend fun metadata(access: MusicAccess,id: String): NativeTrack? {ids.add(id);return track}
+        override suspend fun metadata(access: MusicAccess,id: String): NativeTrack? {ids.add(id);if(cancelOnRead)currentCoroutineContext().cancel();return track}
         override suspend fun searchMetadata(access: MusicAccess,query: String,offset: Int): MetadataMatches {searches++;return MetadataMatches(listOfNotNull(track),1,offset)}
     }
     private suspend fun fails(code: MusicError,block:suspend()->Unit){try{block();fail("Expected $code")}catch(e: MusicFailure){assertEquals(code,e.code)}}
@@ -57,4 +58,11 @@ class TrackMetadataLookupTest {
         val old=Json.decodeFromString<TrackMetadataIssue>("""{"name":"Song.mp3","reason":"Unavailable"}""")
         assertNull(old.target);assertFalse(old.resolved)
     }
+    @Test fun cancellationDuringTheFinalReadNeverReachesTheWriter()=runTest {
+        val api=Api(selected);val lookup=TrackMetadataLookup(api);val choice=lookup.preview(access,row,selected)
+        var writes=0;api.cancelOnRead=true
+        val operation=launch{lookup.apply(access,choice){_,_,_->writes++;true}}
+        operation.join();assertTrue(operation.isCancelled);assertEquals(0,writes)
+    }
+
 }
