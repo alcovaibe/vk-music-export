@@ -7,7 +7,7 @@
   "manual_acceptance": "pending",
   "expires_at": "2026-11-01T00:00:00Z",
   "build_inputs": {
-    "app": "63870edac54bbbc468aa78b493e26ded1cf01f58",
+    "app": "81de75fe4d4a30ba91cbb0e88fcd18334051fed8",
     "gradle": "c76c2cb5b79e3f5cb2fcff30c01d531049772314",
     "config": "0b5e837d9fecfcf825e60178a576708862b20840",
     "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",

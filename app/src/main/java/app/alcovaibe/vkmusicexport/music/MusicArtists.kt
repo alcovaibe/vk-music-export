@@ -14,7 +14,7 @@ internal object MusicArtists {
     private fun str(e: JsonElement?)=(e as? JsonPrimitive)?.contentOrNull
     private fun title(o: JsonObject): String {
         val layout=o["layout"] as? JsonObject
-        val raw=o["title"]?:layout?.get("title")?:((layout?.get("header") as? JsonObject)?.get("title"))
+        val raw=o["title"]?:o["text"]?:layout?.get("title")?:((layout?.get("header") as? JsonObject)?.get("title"))
         return (str(raw)?:str((raw as? JsonObject)?.get("text"))).orEmpty().trim().lowercase()
     }
     private fun flag(o: JsonObject,key: String)=str(o[key]) in setOf("1","true")
@@ -36,7 +36,7 @@ internal object MusicArtists {
         }
         return values.firstNotNullOfOrNull{raw->runCatching{ArtworkAddress.require(raw).toString()}.getOrNull()}
     }
-    private fun artist(o: JsonObject)=MusicArtist(text(o,"id"),text(o,"name"),photo(o["photo"]?:o["photos"]?:o["thumb"]))
+    private fun artist(o: JsonObject)=MusicArtist(text(o,"id"),text(o,"name"),photo(o["photo"]?:o["photos"]?:o["thumb"]?:o["images"]?:o["cover"]?:o))
     private fun blocks(o: JsonObject): List<Triple<JsonObject,String,Int>> {
         val catalog=o["catalog"] as? JsonObject
         val sections=(catalog?.get("sections") as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}+
@@ -96,12 +96,12 @@ internal object MusicArtists {
                         parsed.lists.single().let{playlists[it.key]=it.classified(PlaylistKind.ALBUM)}
                     }
                     val meta=(b["meta"] as? JsonObject)?.get("show_all_info") as? JsonObject
-                    if(meta!=null)schedule("catalog.getSection",meta["section_id"])
+                    if(meta!=null&&!trusted)schedule("catalog.getSection",meta["section_id"])
                     if(cursor(b["next_from"])!=null)schedule("catalog.getBlockItems",b["id"],b["next_from"])
                 }
                 for(action in (b["actions"] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}) {
                     val wanted=if(subscriptions)subscription(action,ownBlock)else title(action) in releaseTitles
-                    if(wanted) {recognized=true;schedule("catalog.getSection",action["section_id"])}
+                    if(wanted&&!trusted) {recognized=true;schedule("catalog.getSection",action["section_id"])}
                 }
             }
             val s=o["section"] as? JsonObject

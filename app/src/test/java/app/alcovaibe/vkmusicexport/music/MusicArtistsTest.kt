@@ -40,6 +40,15 @@ class MusicArtistsTest {
         }
         assertEquals(listOf("real"),result.map{it.id})
     }
+    @Test fun textActionsAndRepeatedShowAllLinksDoNotRestartTheSameSection()=runTest {
+        var calls=0
+        val rows=MusicArtists.subscriptions{method,_->
+            calls++
+            if(method=="catalog.getAudio")json("""{"catalog":{"sections":[{"title":"Моя музыка","blocks":[{"actions":[{"text":"Исполнители","section_id":"all"}]}]}]}}""")
+            else json("""{"artists":[{"id":"1","name":"Подписка"}],"section":{"id":"all","blocks":[{"artists_ids":["1"],"meta":{"show_all_info":{"section_id":"all"}},"actions":[{"text":"Исполнители","section_id":"all"}]}]}}""")
+        }
+        assertEquals(2,calls);assertEquals(listOf("1"),rows.map{it.id})
+    }
     @Test fun realEmptySubscriptionBlockRemainsEmpty()=runTest {
         val rows=MusicArtists.subscriptions{_,_->json("""{"catalog":{"sections":[{"blocks":[{"title":"Мои исполнители","artists_ids":[]}]}]}}""")}
         assertTrue(rows.isEmpty())
