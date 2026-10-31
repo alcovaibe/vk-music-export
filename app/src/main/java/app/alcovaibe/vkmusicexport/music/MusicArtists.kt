@@ -106,7 +106,7 @@ internal object MusicArtists {
             if(subscriptions)for(s in sections) {
                 if(subscription(s,own)) {
                     recognized=true
-                    if((s["blocks"] as? JsonArray).isNullOrEmpty())schedule("catalog.getSection",s["id"]?:s["section_id"])
+                    if(!trusted&&(s["blocks"] as? JsonArray).isNullOrEmpty())schedule("catalog.getSection",s["id"]?:s["section_id"])
                 }
             }
             // Section-level tabs/buttons may carry the only link to the subscriptions.

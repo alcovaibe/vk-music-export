@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -249,6 +250,14 @@ class DuplicateResumeDeviceTest {
         }
         try {
             assertEquals(2,scan().duplicates.size);assertEquals(3,downloads)
+            // Simulate receipts from 0.11.2, keyed by the entire track including album.
+            val file=File(context.noBackupFilesDir,"duplicate-scan/checks.json")
+            val data=Json.parseToJsonElement(file.readText()).jsonObject
+            fun key(track: NativeTrack)=java.security.MessageDigest.getInstance("SHA-256")
+                .digest(Json.encodeToString(NativeTrack.serializer(),track).toByteArray()).joinToString(""){"%02x".format(it)}
+            val checks=data.getValue("checks").jsonObject
+            file.writeText(JsonObject(data+mapOf("checks" to JsonObject(tracks.associate{key(it) to checks.getValue(key(it.copy(album=null)))}))).toString())
+            DuplicateScanCache(context).begin(12,tracks)
             tracks=tracks.reversed().map{it.copy(album=MusicAlbum("new","New album"))}
             assertEquals(2,scan().duplicates.size);assertEquals(3,downloads)
             assertEquals(2,scan().duplicates.size);assertEquals(3,downloads)

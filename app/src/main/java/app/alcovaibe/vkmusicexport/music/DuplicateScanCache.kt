@@ -49,10 +49,15 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
         if(this.owner!=owner||wall()<created||wall()-created>=TTL) {
             clear();this.owner=owner;created=wall()
         }
-        if(snapshot!=fingerprint) {
+        var migrated=false
+        for(track in tracks) {
+            val id=key(track);val legacy=legacyKey(track)
+            if(id!=legacy)receipts.remove(legacy)?.let{row->receipts.putIfAbsent(id,row);migrated=true}
+        }
+        if(snapshot!=fingerprint||migrated) {
             // Reordering or editing another record must not download every checked song again.
             // A changed/deleted record loses only its own receipt; deletion still verifies fresh audio.
-            val current=tracks.flatMap{listOf(key(it),legacyKey(it))}.toHashSet()
+            val current=tracks.map(::key).toHashSet()
             receipts.keys.retainAll(current)
             snapshot=fingerprint;write()
         }

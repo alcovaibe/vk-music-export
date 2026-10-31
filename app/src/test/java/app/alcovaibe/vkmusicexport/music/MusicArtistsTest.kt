@@ -141,4 +141,14 @@ class MusicArtistsTest {
         assertEquals(2,calls.size);assertEquals(listOf("1"),rows.map{it.id})
     }
 
+    @Test fun hydratedEmptySubscriptionSectionDoesNotRequestItselfAgain()=runTest {
+        var calls=0
+        val rows=MusicArtists.subscriptions{method,_->
+            calls++
+            if(method=="catalog.getAudio")json("""{"catalog":{"sections":[{"id":"followed","title":"Мои исполнители"}]}}""")
+            else json("""{"section":{"id":"followed","title":"Мои исполнители","blocks":[]}}""")
+        }
+        assertEquals(2,calls);assertTrue(rows.isEmpty())
+    }
+
 }
