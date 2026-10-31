@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -38,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit) {
+internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,appFooter: @Composable ()->Unit={}) {
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
@@ -86,6 +88,13 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
     var notifications by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
+    var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
+    var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
+    LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
+    var updatesOpen by rememberSaveable {mutableStateOf(false)}
+    var accessOpen by rememberSaveable {mutableStateOf(false)}
+    var toolsOpen by rememberSaveable {mutableStateOf(false)}
+    var ascending by rememberSaveable {mutableStateOf(false)}
     var configure by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
     if(configure) {
@@ -96,50 +105,47 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
         return
     }
-    LazyAppPage("Доступ к музыке",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen",actions={
-        IconButton(onClick=model::showDownloads,modifier=Modifier.testTag("open_music_downloads")) {
-            Icon(DownloadIcon,"Скачивания")
+    val artists by model.artists.collectAsState()
+    val localFiles by model.savedLibrary.collectAsState()
+    val localError by model.savedLibraryError.collectAsState()
+    LaunchedEffect(state.initialized,state.busy,queue.done,queue.status) {if(state.initialized&&!state.busy)model.refreshSavedLibrary()}
+    LaunchedEffect(state.initialized) {if(state.initialized&&state.configured&&state.probe==null&&!state.busy)model.openMusic()}
+    LaunchedEffect(state.stage) {if(state.stage=="browser_auth")accessOpen=true}
+    val savedById=remember(localFiles,state.probe?.owner){localFiles.filter{it.present&&it.file.source?.account==state.probe?.owner}.associateBy{it.file.track.id}}
+    fun openFile(row: PublishedAudio) {
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO){SharedAudioStore(context).requireValid(row)}
+                val uri=Uri.parse(row.uri)
+                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,row.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    .apply{clipData=ClipData.newRawUri("Audio",uri)})
+            }catch(e: kotlinx.coroutines.CancellationException){throw e}catch(_: Exception){openError=true}
         }
-    }) {
-        item("access") {
-            Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                Text("Папка: Music/VK Music Export",style=MaterialTheme.typography.titleMedium)
-                Text("Моя музыка, Плейлисты и Альбомы создаются при первом сохранении. Готовые файлы не удаляются приложением по количеству или возрасту.")
-                Text("Одна проверенная копия трека используется в нескольких подборках через M3U8. В группы альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
-                if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
-                Text("Новые файлы сохраняются с обложкой, если ВК её отдаёт. Звук не перекодируется.",style=MaterialTheme.typography.bodySmall)
-                if(legacy.files.isNotEmpty()) {
-                    Text("Сохранения старой версии",style=MaterialTheme.typography.titleMedium)
-                    legacy.message?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
-                    legacyMessage?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
-                    legacy.files.forEach{file->
-                        TextButton(onClick={legacySelection=file.name;legacyExport.launch(file.name)}){Text("Сохранить копию: ${file.name}")}
-                    }
-                }
-                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showArtwork,
-                    modifier=Modifier.testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
-                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showTrackMetadata,
-                    modifier=Modifier.testTag("saved_track_metadata")){Text("Обновить названия и пометки")}
-                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showSavedFiles,
-                    modifier=Modifier.testTag("saved_file_recovery")){Text("Проверить сохранённые файлы")}
-                if(queue.recent.isNotEmpty()) {
-                    RecentFilesHeading(enabled=!state.busy&&!backgroundCheck,onClear=model::clearRecentFiles)
-                    queue.recent.forEach{row->
-                        Text("${row.displayName}\n${row.relativePath}",style=MaterialTheme.typography.bodySmall)
-                        Text(if(row.coverEmbedded)"С обложкой" else "Без добавленной обложки",style=MaterialTheme.typography.labelSmall)
-                        if(!row.catalogueVerified)Text("Выбранный локальный файл · оригинальность записи ВК не подтверждена",style=MaterialTheme.typography.labelSmall)
-                        TextButton(onClick={
-                            Diagnostics.button("audio_public_open")
-                            scope.launch {
-                                try{withContext(Dispatchers.IO){musicCheck(SharedAudioStore(context).valid(row),MusicError.INCOMPLETE)}
-                                    val uri=Uri.parse(row.uri)
-                                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,row.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply{clipData=ClipData.newRawUri("Audio",uri)})
-                                }catch(_: Exception){openError=true}
-                            }
-                        }){Text("Открыть файл")}
-                    }
-                }
-                HorizontalDivider()
+    }
+    fun choose(value: LibraryCategory) {
+        if(state.busy||backgroundCheck)return
+        category=value;ascending=false
+        when(value) {
+            LibraryCategory.TRACKS->model.section(CatalogSection.LIBRARY)
+            LibraryCategory.PLAYLISTS->model.section(CatalogSection.PLAYLISTS)
+            LibraryCategory.ALBUMS->model.section(CatalogSection.ALBUMS)
+            LibraryCategory.ARTISTS->model.showArtists()
+        }
+    }
+    fun back() {
+        when {
+            updatesOpen->updatesOpen=false
+            accessOpen->accessOpen=false
+            destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
+            category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
+            category==LibraryCategory.ARTISTS&&artists.selected!=null->model.backFromArtist()
+            state.selected!=null->model.section(state.catalogSection)
+            else->{model.stopForWindow();onDismiss()}
+        }
+    }
+    if(updatesOpen)AppPage("Обновления приложения",onBack={updatesOpen=false},tag="music_app_updates") {appFooter()}
+    else if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
+        item("access") {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
                 Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
                 Text("Это внутренний протокол ВК. Веб-сессия может иметь права шире музыки, а музыкальный метод может быть недоступен. Новый доступ сохраняется только после успешной проверки музыки.",style=MaterialTheme.typography.bodySmall)
@@ -191,53 +197,162 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
                     TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
                 }
-                if(duplicates.scanId.isNotEmpty()&&!duplicates.visible)OutlinedButton(
-                    enabled=!state.busy&&!backgroundCheck||duplicates.busy,onClick=model::showDuplicates,modifier=Modifier.testTag("reopen_duplicates")) {
-                    Text("Дубликаты: процесс и результат")
+                TextButton(onClick={accessOpen=false}){Text("Вернуться в библиотеку")}
+        }}
+    }else MusicLibraryScaffold(
+        title=when(destination) {
+            MusicDestination.SAVED->"Сохранённое"
+            MusicDestination.DOWNLOADS->"Загрузки"
+            else->if(category==LibraryCategory.ARTISTS)artists.album?.title?:artists.selected?.name?:"Мои исполнители" else state.selected?.title?:"Библиотека"
+        },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,
+        onBack=::back,showBack=state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null,
+        menuItems={closeMenu->
+            DropdownMenuItem(text={Text("Доступ к музыке")},modifier=Modifier.testTag("open_music_access"),onClick={closeMenu();accessOpen=true})
+            DropdownMenuItem(text={Text("Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck,onClick={closeMenu();model.checkAccess()})
+            DropdownMenuItem(text={Text("Инструменты сохранённых файлов")},onClick={closeMenu();destination=MusicDestination.SAVED})
+            DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();updatesOpen=true})
+            HorizontalDivider()
+        }) {
+        if(destination==MusicDestination.DOWNLOADS) {
+            item("queue") {DownloadProgressContent(queue,state.busy||backgroundCheck,state.error,
+                onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,
+                onSourceRetry=model::retrySource,onExportReport={model.shareExportReport(context)})}
+        }else if(destination==MusicDestination.SAVED) {
+            item("saved_tools") {Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                Text("Music/VK Music Export",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Инструменты",style=MaterialTheme.typography.titleMedium)
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showArtwork,
+                    modifier=Modifier.fillMaxWidth().testTag("saved_artwork")){Text("Добавить обложки к сохранённым")}
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showTrackMetadata,
+                    modifier=Modifier.fillMaxWidth().testTag("saved_track_metadata")){Text("Обновить названия и пометки")}
+                OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showSavedFiles,
+                    modifier=Modifier.fillMaxWidth().testTag("saved_file_recovery")){Text("Проверить сохранённые файлы")}
+                Text("Файлы: ${localFiles.size}",style=MaterialTheme.typography.titleMedium)
+                Text("Копии остаются здесь после удаления музыки из ВК. Проверка целостности доступна в инструментах.",style=MaterialTheme.typography.bodySmall)
+                if(localError)Text("Не удалось прочитать список файлов. Повтори обновление.",color=MaterialTheme.colorScheme.error)
+                TextButton(onClick=model::refreshSavedLibrary){Text("Обновить сохранённое")}
+                if(localFiles.isEmpty()&&!localError)Text("Скачанная музыка появится здесь.")
+            }}
+            itemsIndexed(localFiles,key={_,row->"saved_${row.file.uri}"}){i,entry->
+                val row=entry.file
+                Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.present},onOpen=if(entry.present)({openFile(row)})else null)
+                    if(!entry.present)Text("${row.displayName}: файл недоступен или размер изменился. Открой проверку сохранённых файлов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 }
             }
-        }
-        state.probe?.let {
-            item("catalog_controls") {
-                Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    HorizontalDivider()
-                    MusicCatalogPanel(state.copy(busy=state.busy||backgroundCheck),canPrepare,model::section,model::refreshCatalog,
-                        onLibrary={albums->model.section(CatalogSection.LIBRARY);model.prepare(libraryAlbums=albums)},
-                        onCategory={model.prepare(catalogKind=it)},onDuplicates=model::showDuplicates,onUnavailable=model::showAvailability)
-                    Text("Подготовку списков дождись на этом экране. После создания очереди можно свернуть приложение; прогресс доступен кнопкой скачивания вверху.",style=MaterialTheme.typography.bodySmall)
-                }
-            }
-            musicCatalogEntries(state.copy(busy=state.busy||backgroundCheck),model::select)
-        }
-                state.page?.let { page ->
-                    val selectedKind=state.selected?.let{MusicCatalog.kind(it,state.catalogKinds)}
-                    item("tracks_heading") {
-                        Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                    HorizontalDivider()
-                    Text(state.selected?.title?:"Моя музыка",style=MaterialTheme.typography.titleMedium)
-                    Text("Показано ${page.tracks.size} из ${page.count}")
-                    if(state.selected!=null) {
-                        Button(enabled=canPrepare,onClick={model.prepare()}){Text(when(selectedKind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.PLAYLIST->"Скачать плейлист";else->"Скачать подборку"})}
+            if(queue.recent.isNotEmpty())item("recent") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                RecentFilesHeading(enabled=!state.busy&&!backgroundCheck,onClear=model::clearRecentFiles)
+                queue.recent.forEach{row->TextButton(onClick={openFile(row)}){Text(row.displayName)}}
+            }}
+            if(legacy.files.isNotEmpty())item("legacy") {Column {
+                Text("Сохранения старой версии",style=MaterialTheme.typography.titleMedium)
+                legacy.message?.let{Text(it)};legacyMessage?.let{Text(it)}
+                legacy.files.forEach{file->TextButton(onClick={legacySelection=file.name;legacyExport.launch(file.name)}){Text("Сохранить копию: ${file.name}")}}
+            }}
+        }else {
+            item("connection") {MusicConnectionCard(state.configured,session,state.busy){accessOpen=true}}
+            item("categories") {MusicCategoryGrid(category,mapOf(
+                LibraryCategory.TRACKS to state.probe?.library?.count,
+                LibraryCategory.PLAYLISTS to state.catalog?.let{MusicCatalog.visible(state,CatalogSection.PLAYLISTS).size},
+                LibraryCategory.ALBUMS to state.catalog?.let{MusicCatalog.visible(state,CatalogSection.ALBUMS).size},
+                LibraryCategory.ARTISTS to artists.takeIf{it.loaded}?.artists?.size),!state.busy&&!backgroundCheck,::choose)}
+            if(!notifications)item("notifications") {TextButton(onClick={notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}}
+            if(state.busy)item("busy") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(if(state.stopping)"Завершаем операцию…" else state.preparing?:when(state.stage){"artists"->"Загружаем подписки на исполнителей…";"artist_details"->"Загружаем музыку исполнителя…";else->"Обновляем библиотеку…"},style=MaterialTheme.typography.bodySmall)
+                TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
+            }}
+            state.error?.let{error->item("error"){Text("${error.label} Код: ${error.name}",color=MaterialTheme.colorScheme.error)}}
+            if(category==LibraryCategory.ARTISTS) {
+                item("artists_heading") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    if(artists.selected==null) {
+                        Text("Музыкальные подписки ВК",style=MaterialTheme.typography.titleMedium)
+                        TextButton(enabled=state.probe!=null&&!state.busy,onClick={model.showArtists(true)}){Text("Обновить исполнителей")}
+                        if(artists.loaded&&artists.artists.isEmpty())Text("В этом аккаунте нет подписок на исполнителей.")
+                        if(!state.configured)Text("Подключи ВК, чтобы увидеть свои подписки.")
+                    }else {
+                        TextButton(enabled=!state.busy,onClick={if(artists.album!=null)model.selectArtistAlbum(null)else model.selectArtist(null)}){Text(if(artists.album!=null)"К исполнителю" else "Мои исполнители")}
                     }
-                        }
+                    artists.error?.let{error->
+                        Text(if(error==MusicError.METHOD||error==MusicError.DENIED)"ВК не предоставил этот музыкальный раздел текущему подключению." else error.label,color=MaterialTheme.colorScheme.error)
+                        if(artists.selected!=null)TextButton(enabled=!state.busy,onClick={val album=artists.album;if(album!=null)model.selectArtistAlbum(album)else model.selectArtist(artists.selected)}){Text("Повторить загрузку")}
                     }
-                    itemsIndexed(page.tracks,key={i,track->"track_${i}_${track.id}"}) { i,track ->
-                        ElevatedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                                    Text("${i+1}. ${track.displayTitle}",Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
-                                    LibraryRemoveButton(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY,
-                                        enabled=!state.busy&&!backgroundCheck,onClick={model.inspectRemoval(track)})
-                                }
-                                Text(track.artist)
-                                track.album?.let{Text("Альбом: ${it.title}",style=MaterialTheme.typography.bodySmall)}
-                                if(track.restricted||track.duration==0)Text("ВК отметил ограничение или не вернул длительность")
-                                TextButton(enabled=canPrepare,onClick={model.download(track,i+1)}){Text("Скачать этот трек")}
+                }}
+                if(artists.selected==null)itemsIndexed(artists.artists,key={_,artist->"artist_${artist.id}"}){_,artist->
+                    MusicCollectionRow(artist.name,"В подписках",!state.busy,artist=true,photo=artist.photo,tag="followed_artist_${artist.id}"){model.selectArtist(artist)}
+                }else {
+                    if(artists.album==null) {
+                        artists.details?.let{details->
+                            item("artist_albums_title"){Text("Альбомы и синглы · ${details.albums.size}",style=MaterialTheme.typography.titleMedium)}
+                            itemsIndexed(details.albums,key={_,list->"artist_album_${list.key}"}){_,list->
+                                MusicCollectionRow(list.title,"${list.count} треков",!state.busy,tag="artist_album_${list.owner}_${list.id}"){model.selectArtistAlbum(list)}
                             }
                         }
                     }
+                    val page=if(artists.album!=null)artists.albumTracks else artists.details?.tracks
+                    page?.let{
+                        item("artist_tracks_title"){Text("Треки · ${it.count}",style=MaterialTheme.typography.titleMedium)}
+                        itemsIndexed(it.tracks,key={i,track->"artist_track_${i}_${track.id}"}){i,track->MusicTrackRow(track,i+1,preview=model.previewArtwork(track))}
+                    }
                 }
-                item("close") {TextButton(onClick={Diagnostics.button("native_music_close");model.stopForWindow();onDismiss()}){Text("Закрыть")}}
+            }else {
+                if(state.probe!=null)item("library_actions") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+                        Text(state.selected?.title?:if(category==LibraryCategory.TRACKS)"${state.probe?.library?.count?:0} треков" else category.label,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
+                        TextButton(enabled=!state.busy,onClick={ascending=!ascending}){Text(if(ascending)"А–Я ↓" else "Порядок ВК ↕")}
+                        if(category==LibraryCategory.TRACKS)IconButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("library_tools")){Icon(Icons.Default.MoreVert,"Инструменты библиотеки")}
+                    }
+                    if(category==LibraryCategory.TRACKS) {
+                        if(toolsOpen) {
+                            Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
+                            OutlinedButton(enabled=canPrepare,onClick=model::showDuplicates,modifier=Modifier.fillMaxWidth().testTag("clean_duplicates")){Text("Очистить дубликаты")}
+                            OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
+                            OutlinedButton(enabled=canPrepare,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
+                            Text("Группы по альбомам содержат только песни из «Моей музыки».",style=MaterialTheme.typography.bodySmall)
+                        }
+                    }else {
+                        if(state.selected!=null) {
+                            TextButton(enabled=!state.busy,onClick={model.section(state.catalogSection)}){Text("Назад к подборкам")}
+                            Button(enabled=canPrepare,onClick={model.prepare()},modifier=Modifier.fillMaxWidth()){Text(if(state.selected?.kind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
+                        }else if(MusicCatalog.visible(state).isNotEmpty())Button(enabled=canPrepare,onClick={model.prepare(catalogKind=state.catalogSection.kind)},modifier=Modifier.fillMaxWidth().testTag("catalog_download_category")) {
+                            Text(if(category==LibraryCategory.ALBUMS)"Скачать все альбомы" else "Скачать все плейлисты")
+                        }
+                        if(state.catalog==null)Text("Каталог ещё не загружен.",style=MaterialTheme.typography.bodySmall)
+                        else if(state.catalog?.complete==false)Text("Каталог получен не полностью. Обнови список перед скачиванием.",color=MaterialTheme.colorScheme.error)
+                        if(state.hiddenCatalog.isNotEmpty())Text("Полностью скачанные подборки скрыты: ${state.hiddenCatalog.size}",style=MaterialTheme.typography.bodySmall)
+                        state.catalogError?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
+                    }
+                    if(toolsOpen||category!=LibraryCategory.TRACKS)Row {
+                        TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
+                        TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::refreshCatalog){Text("Обновить каталог")}
+                    }
+                    if(duplicates.scanId.isNotEmpty()&&!duplicates.visible)TextButton(onClick=model::showDuplicates,modifier=Modifier.testTag("reopen_duplicates")){Text("Дубликаты: процесс и результат")}
+                }}
+                if(category!=LibraryCategory.TRACKS&&state.selected==null) {
+                    val lists=MusicCatalog.visible(state).let{if(ascending)it.sortedBy{l->l.title.lowercase()}else it}
+                    itemsIndexed(lists,key={_,list->"catalog_${list.key}"}){_,list->MusicCollectionRow(list.title,"${list.count} треков",!state.busy,
+                        tag="catalog_list_${list.owner}_${list.id}"){model.select(list)}}
+                    if(state.catalogSection==CatalogSection.UNKNOWN)item("unknown_note"){Text("ВК не сообщил тип этих подборок; ручной выбор не нужен.")}
+                    if(MusicCatalog.visible(state,CatalogSection.UNKNOWN).isNotEmpty())item("unknown") {
+                        TextButton(enabled=!state.busy,onClick={model.section(CatalogSection.UNKNOWN)}){Text("Подборки без типа")}
+                    }
+                }
+                state.page?.let{page->
+                    val rows=page.tracks.withIndex().let{if(ascending)it.sortedBy{r->r.value.displayTitle.lowercase()}else it.toList()}
+                    if(page.tracks.size!=page.count)item("tracks_count"){Text("Показано ${page.tracks.size} из ${page.count}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
+                    itemsIndexed(rows,key={_,entry->"track_${entry.index}_${entry.value.id}"}){_,entry->
+                        val track=entry.value;val position=entry.index+1;val saved=savedById[track.id]?.file
+                        MusicTrackRow(track,position,preview=model.previewArtwork(track),saved=saved,
+                            downloading=queue.status=="RUNNING"&&queue.account==state.probe?.owner&&queue.currentTask?.track?.id==track.id,
+                            enabled=canPrepare,onDownload={model.download(track,position)},
+                            onRemove=if(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY)({model.inspectRemoval(track)})else null,
+                            onOpen=saved?.let{({openFile(it)})})
+                    }
+                }
+            }
+            if(!state.configured)item("empty_library") {Text("Подключи ВК через карточку сверху. Сохранённые файлы доступны без входа.",style=MaterialTheme.typography.bodyMedium)}
+        }
+        item("app_info") {appFooter()}
     }
     if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
         model::cancelDuplicateRemoval,model::skipDuplicate,model::pauseDuplicateCheck,model::dismissDuplicates)

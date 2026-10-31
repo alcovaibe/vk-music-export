@@ -40,6 +40,12 @@ internal class SharedAudioStore(internal val context: Context) {
         musicCheck(ownRecord(record),MusicError.STORAGE)
         return resolver.openInputStream(uri(record.uri))?:throw MusicFailure(MusicError.STORAGE)
     }
+    /** Fast display hint only. Integrity-sensitive operations always use inspect/requireValid and SHA-256. */
+    fun present(record: PublishedAudio): Boolean = runCatching {
+        ownRecord(record)&&resolver.query(uri(record.uri),arrayOf(MediaStore.MediaColumns.SIZE),null,null,null)?.use{
+            it.moveToFirst()&&it.getLong(0)==record.bytes
+        }==true
+    }.getOrDefault(false)
     /** Precise result; a mismatch never grants permission to overwrite a file. */
     suspend fun inspect(record: PublishedAudio,pending: Boolean=false): SavedFileCheck {
         try {

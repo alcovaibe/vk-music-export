@@ -46,7 +46,8 @@ class UpdateUiDeviceTest {
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
         ui.onNodeWithTag("check_updates").assertExists()
         ui.onNodeWithContentDescription("Меню").performClick()
-        ui.onNodeWithText("Обновления приложения").assertDoesNotExist()
+        ui.onNodeWithTag("open_app_updates").assertIsDisplayed().performClick()
+        ui.onNodeWithTag("music_app_updates").assertExists()
         ui.onNodeWithTag("check_updates").assertExists()
         androidx.test.espresso.Espresso.pressBack()
         // A fixed local source proves the result sheet; this test never contacts GitHub or installs an APK.
