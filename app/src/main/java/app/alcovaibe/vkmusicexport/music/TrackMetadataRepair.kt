@@ -18,7 +18,8 @@ internal object TrackMetadata {
 
 /** Durable backup before changing bytes/name. Recovery finishes a verified edit or restores the original. */
 internal class TrackMetadataRepair(context: Context,private val store: AudioExportStore,private val shared: SharedAudioStore,
-    private val beforeWrite:suspend()->Unit={},private val replace:suspend(PublishedAudio,File)->Unit=shared::overwrite) {
+    private val beforeWrite:suspend()->Unit={},private val replace:suspend(PublishedAudio,File)->Unit=shared::overwriteMetadata,
+    private val afterIndex:()->Unit={}) {
     private val dir=File(context.noBackupFilesDir,"track-metadata-repair").apply{mkdirs()}
     private val backup=File(dir,"original.audio")
     private val tagged=File(dir,"tagged.audio")
@@ -27,24 +28,29 @@ internal class TrackMetadataRepair(context: Context,private val store: AudioExpo
     @Serializable private data class Edit(val before: PublishedAudio,val after: PublishedAudio)
     private fun pending()=journal.baseFile.exists()||File(journal.baseFile.path+".bak").exists()
     private fun clear(){journal.delete();backup.delete();tagged.delete()}
+    private fun indexed(edit: Edit): PublishedAudio {
+        val current=store.existing(edit.before.taskKey)?:throw MusicFailure(MusicError.STORAGE)
+        musicCheck(current==edit.before||current.copy(displayName=edit.after.displayName)==edit.after,MusicError.STORAGE)
+        return current
+    }
     suspend fun recover() {
         if(!pending()){backup.delete();tagged.delete();return}
         val edit=json.decodeFromString<Edit>(journal.openRead().use{it.readBytes().toString(Charsets.UTF_8)})
-        val completed=shared.completed(edit.after)
-        if(completed!=null) {
-            val renamed=shared.renameMetadata(completed,shared.metadataName(completed,completed.track))
-            store.metadataUpdated(edit.before,renamed)
-        }else {
-            var original=shared.completed(edit.before)
-            if(original==null) {
+        if(shared.metadataEditing(edit.before)) {
+            val check=shared.inspect(edit.after,pending=true)
+            val written=check.reason in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED)
+            val record=if(written)edit.after else edit.before
+            if(!written) {
                 musicCheck(backup.length()==edit.before.bytes&&fileSha256(backup)==edit.before.sha256,MusicError.STORAGE)
-                shared.overwrite(edit.before,backup)
-                original=shared.completed(edit.before)?:throw MusicFailure(MusicError.STORAGE)
+                shared.overwriteMetadata(edit.before,backup)
             }
-            val restored=shared.renameMetadata(original,edit.before.displayName)
-            val indexed=store.existing(edit.before.taskKey)?:throw MusicFailure(MusicError.STORAGE)
-            musicCheck(indexed.uri==edit.before.uri&&indexed.track.id==edit.before.track.id,MusicError.STORAGE)
-            store.metadataUpdated(indexed,restored)
+            val finished=shared.finishMetadataEdit(record,record.displayName)
+            store.metadataUpdated(indexed(edit),finished)
+        }else {
+            // Publication and even the DB commit may have happened before process death.
+            val completed=shared.completed(edit.after)
+            if(completed!=null)store.metadataUpdated(indexed(edit),completed)
+            else musicCheck(shared.valid(edit.before)&&store.existing(edit.before.taskKey)==edit.before,MusicError.STORAGE)
         }
         clear()
     }
@@ -70,10 +76,12 @@ internal class TrackMetadataRepair(context: Context,private val store: AudioExpo
             try {
                 // Complete or restore this one file before releasing the shared editing lock.
                 withContext(NonCancellable+Dispatchers.IO) {
+                    shared.beginMetadataEdit(row)
                     replace(row,tagged)
-                    val completed=shared.completed(after)?:throw MusicFailure(MusicError.STORAGE)
-                    val renamed=shared.renameMetadata(completed,shared.metadataName(completed,track))
-                    store.metadataUpdated(row,renamed);clear()
+                    val check=shared.inspect(after,pending=true)
+                    musicCheck(check.reason in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED),MusicError.STORAGE)
+                    val renamed=shared.finishMetadataEdit(after,name)
+                    store.metadataUpdated(row,renamed);afterIndex();clear()
                 }
             }catch(e: Exception){withContext(NonCancellable+Dispatchers.IO){recover()};throw e}
             return true

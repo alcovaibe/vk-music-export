@@ -44,9 +44,11 @@ internal object ExportLayout {
         musicCheck(duplicate>0,MusicError.STORAGE)
         val suffix=if(duplicate==1)"" else " ($duplicate)"
         // Reserve room for the version even when a long artist/title needs truncating.
-        val version=track.subtitle?.takeIf{track.displayTitle!=track.title}?.let{" (${component(it,96)})"}.orEmpty()
+        val subtitle=track.subtitle?.trim()?.takeIf{it.isNotEmpty()}
+        val version=subtitle?.let{" (${component(it,96)})"}.orEmpty()
+        val title=subtitle?.let{track.title.removeSuffix(" ($it)").removeSuffix(" $it").takeUnless{value->value==it}.orEmpty()}?:track.title
         val base=if(version.isEmpty())component(track.artist+" — "+track.displayTitle,180)
-            else component(track.artist+" — "+track.title,180-version.toByteArray(Charsets.UTF_8).size)+version
+            else component(track.artist+" — "+title,180-version.toByteArray(Charsets.UTF_8).size)+version
         return "$base$suffix.$extension"
     }
     // Keep the old task identity, including its source ID, for saved-file reuse and old queues.

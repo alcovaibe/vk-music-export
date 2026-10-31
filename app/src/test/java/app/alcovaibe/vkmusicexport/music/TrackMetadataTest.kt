@@ -55,6 +55,10 @@ class TrackMetadataTest {
         assertThrows(MusicFailure::class.java){TrackMetadata.merge(track,result.copy(id="12_35"))}
         assertThrows(MusicFailure::class.java){TrackMetadata.merge(track,result.copy(duration=119))}
         assertEquals(track.copy(subtitle="slowed"),TrackMetadata.merge(track,result.copy(artist="Renamed artist")))
+        val resolved=Json.parseToJsonElement("[${response(",\"url\":\"https://audio.userapi.com/song.mp3\"")}]")
+        assertEquals("slowed",NativeProtocol.resolveMedia(resolved,result).track.subtitle)
+        val cleared=Json.parseToJsonElement("[${response(",\"subtitle\":null,\"url\":\"https://audio.userapi.com/song.mp3\"")}]")
+        assertNull(NativeProtocol.resolveMedia(cleared,result).track.subtitle)
     }
     @Test fun playlistUsesVerifiedSavedVersionEvenWhenTheQueuedSnapshotHadNoSubtitle() {
         val task=ExportLayout.task(track,listOf("Моя музыка"),1)

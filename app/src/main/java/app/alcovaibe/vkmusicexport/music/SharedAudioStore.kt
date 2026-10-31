@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.Bundle
 import android.provider.MediaStore
 import kotlinx.coroutines.*
 import java.io.FileInputStream
@@ -28,11 +29,11 @@ internal class SharedAudioStore(internal val context: Context) {
                 c.getInt(2)==(if(pending)1 else 0)
         }?:false
     }.getOrDefault(false)
-    private fun ownRecord(record: PublishedAudio): Boolean {
-        if(!record.recoveredLocation)return own(record.uri,false)
+    private fun ownRecord(record: PublishedAudio,pending: Boolean=false): Boolean {
+        if(!record.recoveredLocation)return own(record.uri,pending)
         return runCatching{resolver.query(uri(record.uri),arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
             MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),null,null,null)?.use{c->
-            c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1).startsWith("Music/")&&c.getInt(2)==0
+            c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1).startsWith("Music/")&&c.getInt(2)==(if(pending)1 else 0)
         }?:false}.getOrDefault(false)
     }
     fun open(record: PublishedAudio): InputStream {
@@ -40,16 +41,20 @@ internal class SharedAudioStore(internal val context: Context) {
         return resolver.openInputStream(uri(record.uri))?:throw MusicFailure(MusicError.STORAGE)
     }
     /** Precise result; a mismatch never grants permission to overwrite a file. */
-    suspend fun inspect(record: PublishedAudio): SavedFileCheck {
+    suspend fun inspect(record: PublishedAudio,pending: Boolean=false): SavedFileCheck {
         try {
             val target=uri(record.uri)
             val meta=resolver.query(collection,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,
                 MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.DISPLAY_NAME),
-                "${MediaStore.MediaColumns._ID}=?",arrayOf(target.lastPathSegment),null)?.use{c->
+                Bundle().apply {
+                    putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,"${MediaStore.MediaColumns._ID}=?")
+                    putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,arrayOf(target.lastPathSegment))
+                    putInt(MediaStore.QUERY_ARG_MATCH_PENDING,MediaStore.MATCH_INCLUDE)
+                },null)?.use{c->
                 if(!c.moveToFirst())null else listOf(c.getString(0),c.getString(1),c.getInt(2).toString(),c.getString(3))
             }?:return SavedFileCheck(SavedFileReason.MISSING)
             if(meta[0]!=context.packageName)return SavedFileCheck(SavedFileReason.OWNER_CHANGED)
-            if(meta[2]!="0")return SavedFileCheck(SavedFileReason.PENDING)
+            if(meta[2]!=(if(pending)"1" else "0"))return SavedFileCheck(SavedFileReason.PENDING)
             val path=meta[1].orEmpty()
             if(!path.startsWith(ExportLayout.ROOT)&&!(record.recoveredLocation&&path.startsWith("Music/")))
                 return SavedFileCheck(SavedFileReason.OUTSIDE_FOLDER)
@@ -93,8 +98,10 @@ internal class SharedAudioStore(internal val context: Context) {
         }}
     }
     /** Called only after a durable verified backup and edit journal exist. Never deletes a MediaStore row. */
-    suspend fun overwrite(record: PublishedAudio,source: java.io.File) {
-        musicCheck(ownRecord(record),MusicError.STORAGE)
+    suspend fun overwrite(record: PublishedAudio,source: java.io.File)=overwriteWithState(record,source,false)
+    suspend fun overwriteMetadata(record: PublishedAudio,source: java.io.File)=overwriteWithState(record,source,true)
+    private suspend fun overwriteWithState(record: PublishedAudio,source: java.io.File,pending: Boolean) {
+        musicCheck(ownRecord(record,pending),MusicError.STORAGE)
         val fd=resolver.openFileDescriptor(uri(record.uri),"rwt")?:throw MusicFailure(MusicError.STORAGE)
         ParcelFileDescriptor.AutoCloseOutputStream(fd).use{out->source.inputStream().use{input->
             val buffer=ByteArray(65536)
@@ -115,16 +122,23 @@ internal class SharedAudioStore(internal val context: Context) {
     suspend fun copy(task: AudioExportTask,record: PublishedAudio,relative: String=ExportLayout.relative(task),prepared:(PublishedAudio)->Unit): PublishedAudio =
         publish(task,ProcessedAudio(record.extension,record.mime,record.durationMs),record.bytes,record.sha256,relative,record.coverEmbedded,record.catalogueVerified,record.textTitle,{open(record)},prepared)
     suspend fun metadataName(row: PublishedAudio,track: NativeTrack)=availableName(track,row.extension,row.relativePath,uri(row.uri).lastPathSegment)
-    /** Rename the owned row without replacing the URI. Provider collision suffixes are read back. */
-    suspend fun renameMetadata(row: PublishedAudio,name: String): PublishedAudio {
+    fun metadataEditing(row: PublishedAudio)=ownRecord(row,true)
+    suspend fun beginMetadataEdit(row: PublishedAudio) {
         requireValid(row)
+        musicCheck(resolver.update(uri(row.uri),ContentValues().apply{put(MediaStore.MediaColumns.IS_PENDING,1)},null,null)==1,MusicError.STORAGE)
+        musicCheck(metadataEditing(row),MusicError.STORAGE)
+    }
+    /** Pending writes have no asynchronous close scanner. Publishing scans the final name and tags together. */
+    suspend fun finishMetadataEdit(row: PublishedAudio,name: String): PublishedAudio {
+        musicCheck(metadataEditing(row),MusicError.STORAGE)
         musicCheck(name==ExportLayout.component(name,240),MusicError.STORAGE)
         musicCheck(resolver.update(uri(row.uri),ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME,name)
-            put(MediaStore.Audio.Media.TITLE,row.track.displayTitle)
-            put(MediaStore.Audio.Media.ARTIST,row.track.artist)
+            put(MediaStore.MediaColumns.IS_PENDING,0)
         },null,null)==1,MusicError.STORAGE)
-        val actual=completed(row)?:throw MusicFailure(MusicError.STORAGE)
+        val check=inspect(row)
+        val actual=check.actual?.takeIf{check.reason in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED)}
+            ?:throw SavedFileFailure(check.reason)
         resolver.notifyChange(uri(row.uri),null)
         return actual
     }

@@ -95,6 +95,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                                             val changed=repair.update(row,fresh)
                                             _trackMetadata.update{if(changed)it.copy(updated=it.updated+1)else it.copy(current=it.current+1)}
                                         }
+                                    }catch(e: SavedFileFailure) {
+                                        _trackMetadata.update{it.copy(skipped=it.skipped+1,issues=it.issues+TrackMetadataIssue(row.displayName,e.reason.label))}
+                                        repair.recover()
                                     }catch(e: CancellationException){throw e}
                                      catch(e: Exception) {
                                         val code=(e as? MusicFailure)?.code?:MusicError.STORAGE

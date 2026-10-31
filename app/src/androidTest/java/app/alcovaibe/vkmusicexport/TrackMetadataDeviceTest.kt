@@ -113,15 +113,27 @@ class TrackMetadataDeviceTest {
             val task=task(5);store.replace(listOf(task),account=12);val row=publish(dir,shared,store,task,"mp3");rows.add(row)
             val fresh=row.track.copy(subtitle="slowed")
             val broken=TrackMetadataRepair(context,store,shared,replace={record,_->
-                val fragment=File(dir,"partial").apply{writeBytes(byteArrayOf(1,2,3))};shared.overwrite(record,fragment);throw IOException("Synthetic torn write")
+                val fragment=File(dir,"partial").apply{writeBytes(byteArrayOf(1,2,3))};shared.overwriteMetadata(record,fragment);throw IOException("Synthetic torn write")
             })
             try{broken.update(row,fresh);fail("Must restore") }catch(_: IOException){}
             assertEquals(row,store.existing(row.taskKey));assertTrue(shared.valid(row))
-            val interrupted=TrackMetadataRepair(context,store,shared,replace={record,file->shared.overwrite(record,file);throw IOException("Synthetic lost completion")})
+            val interrupted=TrackMetadataRepair(context,store,shared,replace={record,file->shared.overwriteMetadata(record,file);throw IOException("Synthetic lost completion")})
             try{interrupted.update(row,fresh);fail("Injected failure") }catch(_: IOException){}
             val after=store.existing(row.taskKey)!!;assertEquals("slowed",after.track.subtitle);assertTrue(shared.valid(after))
             assertEquals("slowed",store.taskRows().single().first.track.subtitle)
             TrackMetadataRepair(context,store,shared).recover();assertEquals(after,store.existing(row.taskKey))
+            val next=after.track.copy(subtitle="slowed + reverb")
+            var interruptedAfterCommit=false
+            try {
+                TrackMetadataRepair(context,store,shared,afterIndex={throw AssertionError("Synthetic process death after DB commit")}).update(after,next)
+            }catch(_: AssertionError){interruptedAfterCommit=true}
+            assertTrue(interruptedAfterCommit)
+            val journal=File(context.noBackupFilesDir,"track-metadata-repair/transaction.json")
+            assertTrue(journal.exists())
+            val committed=store.existing(row.taskKey)!!
+            TrackMetadataRepair(context,store,shared).recover()
+            assertEquals(committed,store.existing(row.taskKey));assertTrue(shared.valid(committed))
+            assertFalse(journal.exists())
         }finally{clean(store,rows);store.close();dir.deleteRecursively()}
     }
     @Test fun foreignIdChangedFileAndUnverifiedLocalReplacementAreNotEdited()=runBlocking<Unit>(Dispatchers.IO) {
