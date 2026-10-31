@@ -24,7 +24,7 @@ internal data class DuplicateProgress(val stage: String,val done: Int=0,val tota
 internal object DuplicateNames {
     private fun normalize(value: String)=Normalizer.normalize(value,Normalizer.Form.NFKC)
         .replace(Regex("[\\p{Z}\\s]+")," ").trim().lowercase(Locale.ROOT)
-    fun key(track: NativeTrack)=normalize(track.artist) to normalize(track.title)
+    fun key(track: NativeTrack)=normalize(track.artist) to normalize(track.displayTitle)
 }
 /** A single explicit consent can authorize at most one request, including failed/ambiguous results. */
 internal class DuplicateConsent(val owner: Long,val credentialId: String,val duplicate: MusicDuplicate) {

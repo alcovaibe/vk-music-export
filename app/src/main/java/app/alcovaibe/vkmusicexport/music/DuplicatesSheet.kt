@@ -22,7 +22,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(state.progress.stage,Modifier.testTag("duplicates_progress"))
                     if(state.progress.total>0)Text("${state.progress.done}/${state.progress.total}")
-                    state.progress.track?.let{Text("${it.title}\n${it.artist}")}
+                    state.progress.track?.let{Text("${it.displayTitle}\n${it.artist}")}
                     if(state.progress.bytes>0)Text("Получено: ${state.progress.bytes/1024} КиБ")
                 }
                 if(state.phase in setOf(DuplicatePhase.QUEUED,DuplicatePhase.SCANNING))item{Text("Проверка и временная загрузка продолжаются в фоне. Прогресс и пауза доступны в уведомлении. Android может остановить задачу; готовые проверки сохранятся.",Modifier.testTag("duplicates_background"),style=MaterialTheme.typography.bodySmall)}
@@ -33,10 +33,10 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                     item {
                         val row=consent.duplicate
                         Text("Удаляем одну запись:",style=MaterialTheme.typography.titleSmall)
-                        Text("${row.remove.title}\n${row.remove.artist}\nID: ${row.remove.id}")
+                        Text("${row.remove.displayTitle}\n${row.remove.artist}\nID: ${row.remove.id}")
                         HorizontalDivider(Modifier.padding(vertical=12.dp))
                         Text("Оставляем в профиле:",style=MaterialTheme.typography.titleSmall)
-                        Text("${row.keep.title}\n${row.keep.artist}\nID: ${row.keep.id}")
+                        Text("${row.keep.displayTitle}\n${row.keep.artist}\nID: ${row.keep.id}")
                         Text("Название, исполнитель и SHA-256 аудиоданных совпали. Перед запросом проверим обе записи заново. Локальные файлы останутся на телефоне.")
                     }
                 }else {
@@ -51,7 +51,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                         }
                         items(report.duplicates,key={it.remove.id}){row->
                             Column(Modifier.testTag("duplicate_${row.remove.id}")) {
-                                Text(row.remove.title,style=MaterialTheme.typography.titleSmall);Text(row.remove.artist)
+                                Text(row.remove.displayTitle,style=MaterialTheme.typography.titleSmall);Text(row.remove.artist)
                                 Text("Запись ${row.remove.id}: ${row.status.label}",style=MaterialTheme.typography.bodySmall)
                                 Text("Останется запись ${row.keep.id}",style=MaterialTheme.typography.bodySmall)
                                 if(state.phase==DuplicatePhase.READY&&row.status==DuplicateStatus.PENDING) {
@@ -64,7 +64,7 @@ internal fun DuplicatesSheet(state: DuplicatesState,onScan: ()->Unit,onRequest: 
                         }
                         if(report.problems.isNotEmpty())item{Text("Не подтверждены для удаления (${report.problems.size})",style=MaterialTheme.typography.titleSmall)}
                         items(report.problems.withIndex().toList(),key={"problem_${it.index}"}){(_,problem)->
-                            Column {Text("${problem.track.title}\n${problem.track.artist}");Text(problem.reason,style=MaterialTheme.typography.bodySmall)}
+                            Column {Text("${problem.track.displayTitle}\n${problem.track.artist}");Text(problem.reason,style=MaterialTheme.typography.bodySmall)}
                         }
                     }
                 }

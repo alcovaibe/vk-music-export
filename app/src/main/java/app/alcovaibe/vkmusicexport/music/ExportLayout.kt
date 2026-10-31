@@ -13,7 +13,7 @@ import java.text.Normalizer
 @Serializable internal data class PublishedAudio(val taskKey: String,val track: NativeTrack,val uri: String,val displayName: String,
     val relativePath: String,val extension: String,val mime: String,val durationMs: Long,val bytes: Long,val sha256: String,val coverEmbedded: Boolean=false,val recoveredLocation: Boolean=false,
     val source: ExportSource?=null,val occurrence: Int=1,
-    val catalogueVerified: Boolean=relativePath!=ExportLayout.ROOT+"Восстановленные/")
+    val catalogueVerified: Boolean=relativePath!=ExportLayout.ROOT+"Восстановленные/",val textTitle: String?=null)
 
 @Serializable internal data class ExportSourceFailure(val source: ExportSource,val title: String,val error: MusicError,
     val category: PlaylistKind?=null)
@@ -38,11 +38,18 @@ internal object ExportLayout {
         val key=MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
         return AudioExportTask(key,track,folders,position,source,occurrence)
     }
-    fun name(task: AudioExportTask,extension: String,duplicate: Int=1): String {
+    fun name(task: AudioExportTask,extension: String,duplicate: Int=1)=name(task.track,extension,duplicate)
+    fun name(track: NativeTrack,extension: String,duplicate: Int=1): String {
         musicCheck(extension in setOf("mp3","m4a"),MusicError.FORMAT)
         musicCheck(duplicate>0,MusicError.STORAGE)
         val suffix=if(duplicate==1)"" else " ($duplicate)"
-        return "${component(task.track.artist+" — "+task.track.title,180)}$suffix.$extension"
+        // Reserve room for the version even when a long artist/title needs truncating.
+        val subtitle=track.subtitle?.trim()?.takeIf{it.isNotEmpty()}
+        val version=subtitle?.let{" (${component(it,96)})"}.orEmpty()
+        val title=subtitle?.let{track.title.removeSuffix(" ($it)").removeSuffix(" $it").takeUnless{value->value==it}.orEmpty()}?:track.title
+        val base=if(version.isEmpty())component(track.artist+" — "+track.displayTitle,180)
+            else component(track.artist+" — "+title,180-version.toByteArray(Charsets.UTF_8).size)+version
+        return "$base$suffix.$extension"
     }
     // Keep the old task identity, including its source ID, for saved-file reuse and old queues.
     // Only remove our final generated suffix; brackets/numbers in the original title remain.

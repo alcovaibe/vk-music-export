@@ -28,7 +28,7 @@ internal fun SavedFilesSheet(state: SavedFilesState,onCheck: ()->Unit,onSearch: 
                 if(preview!=null) {
                     item {
                         Text("Восстановить копию выбранного файла?",style=MaterialTheme.typography.titleMedium)
-                        Text("Запись: ${preview.before.track.artist} — ${preview.before.track.title}")
+                        Text("Запись: ${preview.before.track.artist} — ${preview.before.track.displayTitle}")
                         Text("Выбран: ${preview.name}")
                         Text(if(preview.exact)"Байты полностью совпали с сохранённой копией."
                             else "Содержимое отличается. Формат и длительность проверены, но это не доказывает, что выбрана та же песня. Подтверди выбор самостоятельно.",

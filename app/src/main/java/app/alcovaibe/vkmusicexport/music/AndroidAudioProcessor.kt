@@ -149,7 +149,7 @@ internal class AndroidAudioProcessor : AudioProcessor {
                 frames.write(name.toByteArray(Charsets.US_ASCII))
                 frames.write(ByteBuffer.allocate(4).putInt(bytes.size).array());frames.write(byteArrayOf(0,0));frames.write(bytes)
             }
-            frame("TIT2",track.title);frame("TPE1",track.artist);track.album?.let{frame("TALB",it.title)}
+            frame("TIT2",track.displayTitle);frame("TPE1",track.artist);track.album?.let{frame("TALB",it.title)}
             val n=frames.size();val size=byteArrayOf(((n ushr 21) and 127).toByte(),((n ushr 14) and 127).toByte(),((n ushr 7) and 127).toByte(),(n and 127).toByte())
             return byteArrayOf(73,68,51,3,0,0)+size+frames.toByteArray()
         }

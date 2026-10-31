@@ -89,7 +89,7 @@ internal object EmbeddedArtwork {
             .put("mdir".toByteArray()).put("appl".toByteArray()).putLong(0).put(0).array())) else {
             check(meta.data.size>=4&&meta.data.take(4).all{it.toInt()==0});atoms(meta.data,4)
         }
-        val values=linkedMapOf("\u00a9nam" to track.title,"\u00a9ART" to track.artist)
+        val values=linkedMapOf("\u00a9nam" to track.displayTitle,"\u00a9ART" to track.artist)
         track.album?.let{values["\u00a9alb"]=it.title}
         val old=one(metadata,"ilst")?.let{atoms(it.data)}?:emptyList()
         val tags=old.filterNot{it.type in values}+values.map{(key,text)->
@@ -167,17 +167,40 @@ internal object EmbeddedArtwork {
     }
 
     /** Portable text tags, without changing sample data, decoder configuration or chunk addresses. */
-    fun writeTextMetadata(input: File,output: File,track: NativeTrack,active:()->Unit={}) {
+    fun writeTextMetadata(input: File,output: File,track: NativeTrack,extension: String="m4a",active:()->Unit={}) {
         check(input.canonicalPath!=output.canonicalPath)
         try {
             RandomAccessFile(input,"r").use{file->FileOutputStream(output).use{out->
-                val root=roots(file);val (old,bytes)=moov(file,root)
-                val added=textMetadata(bytes,track)
-                val updated=Atom("moov",offsets(added,old,added.size+8L-old.size,file.length())).encoded()
-                root.forEach{if(it==old)out.write(updated)else copy(file,out,it.start,it.end,active)}
+                if(extension=="mp3") {
+                    val old=tag(file)
+                    val values=linkedMapOf("TIT2" to track.displayTitle,"TPE1" to track.artist)
+                    track.album?.let{values["TALB"]=it.title}
+                    val frames=ByteArrayOutputStream();var p=0
+                    while(p<old.bytes.size&&old.bytes[p].toInt()!=0) {
+                        val id=String(old.bytes,p,4,Charsets.US_ASCII)
+                        val size=if(old.version==4)sync(old.bytes,p+4)else int(old.bytes,p+4)
+                        if(id !in values)frames.write(old.bytes,p,10+size)
+                        p+=10+size
+                    }
+                    values.forEach{(id,value)->
+                        val bytes=byteArrayOf(1)+value.toByteArray(Charsets.UTF_16)
+                        frames.write(id.toByteArray(Charsets.US_ASCII))
+                        frames.write(if(old.version==4)sync(bytes.size)else ByteBuffer.allocate(4).putInt(bytes.size).array())
+                        frames.write(byteArrayOf(0,0));frames.write(bytes)
+                    }
+                    val body=frames.toByteArray();check(body.size<=MAX_META)
+                    out.write(byteArrayOf(73,68,51,old.version.toByte(),0,0)+sync(body.size));out.write(body)
+                    copy(file,out,old.end,file.length(),active)
+                }else {
+                    check(extension=="m4a")
+                    val root=roots(file);val (old,bytes)=moov(file,root)
+                    val added=textMetadata(bytes,track)
+                    val updated=Atom("moov",offsets(added,old,added.size+8L-old.size,file.length())).encoded()
+                    root.forEach{if(it==old)out.write(updated)else copy(file,out,it.start,it.end,active)}
+                }
                 active();out.flush();out.fd.sync()
             }}
-            check(audioFingerprint(input,"m4a",active)==audioFingerprint(output,"m4a",active))
+            check(audioFingerprint(input,extension,active)==audioFingerprint(output,extension,active))
         }catch(e: Exception){output.delete();throw e}
     }
 

@@ -73,7 +73,7 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                 }
                 if(queue.status=="RUNNING")queue.currentTask?.let{task->
                     Text("Текущий трек",style=MaterialTheme.typography.titleSmall)
-                    Text("${task.track.artist} — ${task.track.title}",Modifier.testTag("downloads_current_track"))
+                    Text("${task.track.artist} — ${task.track.displayTitle}",Modifier.testTag("downloads_current_track"))
                     queue.progress?.let{p->
                         Text(when(p.stage) {
                             "artwork"->"Получение и добавление обложки"
@@ -106,7 +106,7 @@ internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,act
                     OutlinedButton(enabled=!busy&&!working,onClick={onSourceRetry(issue)}){Text("Перечитать этот источник")}
                 }
                 queue.failures.drop(page*50).take(50).forEach{
-                    Text("${it.task.track.artist} — ${it.task.track.title}: ${it.error.label}",style=MaterialTheme.typography.bodySmall)
+                    Text("${it.task.track.artist} — ${it.task.track.displayTitle}: ${it.error.label}",style=MaterialTheme.typography.bodySmall)
                     it.details?.let{details->Text(details.label,style=MaterialTheme.typography.bodySmall)}
                 }
                 onExportReport?.let{export->if(queue.total>0||queue.sourceIssues>0) {

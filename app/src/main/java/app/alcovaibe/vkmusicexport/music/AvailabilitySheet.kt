@@ -22,7 +22,7 @@ internal fun AvailabilitySheet(state: AvailabilityState,onCheck:()->Unit,onStop:
                 state.message?.let{item{Text(it)}}
                 if(state.results.isNotEmpty())item{Text("Ссылка доступна: ${state.results.count{it.linkAvailable}} · не подтверждены: ${state.results.count{!it.linkAvailable}}")}
                 items(state.results,key={it.track.id}){row->Column{
-                    Text(row.track.title,style=MaterialTheme.typography.titleSmall);Text(row.track.artist)
+                    Text(row.track.displayTitle,style=MaterialTheme.typography.titleSmall);Text(row.track.artist)
                     Text(row.reason,style=MaterialTheme.typography.bodySmall)
                 }}
             }

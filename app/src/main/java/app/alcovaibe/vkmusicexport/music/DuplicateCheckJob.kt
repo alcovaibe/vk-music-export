@@ -79,7 +79,7 @@ internal object DuplicateCheckRuntime {
         return Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.ic_music_note).setContentTitle("Дубликаты в музыке ВК")
             .setContentText(text).setContentIntent(open).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE)
             .setOngoing(s.busy).setStyle(Notification.BigTextStyle().bigText(listOfNotNull(text,s.progress.stage,
-                s.progress.track?.let{"${it.artist} — ${it.title}"},s.progress.bytes.takeIf{it>0}?.let{"Получено: ${it/1024} КиБ"}).joinToString("\n")))
+                s.progress.track?.let{"${it.artist} — ${it.displayTitle}"},s.progress.bytes.takeIf{it>0}?.let{"Получено: ${it/1024} КиБ"}).joinToString("\n")))
             .apply{if(s.busy){setProgress(s.progress.total,s.progress.done,s.progress.total<=0)
                 val pause=PendingIntent.getBroadcast(context,JOB_ID,Intent(context,DuplicateCheckPauseReceiver::class.java)
                     .setAction("${context.packageName}.duplicate_pause.${s.scanId}").putExtra(RUN_EXTRA,s.scanId),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

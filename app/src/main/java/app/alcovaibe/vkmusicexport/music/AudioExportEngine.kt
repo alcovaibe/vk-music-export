@@ -9,12 +9,18 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
     private val credential: suspend()->MusicAccess,private val artwork: ArtworkSource=ArtworkLoader(api),private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)},
     private val accountGuard: suspend()->Unit={}) {
     suspend fun recover() {
+        TrackMetadataRepair(shared.context,store,shared).recover()
         ArtworkRepair(shared.context,store,shared).recover()
         SavedFileRecovery(shared.context,store,shared).let{it.recover();it.discard()}
         LegacyArchiveMigration(shared.context,store,shared).migrate()
         temporary.mkdirs();temporary.listFiles()?.filter{it.isFile}?.forEach{it.delete()}
         reconcile()
         store.recoverItems()
+        try{SharedPlaylistStore(shared.context,store).repairLocations()}
+        catch(e: MusicFailure) {
+            if(e.code!=MusicError.PLAYLIST_CHANGED)throw e
+            store.sourceFailure(ExportSourceFailure(ExportSource(store.account(),"playlist_file","all"),"Файлы порядка M3U8",e.code))
+        }
     }
     private suspend fun reconcile() {
         for((task,row) in store.prepared()) {
@@ -95,8 +101,8 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                         }
                         result=withArtwork(result?:throw MusicFailure(MusicError.INCOMPLETE),resolvedTrack)
                         val file=result?:throw MusicFailure(MusicError.INCOMPLETE)
-                        // Persist the verified metadata when the queued record had no known duration.
-                        val verifiedTask=if(task.track.duration<=0)task.copy(track=resolvedTrack)else task
+                        // The resolved record can carry a version absent from the queued snapshot.
+                        val verifiedTask=task.copy(track=resolvedTrack)
                         shared.publish(verifiedTask,file,store.directory(task)){store.prepared(task,it)}
                     }finally{withContext(NonCancellable+Dispatchers.IO){result?.file?.delete()}}
                     currentCoroutineContext().ensureActive()
