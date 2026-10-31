@@ -1,6 +1,8 @@
 package app.alcovaibe.vkmusicexport.music
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -9,7 +11,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSection: (CatalogSection)->Unit,
-    onSelect: (NativePlaylist)->Unit,onCatalogPage: (Int)->Unit,onRefresh: ()->Unit,
+    onRefresh: ()->Unit,
     onLibrary: (Boolean)->Unit,onCategory: (PlaylistKind)->Unit,onClassify: (NativePlaylist,PlaylistKind)->Unit,onDuplicates: ()->Unit={},onUnavailable: (()->Unit)?=null) {
     val catalog=state.catalog
     val unknown=MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,state.catalogKinds)
@@ -32,7 +34,6 @@ internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSec
         Text("Группы по альбомам содержат только песни из «Моей музыки». Это не полные альбомы ВК. Сохранённые альбомы каталога открываются во вкладке «Альбомы».",style=MaterialTheme.typography.bodySmall)
     }else {
         val lists=MusicCatalog.lists(catalog,state.catalogSection,state.catalogKinds)
-        val visible=lists.drop(state.catalogOffset).take(NativeProtocol.LIMIT)
         Text("${state.catalogSection.title}: ${lists.size}",style=MaterialTheme.typography.titleMedium)
         if(catalog==null)Text("Каталог ещё не загружен.")
         else {
@@ -41,18 +42,6 @@ internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSec
             if(state.catalogSection!=CatalogSection.UNKNOWN&&lists.isNotEmpty())Button(enabled=canPrepare,
                 onClick={onCategory(state.catalogSection.kind!!)},modifier=Modifier.fillMaxWidth().testTag("catalog_download_category")) {
                 Text(if(state.catalogSection==CatalogSection.ALBUMS)"Скачать все альбомы" else "Скачать все плейлисты")
-            }
-            if(visible.isNotEmpty()) {
-                Text("Показано ${state.catalogOffset+1}–${state.catalogOffset+visible.size} из ${lists.size}",style=MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    TextButton(enabled=!state.busy&&state.catalogOffset>0,onClick={onCatalogPage(-1)}){Text("Назад по списку")}
-                    TextButton(enabled=!state.busy&&state.catalogOffset+visible.size<lists.size,onClick={onCatalogPage(1)}){Text("Ещё подборки")}
-                }
-            }
-            visible.forEach{list->
-                OutlinedButton(enabled=!state.busy,onClick={onSelect(list)},modifier=Modifier.fillMaxWidth().testTag("catalog_list_${list.owner}_${list.id}")) {
-                    Text("${list.title} · ${list.count}")
-                }
             }
         }
         if(state.catalogSection==CatalogSection.UNKNOWN)Text("ВК не сообщил подтверждённый тип. Открой подборку и выбери «Это плейлист» или «Это альбом». Выбор сохранится для этого аккаунта.",style=MaterialTheme.typography.bodySmall)
@@ -67,5 +56,17 @@ internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSec
             OutlinedButton(enabled=!state.busy,onClick={onClassify(list,PlaylistKind.ALBUM)},modifier=Modifier.weight(1f).testTag("classify_album")){Text("Это альбом")}
         }
         if(list.key in state.catalogKinds)TextButton(enabled=!state.busy,onClick={onClassify(list,PlaylistKind.UNKNOWN)}){Text("Сбросить выбор типа")}
+    }
+}
+
+/** Every collection is reachable in one lazy list, independently of the API page size. */
+internal fun LazyListScope.musicCatalogEntries(state: NativeMusicState,onSelect: (NativePlaylist)->Unit) {
+    if(state.catalogSection!=CatalogSection.LIBRARY) {
+        items(MusicCatalog.lists(state.catalog,state.catalogSection,state.catalogKinds),key={"catalog_${it.key}"}) {list->
+            OutlinedButton(enabled=!state.busy,onClick={onSelect(list)},
+                modifier=Modifier.fillMaxWidth().testTag("catalog_list_${list.owner}_${list.id}")) {
+                Text("${list.title} · ${list.count}")
+            }
+        }
     }
 }

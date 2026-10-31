@@ -134,14 +134,6 @@ private fun HomeScreen(queue: app.alcovaibe.vkmusicexport.music.ExportSnapshot,o
         }
         item {app.alcovaibe.vkmusicexport.music.DownloadQueueButton(queue,onDownloads)}
         item { WelcomeArtwork() }
-        item {
-            Text("Музыка и плейлисты ВК", style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
-            Spacer(Modifier.height(10.dp))
-            Text("Открой музыкальный раздел, подключи ВК и сохраняй треки в Music/VK Music Export.",
-                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        item {LegalInformationLinks()}
     }
 }
 

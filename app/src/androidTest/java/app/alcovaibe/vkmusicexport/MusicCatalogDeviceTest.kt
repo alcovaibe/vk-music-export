@@ -6,11 +6,13 @@ import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -63,10 +65,13 @@ class MusicCatalogUiDeviceTest {
             catalog=NativeCatalog(listOf(playlist,album,unknown),3),catalogSection=CatalogSection.PLAYLISTS))
         var requested: PlaylistKind?=null
         ui.setContent{MusicTheme{Surface(Modifier.fillMaxSize()){
-            Column(Modifier.statusBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                MusicCatalogPanel(state,true,onSection={state=state.copy(catalogSection=it,selected=null)},onSelect={state=state.copy(selected=it)},
-                    onCatalogPage={},onRefresh={},onLibrary={},onCategory={requested=it},
+            LazyColumn(Modifier.statusBarsPadding().padding(24.dp).testTag("test_catalog"),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                item { Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                MusicCatalogPanel(state,true,onSection={state=state.copy(catalogSection=it,selected=null)},
+                    onRefresh={},onLibrary={},onCategory={requested=it},
                     onClassify={list,kind->state=state.copy(catalogKinds=mapOf(list.key to kind),catalogSection=CatalogSection.forKind(kind))})
+                }}
+                musicCatalogEntries(state){state=state.copy(selected=it)}
             }
         }}}
         ui.onNodeWithTag("catalog_list_12_1").assertIsDisplayed()
@@ -77,9 +82,9 @@ class MusicCatalogUiDeviceTest {
         ui.onNodeWithTag("catalog_list_12_1").assertDoesNotExist()
         ui.onNodeWithTag("catalog_download_category").performClick();ui.runOnIdle{assertEquals(PlaylistKind.ALBUM,requested)}
         ui.onNodeWithTag("catalog_tab_UNKNOWN").performScrollTo().performClick()
-        ui.onNodeWithTag("catalog_list_12_3").performScrollTo().performClick()
+        ui.onNodeWithTag("test_catalog").performScrollToNode(hasTestTag("catalog_list_12_3"));ui.onNodeWithTag("catalog_list_12_3").performClick()
         ui.onNodeWithTag("classify_album").performScrollTo().performClick()
-        ui.onNodeWithTag("catalog_list_12_3").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("test_catalog").performScrollToNode(hasTestTag("catalog_list_12_3"));ui.onNodeWithTag("catalog_list_12_3").assertIsDisplayed()
         ui.onNodeWithText("Тип подборки: Альбом").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("catalog_list_12_1").assertDoesNotExist()
         ui.waitForIdle()

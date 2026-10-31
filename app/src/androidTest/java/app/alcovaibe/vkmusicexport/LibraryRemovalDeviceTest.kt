@@ -95,7 +95,7 @@ class LibraryRemovalIntegrationDeviceTest {
             ui.waitUntil(10000){model.removal.value.phase==LibraryRemovalPhase.CONFIRM&&!model.state.value.busy}
             ui.onNodeWithTag("confirm_remove_from_vk").performClick()
             ui.waitUntil(10000){model.removal.value.phase==LibraryRemovalPhase.DONE&&!model.state.value.busy}
-            assertEquals(1,deletes);assertEquals(0,model.state.value.pageOffset);assertEquals(0,model.state.value.probe!!.library.count)
+            assertEquals(1,deletes);assertEquals(0,model.state.value.probe!!.library.count)
             withContext(Dispatchers.IO){assertTrue(SharedAudioStore(app).valid(row!!));AudioExportStore(app).use{assertEquals(row,it.existing(task.key))}}
         }finally {
             withContext(Dispatchers.IO){row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};AudioExportRuntime.clear(app);AudioExportRuntime.clearRecentFiles(app);MusicAccessStore(app).delete()}

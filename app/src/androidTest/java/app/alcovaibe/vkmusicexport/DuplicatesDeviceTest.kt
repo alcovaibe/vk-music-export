@@ -79,7 +79,7 @@ class DuplicatesUiDeviceTest {
         var state by mutableStateOf(NativeMusicState(initialized=true,probe=NativeProbe(12,NativePage(emptyList(),0))))
         var opened=0
         ui.setContent{MusicTheme{Surface{Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
-            MusicCatalogPanel(state,true,onSection={state=state.copy(catalogSection=it)},onSelect={},onCatalogPage={},onRefresh={},
+            MusicCatalogPanel(state,true,onSection={state=state.copy(catalogSection=it)},onRefresh={},
                 onLibrary={},onCategory={},onClassify={_,_->},onDuplicates={opened++})
         }}}}
         val all=ui.onNodeWithText("Скачать всю мою музыку").fetchSemanticsNode().boundsInRoot
