@@ -59,7 +59,7 @@ class MusicCatalogStoreDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class MusicCatalogUiDeviceTest {
     @get:Rule val ui=createComposeRule()
-    @Test fun tabsSeparateListsAndManualChoiceMovesUnknownCollectionToAlbum() {
+    @Test fun tabsSeparateAutomaticTypesAndGenericCollectionsNeedNoManualChoice() {
         val playlist=collection(1,PlaylistKind.PLAYLIST);val album=collection(2,PlaylistKind.ALBUM);val unknown=collection(3,PlaylistKind.UNKNOWN)
         var state by mutableStateOf(NativeMusicState(initialized=true,probe=NativeProbe(12,NativePage(emptyList(),0)),
             catalog=NativeCatalog(listOf(playlist,album,unknown),3),catalogSection=CatalogSection.PLAYLISTS))
@@ -68,8 +68,7 @@ class MusicCatalogUiDeviceTest {
             LazyColumn(Modifier.statusBarsPadding().padding(24.dp).testTag("test_catalog"),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 item { Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 MusicCatalogPanel(state,true,onSection={state=state.copy(catalogSection=it,selected=null)},
-                    onRefresh={},onLibrary={},onCategory={requested=it},
-                    onClassify={list,kind->state=state.copy(catalogKinds=mapOf(list.key to kind),catalogSection=CatalogSection.forKind(kind))})
+                    onRefresh={},onLibrary={},onCategory={requested=it})
                 }}
                 musicCatalogEntries(state){state=state.copy(selected=it)}
             }
@@ -83,10 +82,11 @@ class MusicCatalogUiDeviceTest {
         ui.onNodeWithTag("catalog_download_category").performClick();ui.runOnIdle{assertEquals(PlaylistKind.ALBUM,requested)}
         ui.onNodeWithTag("catalog_tab_UNKNOWN").performScrollTo().performClick()
         ui.onNodeWithTag("test_catalog").performScrollToNode(hasTestTag("catalog_list_12_3"));ui.onNodeWithTag("catalog_list_12_3").performClick()
-        ui.onNodeWithTag("classify_album").performScrollTo().performClick()
-        ui.onNodeWithTag("test_catalog").performScrollToNode(hasTestTag("catalog_list_12_3"));ui.onNodeWithTag("catalog_list_12_3").assertIsDisplayed()
-        ui.onNodeWithText("Тип подборки: Альбом").performScrollTo().assertIsDisplayed()
-        ui.onNodeWithTag("catalog_list_12_1").assertDoesNotExist()
+        ui.onNodeWithTag("classify_album").assertDoesNotExist()
+        ui.onNodeWithTag("classify_playlist").assertDoesNotExist()
+        ui.onNodeWithTag("catalog_list_12_3").assertIsDisplayed()
+        ui.onNodeWithTag("catalog_download_category").performScrollTo().performClick()
+        ui.runOnIdle{assertEquals(PlaylistKind.UNKNOWN,requested)}
         ui.waitForIdle()
         val instrumentation=InstrumentationRegistry.getInstrumentation();val bitmap=instrumentation.uiAutomation.takeScreenshot()
         val file=File(instrumentation.targetContext.getExternalFilesDir(null),"screenshots/catalog-albums.png").apply{parentFile!!.mkdirs()}
@@ -99,7 +99,7 @@ class MusicCatalogUiDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class MusicCatalogViewModelDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun fullCatalogManualChoiceAndBulkAlbumQueueUseOnlyMatchingSources()=runBlocking<Unit> {
+    @Test fun fullCatalogAutomaticTypesAndBulkAlbumQueueUseOnlyMatchingSources()=runBlocking<Unit> {
         val context=ui.activity.application;val lists=(1L..100L).map{collection(it,PlaylistKind.PLAYLIST)}+
             collection(101,PlaylistKind.ALBUM)+collection(102,PlaylistKind.UNKNOWN)
         val offsets=mutableListOf<Int>();val fetched=mutableListOf<Long>()
@@ -110,6 +110,8 @@ class MusicCatalogViewModelDeviceTest {
             override suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
                 offsets.add(offset);return NativeCatalog(lists.drop(offset).take(100),lists.size)
             }
+            override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int)=
+                NativeCatalog(lists.filter{it.id>=101},2)
             override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
             override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
                 fetched.add(list.id)
@@ -136,8 +138,7 @@ class MusicCatalogViewModelDeviceTest {
             ui.runOnUiThread{model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
             ui.waitUntil(10000){!model.state.value.busy&&model.state.value.catalog!=null}
             assertEquals(listOf(0,100),offsets);assertEquals(102,model.state.value.catalog!!.lists.size)
-            ui.runOnUiThread{model.classify(lists.last(),PlaylistKind.ALBUM)}
-            ui.waitUntil(10000){!model.state.value.busy&&model.state.value.catalogKinds[lists.last().key]==PlaylistKind.ALBUM}
+            assertTrue(model.state.value.catalogKinds.isEmpty())
             ui.runOnUiThread{model.refreshCatalog()}
             ui.waitUntil(10000){!model.state.value.busy}
             assertEquals(2,MusicCatalog.lists(model.state.value.catalog,CatalogSection.ALBUMS,model.state.value.catalogKinds).size)

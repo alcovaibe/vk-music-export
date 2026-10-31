@@ -25,7 +25,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     INCOMPLETE("Загрузка или проверка длительности не завершена. Готовый файл не создан."),
     PLAYLIST_CHANGED("Сохранённый M3U8 изменён или недоступен. Аудиофайлы сохранены. Пересоздай затронутую подборку или восстанови её файл порядка."),
     FORMAT("Формат аудио пока не поддерживается. Готовый файл не создан."),
-    COLLECTION_TYPE("Сначала выбери тип подборки: плейлист или альбом."),
+    COLLECTION_TYPE("ВК не подтвердил тип подборки."),
     ACCOUNT_CHANGED("Очередь создана для другого аккаунта ВК. Подключи её аккаунт или создай новую очередь; готовые файлы сохранены."),
     QUEUE_ACCOUNT("Эта очередь создана старой версией. Подтверди её привязку к текущему аккаунту перед продолжением."),
     STORAGE("Не удалось сохранить данные на устройстве."), BUSY("Другая музыкальная операция ещё выполняется.")
@@ -49,14 +49,15 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
     val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null)
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
-    val kind: PlaylistKind=PlaylistKind.UNKNOWN) {
+    val kind: PlaylistKind=PlaylistKind.UNKNOWN,val following: Boolean?=null,val deleted: Boolean=false) {
+    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted)
     val key get() = "playlist:$owner:$id"
     override fun toString() = "NativePlaylist([metadata omitted])"
 }
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
-internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int)
+internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int,val complete: Boolean=lists.size==count)
 internal data class NativeProbe(val owner: Long, val library: NativePage)
-@Serializable internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Тип не определён") }
+@Serializable internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Подборки") }
 
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
@@ -150,11 +151,11 @@ internal object NativeProtocol {
                 when((p["type"] as? JsonPrimitive)?.takeIf{it.isString}?.content) {
                     "album"->PlaylistKind.ALBUM;"playlist"->PlaylistKind.PLAYLIST
                     else->if((p["album_type"] as? JsonPrimitive)?.content in setOf("album","single","ep"))PlaylistKind.ALBUM else PlaylistKind.UNKNOWN
-                })
+                },flag(p,"is_following"),flag(p,"is_deleted")==true)
         }
-        musicCheck(lists.map { it.key }.distinct().size == lists.size)
         return NativeCatalog(lists,total)
     }
+    private fun flag(o: JsonObject,key: String): Boolean? = (o[key] as? JsonPrimitive)?.let{it.booleanOrNull?:it.intOrNull?.let{n->when(n){0->false;1->true;else->null}}}
     private fun artworkMatch(o: JsonObject): ArtworkMatch {
         val t=track(o)
         return try{ArtworkMatch(t,artworkCandidates(JsonArray(listOf(o)),t))}

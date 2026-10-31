@@ -80,7 +80,7 @@ class DuplicatesUiDeviceTest {
         var opened=0
         ui.setContent{MusicTheme{Surface{Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
             MusicCatalogPanel(state,true,onSection={state=state.copy(catalogSection=it)},onRefresh={},
-                onLibrary={},onCategory={},onClassify={_,_->},onDuplicates={opened++})
+                onLibrary={},onCategory={},onDuplicates={opened++})
         }}}}
         val all=ui.onNodeWithText("Скачать всю мою музыку").fetchSemanticsNode().boundsInRoot
         val duplicates=ui.onNodeWithTag("clean_duplicates").fetchSemanticsNode().boundsInRoot

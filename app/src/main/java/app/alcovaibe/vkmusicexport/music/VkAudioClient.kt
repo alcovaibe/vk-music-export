@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 internal interface MusicApi {
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
+    suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog? = null
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
     suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack): Unit = throw MusicFailure(MusicError.METHOD)
     suspend fun artwork(access: MusicAccess,track: NativeTrack): String? = null
@@ -98,7 +99,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun catalog(access: MusicAccess, owner: Long)=catalogPage(access,owner,0)
     override suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
         musicCheck(offset in 0..1_000_000)
-        return NativeProtocol.catalog(request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+        return NativeProtocol.catalog(request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"filters" to "all","count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+    }
+    override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
+        musicCheck(offset in 0..1_000_000)
+        return NativeProtocol.catalog(request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"filters" to "albums",
+            "count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
     }
     override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
     override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {

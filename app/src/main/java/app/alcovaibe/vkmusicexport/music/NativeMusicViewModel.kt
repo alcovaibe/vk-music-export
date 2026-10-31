@@ -20,7 +20,7 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
     val authCodeIssue: DeviceCodeIssue?=null,val authCodePending: Boolean=false,
     val stopping: Boolean=false,val waitingForSlot: Boolean=false,
     val preparing: String?=null,val catalogSection: CatalogSection=CatalogSection.LIBRARY,
-    val catalogKinds: Map<String,PlaylistKind> = emptyMap(),val accessDamaged: Boolean=false)
+    val catalogKinds: Map<String,PlaylistKind> = emptyMap(),val hiddenCatalog: Set<String> = emptySet(),val accessDamaged: Boolean=false)
 
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
@@ -45,7 +45,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }}
     }
     fun showDownloads(){Diagnostics.button("audio_downloads_open");_downloadsOpen.value=true}
-    fun dismissDownloads(){Diagnostics.button("audio_downloads_dismiss");_downloadsOpen.value=false}
+    fun dismissDownloads(){
+        Diagnostics.button("audio_downloads_dismiss");_downloadsOpen.value=false
+        if(AudioExportRuntime.state.value.status.startsWith("FINISHED")&&!_state.value.busy&&_state.value.probe!=null)refreshCatalog()
+    }
     private suspend fun startDownloads(retry: Boolean=false) {
         // Presentation state only: dismissing the sheet never controls the UIDT job.
         _downloadsOpen.value=true
@@ -486,6 +489,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             try{AudioExportRuntime.initialize(application)}catch(_: Exception){_state.update{it.copy(error=MusicError.STORAGE)}}
         }
         viewModelScope.launch {
+            AudioExportRuntime.state.map{Triple(it.account,it.done,it.status)}.distinctUntilChanged().collect{(owner,done,status)->
+                if(done>0&&status.startsWith("FINISHED")&&owner==_state.value.probe?.owner&&!_state.value.busy)refreshCatalog()
+            }
+        }
+        viewModelScope.launch {
             try {
                 val loaded=withContext(Dispatchers.IO){
                     DuplicateCheckRuntime.initialize(application)
@@ -660,9 +668,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             acceptProbe(g,candidate,proof)
         }
     }
+    fun openMusic(){if(_state.value.initialized&&_state.value.configured&&!_state.value.busy)checkAccess()}
     fun checkAccess(){Diagnostics.button("native_music_probe");run("probe"){probe(it)}}
     private suspend fun probe(g: Int) {
-        _state.update{it.copy(probe=null,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),catalogSection=CatalogSection.LIBRARY)}
+        _state.update{it.copy(probe=null,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY)}
         val access=access();val probe=api.library(access);active(g)
         withContext(Dispatchers.IO){vault.replace(access,access.withSession(verifiedAt=System.currentTimeMillis(),accountId=probe.owner))}
         sessions?.reload()
@@ -670,7 +679,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private suspend fun acceptProbe(g: Int,access: MusicAccess,probe: NativeProbe) {
         active(g)
-        _state.update{it.copy(probe=probe,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),catalogSection=CatalogSection.LIBRARY)}
+        _state.update{it.copy(probe=probe,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY)}
         try {
             val full=fullLibrary(g,access,probe)
             active(g);_state.update{it.copy(probe=full,page=full.library)}
@@ -690,16 +699,32 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         Diagnostics.event("native_music_sample",mapOf("stage" to "library","entries" to page.tracks.size,"expected_count" to page.count,"complete" to true))
         return proof.copy(library=page)
     }
-    private suspend fun loadCatalog(g: Int,access: MusicAccess,owner: Long) {
-        val choices=withContext(Dispatchers.IO){AudioExportStore(getApplication()).use{it.catalogKinds(owner)}}
-        active(g)
-        val catalog=MusicPagination.catalog({offset->active(g);api.catalogPage(access,owner,offset)}){n,total->
-            _state.update{it.copy(preparing="Получено подборок: $n/$total")}
+    private suspend fun downloadedCatalog(g: Int,access: MusicAccess,owner: Long,catalog: NativeCatalog): Set<String> = withContext(Dispatchers.IO) {
+        AudioExportStore(getApplication()).use{store->
+        val shared=SharedAudioStore(getApplication())
+        val playlists=SharedPlaylistStore(getApplication(),store)
+        CatalogDownloads.completed(catalog,owner,store.savedFiles(),fetch={list->
+            active(g)
+            MusicPagination.tracks({offset->active(g);api.playlistPage(access,list,offset)}){n,total->
+                _state.update{it.copy(preparing="Проверяем скачанную подборку: $n/$total")}
+            }
+        },valid={row->active(g);shared.inspect(row).reason==SavedFileReason.OK},
+            sourceReady={source,tasks,files->active(g);playlists.matches(source,tasks,files)})
         }
+    }
+    private suspend fun currentCatalog(g: Int,access: MusicAccess,owner: Long)=MusicCatalog.load(api,access,owner,{active(g)}){n,total->
+        _state.update{it.copy(preparing="Получено подборок: $n/$total")}
+    }
+    private suspend fun loadCatalog(g: Int,access: MusicAccess,owner: Long) {
+        // Never retain a selected/deleted source when a fresh catalog is requested or fails.
+        _state.update{it.copy(catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),selected=null,
+            page=if(it.catalogSection==CatalogSection.LIBRARY)it.probe?.library?.takeIf{p->p.tracks.size==p.count} else null)}
+        val catalog=currentCatalog(g,access,owner)
+        val hidden=downloadedCatalog(g,access,owner,catalog)
         active(g)
-        _state.update{it.copy(catalog=catalog,catalogKinds=choices,catalogError=null)}
+        _state.update{it.copy(catalog=catalog,hiddenCatalog=hidden,catalogError=null)}
         Diagnostics.event("native_music_sample",mapOf("stage" to "catalog","entries" to catalog.lists.size,
-            "expected_count" to catalog.count,"complete" to (catalog.lists.size==catalog.count)))
+            "expected_count" to catalog.count,"complete" to catalog.complete))
     }
     fun refreshCatalog() {
         val owner=_state.value.probe?.owner?:return
@@ -713,27 +738,21 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _state.update{it.copy(catalogSection=section,selected=null,
             page=if(section==CatalogSection.LIBRARY)it.probe?.library?.takeIf{p->p.tracks.size==p.count} else null)}
     }
-    fun classify(list: NativePlaylist,kind: PlaylistKind) {
-        val owner=_state.value.probe?.owner?:return
-        if(list.kind!=PlaylistKind.UNKNOWN)return
-        run("catalog_kind"){g->
-            val choices=withContext(Dispatchers.IO){AudioExportStore(getApplication()).use{
-                it.catalogKind(owner,list,kind);it.catalogKinds(owner)
-            }}
-            active(g)
-            _state.update{it.copy(catalogKinds=choices,catalogSection=CatalogSection.forKind(MusicCatalog.kind(list,choices)))}
-        }
-    }
     fun select(list: NativePlaylist?) {
         Diagnostics.button(if(list==null)"native_music_library" else "native_music_playlist")
         val probe=_state.value.probe?:return
         if(list==null){if(!_state.value.busy)_state.update{it.copy(page=probe.library.takeIf{p->p.tracks.size==p.count},selected=null,catalogSection=CatalogSection.LIBRARY)};return}
+        if(_state.value.catalog?.lists?.none{it.key==list.key}!=false)return
         run("playlist") {g->
-            _state.update{it.copy(page=null,selected=list,catalogSection=CatalogSection.forKind(MusicCatalog.kind(list,it.catalogKinds)))}
-            val a=access()
-            val page=MusicPagination.tracks({offset->active(g);api.playlistPage(a,list,offset)}){n,total->
+            _state.update{it.copy(page=null,selected=null)}
+            val a=access();val current=currentCatalog(g,a,probe.owner)
+            val selected=current.lists.singleOrNull{it.key==list.key}
+            active(g);_state.update{it.copy(catalog=current,selected=selected)}
+            musicCheck(selected!=null,MusicError.UNAVAILABLE)
+            val actual=selected!!
+            val page=MusicPagination.tracks({offset->active(g);api.playlistPage(a,actual,offset)}){n,total->
                 _state.update{it.copy(preparing="Получено треков: $n/$total")}
-            };active(g);_state.update{it.copy(page=page,selected=list,catalogSection=CatalogSection.forKind(MusicCatalog.kind(list,it.catalogKinds)))}
+            };active(g);_state.update{it.copy(page=page,selected=actual,catalogSection=CatalogSection.forKind(actual.kind))}
             Diagnostics.event("native_music_sample",mapOf("stage" to "playlist","entries" to page.tracks.size,"expected_count" to page.count,"complete" to true))
         }
     }
@@ -745,31 +764,29 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             withContext(Dispatchers.IO) {
                 AudioExportRuntime.initialize(getApplication())
                 musicCheck(!AudioExportRuntime.state.value.unfinished&&!AudioExportRuntime.active.get(),MusicError.BUSY)
-                val a=access();val tasks=mutableListOf<AudioExportTask>();var issues=0;var unknown=0
+                val a=access();val tasks=mutableListOf<AudioExportTask>();var issues=0
                 val failures=mutableListOf<ExportSourceFailure>()
-                val choices=AudioExportStore(getApplication()).use{it.catalogKinds(owner)}
+                val choices=emptyMap<String,PlaylistKind>()
                 suspend fun read(list: NativePlaylist?): NativePage = MusicPagination.tracks({offset->
                     active(g);if(list==null)api.libraryPage(a,owner,offset)else api.playlistPage(a,list,offset)
                 }){n,total->_state.update{it.copy(preparing="Получено позиций: $n/$total")}}
                 if(catalogKind==null) {
                     if(s.selected==null)tasks.addAll(ExportLayout.library(read(null),albums=libraryAlbums,account=owner))
                     else {
-                        val list=s.selected;val kind=MusicCatalog.kind(list,choices)
-                        musicCheck(kind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
+                        val latest=currentCatalog(g,a,owner)
+                        val found=latest.lists.singleOrNull{it.key==s.selected.key}
+                        active(g);_state.update{it.copy(catalog=latest,selected=found,page=if(found==null)null else it.page)}
+                        val list=found?:throw MusicFailure(MusicError.UNAVAILABLE)
+                        val kind=MusicCatalog.kind(list,choices)
                         tasks.addAll(ExportLayout.playlist(read(list),list,kind,account=owner))
                     }
                 }else {
-                    musicCheck(catalogKind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
-                    val catalog=MusicPagination.catalog({offset->active(g);api.catalogPage(a,owner,offset)}){n,total->
-                        _state.update{it.copy(preparing="Получено подборок: $n/$total")}
-                    }
-                    unknown=catalog.lists.count{MusicCatalog.kind(it,choices)==PlaylistKind.UNKNOWN}
-                    if(catalog.count!=catalog.lists.size)failures.add(ExportSourceFailure(
+                    val catalog=currentCatalog(g,a,owner)
+                    val hidden=downloadedCatalog(g,a,owner,catalog)
+                    active(g);_state.update{it.copy(catalog=catalog,hiddenCatalog=hidden,selected=null,page=null)}
+                    if(!catalog.complete)failures.add(ExportSourceFailure(
                         ExportSource(owner,"catalog_page",catalogKind.name),"Каталог ${catalogKind.folder}: получен не полностью",MusicError.INCOMPLETE,catalogKind))
-                    catalog.lists.filter{MusicCatalog.kind(it,choices)==PlaylistKind.UNKNOWN}.forEach{list->
-                        failures.add(ExportSourceFailure(ExportSource(owner,"catalog",list.key),list.title,MusicError.COLLECTION_TYPE))
-                    }
-                    val lists=catalog.lists.filter{MusicCatalog.kind(it,choices)==catalogKind}
+                    val lists=catalog.lists.filter{MusicCatalog.kind(it,choices)==catalogKind&&it.key !in hidden}
                     for((i,list) in lists.withIndex()) {
                         active(g);_state.update{it.copy(preparing="Чтение ${i+1}/${lists.size}: ${catalogKind.folder}")}
                         try{tasks.addAll(ExportLayout.playlist(read(list),list,catalogKind,account=owner))}
@@ -781,10 +798,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     }
                 }
                 issues=failures.size
+                if(tasks.isEmpty()&&failures.isEmpty()){_state.update{it.copy(message="Новых треков для скачивания нет.")};return@withContext}
                 active(g);AudioExportRuntime.replace(getApplication(),tasks,account=owner,sources=failures)
                 active(g);startDownloads()
                 _state.update{it.copy(message="Очередь готова. Файлы сохраняются в Music/VK Music Export. Можно свернуть приложение."+
-                    (if(unknown>0)" Тип $unknown подборок не определён; они не включены." else "")+
                     (if(issues>0)" Не включены или не прочитаны источники: $issues. См. итог очереди." else ""))}
             }
         }
@@ -796,6 +813,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("queue_one") {g->withContext(Dispatchers.IO){
             musicCheck(position>0,MusicError.RESPONSE)
             val a=access()
+            if(s.selected!=null)musicCheck(currentCatalog(g,a,owner).lists.any{it.key==s.selected.key},MusicError.UNAVAILABLE)
             // Count preceding occurrences too: a repeated track on page 2 must not reuse occurrence 1.
             val page=MusicPagination.tracks({offset->active(g)
                 if(s.selected==null)api.libraryPage(a,owner,offset)else api.playlistPage(a,s.selected,offset)
@@ -828,15 +846,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val a=sessions?.current()?:access()
             val proof=api.library(a);active(g)
             musicCheck(proof.owner==issue.source.account,MusicError.ACCOUNT_CHANGED)
-            val choices=AudioExportStore(getApplication()).use{it.catalogKinds(proof.owner)}
-            val catalog=MusicPagination.catalog({offset->active(g);api.catalogPage(a,proof.owner,offset)})
-            if(issue.source.kind=="catalog_page")musicCheck(catalog.lists.size==catalog.count,MusicError.INCOMPLETE)
+            val choices=emptyMap<String,PlaylistKind>()
+            val catalog=currentCatalog(g,a,proof.owner)
+            if(issue.source.kind=="catalog_page")musicCheck(catalog.complete,MusicError.INCOMPLETE)
             val lists=if(issue.source.kind=="catalog_page")catalog.lists.filter{MusicCatalog.kind(it,choices)==issue.category}
                 else listOf(catalog.lists.singleOrNull{it.key==issue.source.id}?:throw MusicFailure(MusicError.UNAVAILABLE))
             val tasks=mutableListOf<AudioExportTask>();val failures=mutableListOf<ExportSourceFailure>()
             for(list in lists) {
                 val kind=MusicCatalog.kind(list,choices)
-                musicCheck(kind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
                 try {
                     val page=MusicPagination.tracks({offset->active(g);api.playlistPage(a,list,offset)})
                     tasks.addAll(ExportLayout.playlist(page,list,kind,account=proof.owner))

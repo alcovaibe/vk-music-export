@@ -41,6 +41,14 @@ import kotlinx.coroutines.withContext
 internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit) {
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
+    val lifecycle=LocalLifecycleOwner.current
+    DisposableEffect(lifecycle,model) {
+        val observer=LifecycleEventObserver{_,event->
+            if(event==Lifecycle.Event.ON_RESUME&&model.state.value.probe!=null&&!model.state.value.busy)model.refreshCatalog()
+        }
+        lifecycle.lifecycle.addObserver(observer)
+        onDispose{lifecycle.lifecycle.removeObserver(observer)}
+    }
     val state by model.state.collectAsState()
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
@@ -81,7 +89,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
         return
     }
-    LazyAppPage("Прямой доступ ВК",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen",actions={
+    LazyAppPage("Доступ к музыке",onBack={model.stopForWindow();onDismiss()},tag="native_music_screen",actions={
         IconButton(onClick=model::showDownloads,modifier=Modifier.testTag("open_music_downloads")) {
             Icon(DownloadIcon,"Скачивания")
         }
@@ -90,7 +98,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Папка: Music/VK Music Export",style=MaterialTheme.typography.titleMedium)
                 Text("Моя музыка, Плейлисты и Альбомы создаются при первом сохранении. Готовые файлы не удаляются приложением по количеству или возрасту.")
-                Text("Один трек может сохраняться в нескольких папках: это отдельные копии и дополнительное место. В папки альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
+                Text("Одна проверенная копия трека используется в нескольких подборках через M3U8. В группы альбомов из «Моей музыки» попадают только сохранённые у тебя композиции.",style=MaterialTheme.typography.bodySmall)
                 if(!notifications)OutlinedButton(onClick={Diagnostics.button("audio_notification_permission");notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления загрузки")}
                 Text("Новые файлы сохраняются с обложкой, если ВК её отдаёт. Звук не перекодируется.",style=MaterialTheme.typography.bodySmall)
                 if(legacy.files.isNotEmpty()) {
@@ -167,6 +175,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(if(state.stopping)"Завершаем предыдущую операцию…"
                     else if(state.waitingForSlot)"Ожидаем завершения предыдущей операции…"
+                    else if(state.preparing!=null)state.preparing!!
                     else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК"
                     else if(state.stage.startsWith("duplicates_"))duplicates.progress.stage.ifEmpty{"Подготовка проверки дубликатов"}
                     else state.preparing?:"Проверка музыкального доступа")
@@ -185,7 +194,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     HorizontalDivider()
                     MusicCatalogPanel(state.copy(busy=state.busy||backgroundCheck),canPrepare,model::section,model::refreshCatalog,
                         onLibrary={albums->model.section(CatalogSection.LIBRARY);model.prepare(libraryAlbums=albums)},
-                        onCategory={model.prepare(catalogKind=it)},onClassify=model::classify,onDuplicates=model::showDuplicates,onUnavailable=model::showAvailability)
+                        onCategory={model.prepare(catalogKind=it)},onDuplicates=model::showDuplicates,onUnavailable=model::showAvailability)
                     Text("Подготовку списков дождись на этом экране. После создания очереди можно свернуть приложение; прогресс доступен кнопкой скачивания вверху.",style=MaterialTheme.typography.bodySmall)
                 }
             }
@@ -199,8 +208,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     Text(state.selected?.title?:"Моя музыка",style=MaterialTheme.typography.titleMedium)
                     Text("Показано ${page.tracks.size} из ${page.count}")
                     if(state.selected!=null) {
-                        if(selectedKind==PlaylistKind.UNKNOWN)Text("Чтобы скачать подборку, сначала укажи её тип.")
-                        else Button(enabled=canPrepare,onClick={model.prepare()}){Text(if(selectedKind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
+                        Button(enabled=canPrepare,onClick={model.prepare()}){Text(when(selectedKind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.PLAYLIST->"Скачать плейлист";else->"Скачать подборку"})}
                     }
                         }
                     }
@@ -215,7 +223,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                 Text(track.artist)
                                 track.album?.let{Text("Альбом: ${it.title}",style=MaterialTheme.typography.bodySmall)}
                                 if(track.restricted||track.duration==0)Text("ВК отметил ограничение или не вернул длительность")
-                                TextButton(enabled=canPrepare&&selectedKind!=PlaylistKind.UNKNOWN,onClick={model.download(track,i+1)}){Text("Скачать этот трек")}
+                                TextButton(enabled=canPrepare,onClick={model.download(track,i+1)}){Text("Скачать этот трек")}
                             }
                         }
                     }

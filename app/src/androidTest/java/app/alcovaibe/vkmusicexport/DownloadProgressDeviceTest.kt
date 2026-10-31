@@ -76,20 +76,21 @@ class DownloadProgressUiDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class DownloadProgressEntryDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun bothEntriesSurviveRecreationAndStartingAQueueAutomaticallyShowsProgress()=runBlocking {
+    @Test fun musicEntrySurvivesRecreationAndStartingAQueueAutomaticallyShowsProgress()=runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         lateinit var model: NativeMusicViewModel
         ui.runOnUiThread{model=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
         ui.waitUntil(10000){model.state.value.initialized}
         withContext(Dispatchers.IO){AudioExportRuntime.initialize(context);AudioExportRuntime.clear(context)}
         try {
-            ui.onNodeWithTag("open_home_downloads").performScrollTo().performClick()
+            ui.onNodeWithTag("open_home_downloads").assertDoesNotExist()
+            ui.onNodeWithText("VK Music").performClick()
+            ui.onNodeWithTag("open_music_downloads").performClick()
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             ui.activityRule.scenario.recreate()
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             ui.runOnUiThread{model=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
             ui.onNodeWithTag("downloads_dismiss").performClick()
-            ui.onNodeWithText("VK Music").performScrollTo().performClick()
             ui.onNodeWithTag("open_music_downloads").assertIsDisplayed().performClick()
             ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             androidx.test.espresso.Espresso.pressBack()
