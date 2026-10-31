@@ -61,9 +61,7 @@ class MusicLibraryRedesignDeviceTest {
         }finally{ui.runOnUiThread{vmStore.clear()};vault.delete()}
     }
     @Test fun warmLibraryKeepsToolsAndShowsVersionSeparatelyWithoutArtistLinks()=fixture {
-        ui.onNodeWithTag("vk_connection_logo").assertIsDisplayed()
-        ui.onNodeWithText("VK").assertDoesNotExist()
-        ui.onNodeWithText("Друзья").assertIsDisplayed()
+        awaitTestWindowFocus(ui.activity)
         run {
             val icon=ui.activity.applicationInfo.loadIcon(ui.activity.packageManager)
             assertTrue(icon is android.graphics.drawable.AdaptiveIconDrawable)
@@ -76,6 +74,9 @@ class MusicLibraryRedesignDeviceTest {
         ui.onNodeWithText("Егор Крид").assertHasNoClickAction()
         ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(0)
         screenshot("redesign-library")
+        ui.onNodeWithTag("vk_connection_logo",useUnmergedTree=true).assertIsDisplayed()
+        ui.onNodeWithText("VK").assertDoesNotExist()
+        ui.onNodeWithText("Друзья").assertIsDisplayed()
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("library_tools"))
         ui.onNodeWithTag("library_tools").performClick()
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("clean_duplicates"))
