@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.serialization.Serializable
 
 @Serializable internal data class TrackMetadataIssue(val name: String,val reason: String,val target: TrackMetadataTarget?=null,val selectedId: String?=null,val resolved: Boolean=false)
-internal data class TrackMetadataState(val visible: Boolean=false,val running: Boolean=false,val total: Int=0,val processed: Int=0,
+@Serializable internal data class TrackMetadataState(val visible: Boolean=false,val running: Boolean=false,val total: Int=0,val processed: Int=0,
     val updated: Int=0,val current: Int=0,val unavailable: Int=0,val skipped: Int=0,val failed: Int=0,
     val name: String?=null,val message: String?=null,val issues: List<TrackMetadataIssue> = emptyList(),val resumable: Boolean=false)
 
@@ -50,7 +50,7 @@ internal fun TrackMetadataSheet(state: TrackMetadataState,onStart:()->Unit,onSto
                 if(state.running)OutlinedButton(onClick=onStop,modifier=Modifier.testTag("track_metadata_stop")){Text("Остановить")}
                 else Button(onClick=onStart,modifier=Modifier.testTag("track_metadata_start")){Text(if(state.resumable)"Продолжить" else if(state.message==null)"Обновить" else "Проверить снова")}
             }
-            if(!state.running&&state.message==null)Text("Приостанови скачивание и оставь музыкальный экран открытым до завершения.",style=MaterialTheme.typography.bodySmall)
+            if(!state.running&&state.message==null)Text("Обработка продолжится при сворачивании приложения. Этап и прогресс доступны в уведомлении.",style=MaterialTheme.typography.bodySmall)
         }
     }
 }

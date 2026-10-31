@@ -1,5 +1,7 @@
 package app.alcovaibe.vkmusicexport.music
 
+import kotlinx.serialization.Serializable
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,9 +11,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
-internal data class ArtworkState(val visible: Boolean=false,val running: Boolean=false,val total: Int=0,val processed: Int=0,
+@Serializable internal data class ArtworkState(val visible: Boolean=false,val running: Boolean=false,val total: Int=0,val processed: Int=0,
     val added: Int=0,val existing: Int=0,val missing: Int=0,val failed: Int=0,val current: String?=null,val message: String?=null,
-    val issues: List<ArtworkIssue> = emptyList(),val skipped: List<ArtworkSkip> = emptyList(),val readySkipped: Int=0) {
+    val issues: List<ArtworkIssue> = emptyList(),val skipped: List<ArtworkSkip> = emptyList(),val readySkipped: Int=0,val resumable: Boolean=false) {
     val noCover get()=skipped.count{it.reason==ArtworkSkipReason.NO_COVER}
     val unavailable get()=skipped.count{it.reason==ArtworkSkipReason.TRACK_UNAVAILABLE}
 }
@@ -33,7 +35,7 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
                     Text("Обработано: ${state.processed}/${state.total}",Modifier.testTag("artwork_count"))
                     Text("Готовых файлов пропущено: ${state.readySkipped}")
                     Text("Добавлено: ${state.added} · уже есть: ${state.existing}\nВК не передал обложку: ${state.noCover}\nНе найдены по ID: ${state.unavailable} · ошибки: ${state.failed}")
-                }else item {Text("Готовые обложки пропускаются. Изменённые или недоступные файлы не перезаписываются. На время обработки приостанови скачивание и оставь приложение открытым.")}
+                }else item {Text("Готовые обложки пропускаются. Изменённые или недоступные файлы не перезаписываются. Обработка продолжится в фоне; этап и прогресс доступны в уведомлении.")}
                 state.message?.let{item {Text(it,Modifier.testTag("artwork_result"))}}
                 for(reason in ArtworkSkipReason.entries) {
                     val rows=state.skipped.filter{it.reason==reason}
@@ -65,7 +67,7 @@ internal fun ArtworkSheet(state: ArtworkState,onStart: ()->Unit,onStop: ()->Unit
             Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick=onDismiss){Text(if(state.running)"Свернуть" else "Закрыть")}
                 if(state.running)OutlinedButton(onClick=onStop,modifier=Modifier.testTag("artwork_stop")){Text("Остановить")}
-                else Button(onClick=onStart,modifier=Modifier.testTag("artwork_start")){Text(if(state.message==null)"Добавить обложки" else "Повторить неудачные")}
+                else Button(onClick=onStart,modifier=Modifier.testTag("artwork_start")){Text(if(state.resumable)"Продолжить" else if(state.message==null)"Добавить обложки" else "Повторить неудачные")}
             }
         }
     }

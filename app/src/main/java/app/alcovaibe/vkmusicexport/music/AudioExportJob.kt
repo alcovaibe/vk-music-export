@@ -55,17 +55,17 @@ internal object AudioExportRuntime {
     }
     suspend fun replace(context: Context,tasks: List<AudioExportTask>,sourceIssues: Int=0,account: Long=0,
         sources: List<ExportSourceFailure> = emptyList()) {
-        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+        musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
         initialize(context);controls.withLock {
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
-            musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+            musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
             database.replace(tasks.distinctBy{it.key},sourceIssues,account,sources);refresh()
         }
     }
     suspend fun start(context: Context,retryFailed: Boolean=false) {
-        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+        musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
         initialize(context);controls.withLock {
-        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+        musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
         if(active.get()||state.value.status=="QUEUED")return
         if(retryFailed)database.retryFailed()
         if(!database.snapshot().unfinished){refresh();return}
@@ -86,7 +86,7 @@ internal object AudioExportRuntime {
     }
     suspend fun bindAccount(context: Context,owner: Long) {
         initialize(context);controls.withLock {
-            musicCheck(!active.get()&&state.value.status!="QUEUED"&&!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+            musicCheck(!active.get()&&state.value.status!="QUEUED"&&!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
             val access=MusicSessions.get(context).current()
             val proof=VkAudioClient(sessions=MusicSessions.get(context)).library(access)
             musicCheck(proof.owner==owner,MusicError.ACCOUNT_CHANGED)
@@ -96,7 +96,7 @@ internal object AudioExportRuntime {
     }
     suspend fun retrySource(context: Context,source: ExportSource,tasks: List<AudioExportTask>,failures: List<ExportSourceFailure> = emptyList()) {
         initialize(context);controls.withLock {
-            musicCheck(!active.get()&&state.value.status!="QUEUED"&&!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+            musicCheck(!active.get()&&state.value.status!="QUEUED"&&!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
             queueAccess()
             database.retrySource(source,tasks);failures.forEach{database.sourceFailure(it)};refresh()
         }
@@ -108,7 +108,7 @@ internal object AudioExportRuntime {
         }
     }
     suspend fun clear(context: Context) {
-        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+        musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
         initialize(context);controls.withLock {
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
             context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
@@ -116,18 +116,18 @@ internal object AudioExportRuntime {
         }
     }
     fun progress(value: AudioProgress){mutable.update{it.copy(progress=value)}}
-    suspend fun <T> editSaved(context: Context,duplicateCheck: Boolean=false,block: suspend()->T): T {
-        musicCheck(duplicateCheck||!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+    suspend fun <T> editSaved(context: Context,duplicateCheck: Boolean=false,maintenance: Boolean=false,block: suspend()->T): T {
+        musicCheck((duplicateCheck||!DuplicateCheckRuntime.transferring)&&(maintenance||!MaintenanceRuntime.busy),MusicError.BUSY)
         initialize(context)
         return controls.withLock {
-            musicCheck(duplicateCheck||!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+            musicCheck((duplicateCheck||!DuplicateCheckRuntime.transferring)&&(maintenance||!MaintenanceRuntime.busy),MusicError.BUSY)
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
             TrackMetadataRepair(context,database,SharedAudioStore(context)).recover()
             block()
         }
     }
     suspend fun clearRecentFiles(context: Context) {
-        musicCheck(!DuplicateCheckRuntime.transferring,MusicError.BUSY)
+        musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
         initialize(context);controls.withLock {database.clearRecentFiles();refresh()}
     }
     @Synchronized fun refresh(){

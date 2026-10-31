@@ -31,7 +31,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
     STORAGE("Не удалось сохранить данные на устройстве."), BUSY("Другая музыкальная операция ещё выполняется.")
 }
 internal enum class MusicFailureKind { DNS, CONNECT, SOCKET, TIMEOUT, TLS, PROTOCOL, EOF, IO, MEDIA_PARSE, OTHER }
-internal open class MusicFailure(val code: MusicError,val remoteCode: Int? = null,val kind: MusicFailureKind? = null) : Exception(code.name)
+internal open class MusicFailure(val code: MusicError,val remoteCode: Int? = null,val kind: MusicFailureKind? = null,val httpStatus: Int? = null) : Exception(code.name)
 internal fun musicCheck(ok: Boolean, error: MusicError = MusicError.RESPONSE) { if (!ok) throw MusicFailure(error) }
 /** Not a data class: accidental toString must not reveal a credential. */
 internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: Long?=null,

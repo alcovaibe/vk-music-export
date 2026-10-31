@@ -76,8 +76,9 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit)=MusicArtists.subscriptions(owner,progress) {method,fields->
         val current=sessions?.continueRead(access)?:access
         val currentUser=fields["current_user"]=="1"
-        request(current,method,fields.filterKeys{it!="current_user"}+mapOf("lang" to "ru")+
-            (if(method=="catalog.getAudio")mapOf("need_blocks" to "1")+(if(currentUser)emptyMap()else mapOf("owner_id" to owner.toString()))else emptyMap()))
+        try{request(current,method,fields.filterKeys{it!="current_user"}+mapOf("lang" to "ru")+
+            (if(method=="catalog.getAudio")mapOf("need_blocks" to "1")+(if(currentUser)emptyMap()else mapOf("owner_id" to owner.toString()))else emptyMap()))}
+        catch(e: MusicFailure){throw ArtistLoadingFailure(ArtistFailureReason.REQUEST,e.code,method,failure=e)}
     }
     override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
         val catalogue=request(access,"catalog.getAudioArtist",mapOf("artist_id" to artist.id,"need_blocks" to "1","lang" to "ru"))
@@ -102,15 +103,19 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             MusicApiPacer.awaitSlot()
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
-            if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT)
+            if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
             // A denial of one search/record is not proof that the account token expired.
             if(response.status==403&&method in setOf("audio.search","audio.getById")) {
                 val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
                 if(explicit?.code in setOf(MusicError.ACCESS,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT))throw explicit!!
                 throw MusicFailure(MusicError.DENIED)
             }
-            if(response.status in setOf(401,403))throw MusicFailure(MusicError.ACCESS)
-            musicCheck(response.status==200,MusicError.HTTP)
+            if(response.status in setOf(401,403)) {
+                val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
+                if(explicit?.remoteCode!=null)throw explicit
+                throw MusicFailure(MusicError.ACCESS,httpStatus=response.status)
+            }
+            if(response.status!=200)throw MusicFailure(MusicError.HTTP,httpStatus=response.status)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes)).also(::rememberPreviews)}
         } catch(e: CancellationException){throw e}
           catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
