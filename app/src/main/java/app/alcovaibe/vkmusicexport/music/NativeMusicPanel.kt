@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -89,6 +91,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
+    var updatesOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
     var ascending by rememberSaveable {mutableStateOf(false)}
@@ -131,6 +134,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     fun back() {
         when {
+            updatesOpen->updatesOpen=false
             accessOpen->accessOpen=false
             destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
             category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
@@ -139,7 +143,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->{model.stopForWindow();onDismiss()}
         }
     }
-    if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
+    if(updatesOpen)AppPage("Обновления приложения",onBack={updatesOpen=false},tag="music_app_updates") {appFooter()}
+    else if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
         item("access") {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
                 Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
@@ -205,6 +210,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             DropdownMenuItem(text={Text("Доступ к музыке")},modifier=Modifier.testTag("open_music_access"),onClick={closeMenu();accessOpen=true})
             DropdownMenuItem(text={Text("Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck,onClick={closeMenu();model.checkAccess()})
             DropdownMenuItem(text={Text("Инструменты сохранённых файлов")},onClick={closeMenu();destination=MusicDestination.SAVED})
+            DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();updatesOpen=true})
             HorizontalDivider()
         }) {
         if(destination==MusicDestination.DOWNLOADS) {
@@ -294,11 +300,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                         Text(state.selected?.title?:if(category==LibraryCategory.TRACKS)"${state.probe?.library?.count?:0} треков" else category.label,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
                         TextButton(enabled=!state.busy,onClick={ascending=!ascending}){Text(if(ascending)"А–Я ↓" else "Порядок ВК ↕")}
+                        if(category==LibraryCategory.TRACKS)IconButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("library_tools")){Icon(Icons.Default.MoreVert,"Инструменты библиотеки")}
                     }
                     if(category==LibraryCategory.TRACKS) {
-                        Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
-                        TextButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("library_tools")){Text(if(toolsOpen)"Скрыть инструменты" else "Инструменты библиотеки")}
                         if(toolsOpen) {
+                            Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
                             OutlinedButton(enabled=canPrepare,onClick=model::showDuplicates,modifier=Modifier.fillMaxWidth().testTag("clean_duplicates")){Text("Очистить дубликаты")}
                             OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
                             OutlinedButton(enabled=canPrepare,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
@@ -316,7 +322,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         if(state.hiddenCatalog.isNotEmpty())Text("Полностью скачанные подборки скрыты: ${state.hiddenCatalog.size}",style=MaterialTheme.typography.bodySmall)
                         state.catalogError?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
                     }
-                    Row {
+                    if(toolsOpen||category!=LibraryCategory.TRACKS)Row {
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::refreshCatalog){Text("Обновить каталог")}
                     }
@@ -333,7 +339,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }
                 state.page?.let{page->
                     val rows=page.tracks.withIndex().let{if(ascending)it.sortedBy{r->r.value.displayTitle.lowercase()}else it.toList()}
-                    item("tracks_count"){Text("Показано ${page.tracks.size} из ${page.count}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                    if(page.tracks.size!=page.count)item("tracks_count"){Text("Показано ${page.tracks.size} из ${page.count}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
                     itemsIndexed(rows,key={_,entry->"track_${entry.index}_${entry.value.id}"}){_,entry->
                         val track=entry.value;val position=entry.index+1;val saved=savedById[track.id]?.file
                         MusicTrackRow(track,position,preview=model.previewArtwork(track),saved=saved,

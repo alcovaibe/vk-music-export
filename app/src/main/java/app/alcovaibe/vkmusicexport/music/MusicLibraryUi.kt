@@ -108,7 +108,7 @@ internal fun MusicCategoryGrid(category: LibraryCategory,counts: Map<LibraryCate
                     color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                     modifier=Modifier.weight(1f).testTag("library_category_${item.name}")) {
-                    Row(Modifier.padding(horizontal=12.dp,vertical=16.dp).heightIn(min=42.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.padding(horizontal=12.dp,vertical=12.dp).heightIn(min=38.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         Surface(color=if(selected)MaterialTheme.colorScheme.onPrimary.copy(alpha=.14f)else MaterialTheme.colorScheme.surface,
                             shape=RoundedCornerShape(12.dp)) {Box(Modifier.size(38.dp),contentAlignment=Alignment.Center){Icon(item.icon,null,Modifier.size(23.dp))}}
                         Column(Modifier.weight(1f)) {

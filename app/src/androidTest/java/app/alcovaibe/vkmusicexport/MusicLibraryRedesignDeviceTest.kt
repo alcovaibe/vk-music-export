@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
 import org.junit.Assert.*
+import kotlinx.coroutines.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,6 +74,31 @@ class MusicLibraryRedesignDeviceTest {
         screenshot("redesign-saved")
         ui.onNodeWithTag("music_nav_DOWNLOADS").performClick()
         ui.onNodeWithTag("downloads_status").assertIsDisplayed();screenshot("redesign-downloads")
+    }
+    @Test fun sortingChangesOnlyPresentationAndDownloadKeepsTheOriginalVkPosition()=fixture {model->
+        val context=ui.activity.application;val vault=MusicAccessStore(context)
+        runBlocking(Dispatchers.IO) {
+            AudioExportRuntime.initialize(context);AudioExportRuntime.clear(context)
+            val old=vault.read()!!;assertTrue(vault.replace(old,old.withSession(rejected=true)))
+        }
+        try {
+            ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasText("Порядок ВК ↕"))
+            ui.onNodeWithText("Порядок ВК ↕").performClick()
+            ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("track_menu_2_12_2"))
+            ui.onNodeWithTag("track_menu_2_12_2").performClick()
+            ui.onNodeWithText("Скачать этот трек").performClick()
+            ui.waitUntil(10_000){model.downloadsOpen.value&&!model.state.value.busy}
+            runBlocking(Dispatchers.IO) {
+                val task=AudioExportStore(context).use{it.taskRows().single().first}
+                assertEquals("12_2",task.track.id);assertEquals(2,task.position)
+            }
+        }finally {
+            runBlocking(Dispatchers.IO) {
+                AudioExportRuntime.pause(context)
+                withTimeout(15_000){while(AudioExportRuntime.active.get())delay(25)}
+                AudioExportRuntime.clear(context)
+            }
+        }
     }
     @Test fun followedArtistsOpenOnlyFromTheirCategoryAndAlbumsReturnToTheArtist()=fixture {model->
         ui.onNodeWithTag("library_category_ARTISTS").performClick()

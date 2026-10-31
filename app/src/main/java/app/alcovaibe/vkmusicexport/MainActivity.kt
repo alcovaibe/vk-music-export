@@ -63,7 +63,8 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
         secondary=Color(0xFF756758),secondaryContainer=Color(0xFFE9E0D5),onSecondaryContainer=Color(0xFF382C21),
         tertiary=Color(0xFF327943),tertiaryContainer=Color(0xFFE5EBD9),onTertiaryContainer=Color(0xFF233B26),
         background=Color(0xFFF7F4EE),surface=Color.White,onBackground=Color(0xFF20211F),onSurface=Color(0xFF20211F),
-        surfaceVariant=Color(0xFFEEEAE3),onSurfaceVariant=Color(0xFF62645D),outline=Color(0xFF89877F),
+        surfaceVariant=Color(0xFFEEEAE3),onSurfaceVariant=Color(0xFF62645D),outline=Color(0xFF89877F),outlineVariant=Color(0xFFD6CFC4),
+        surfaceContainer=Color(0xFFF1EDE6),surfaceContainerLow=Color(0xFFFAF7F2),surfaceContainerHigh=Color(0xFFECE7DF),surfaceContainerHighest=Color(0xFFE8E3DB),
         error=Color(0xFFAD3229),errorContainer=Color(0xFFFFDAD6)
     )
     MaterialTheme(colorScheme = colors, shapes = Shapes(
