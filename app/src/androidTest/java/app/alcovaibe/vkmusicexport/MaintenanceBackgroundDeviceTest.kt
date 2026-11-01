@@ -3,6 +3,7 @@ package app.alcovaibe.vkmusicexport
 import android.app.Application
 import android.app.NotificationManager
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
@@ -44,7 +45,7 @@ class MaintenanceBackgroundDeviceTest {
         val real=ui.activity.application;lateinit var home: NativeMusicViewModel
         ui.runOnUiThread{home=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
         until{home.state.value.initialized}
-        shell("pm grant ${real.packageName} android.permission.POST_NOTIFICATIONS")
+        if(Build.VERSION.SDK_INT>=33)shell("pm grant ${real.packageName} android.permission.POST_NOTIFICATIONS")
         try {
             for((number,stage) in MaintenanceRuntime.stages.withIndex()) {
                 val dir=File(real.cacheDir,"maintenance-life-${UUID.randomUUID()}").apply{mkdirs()};val app=isolated(real,dir)

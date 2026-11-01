@@ -7,6 +7,8 @@ import android.content.ComponentName
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.content.pm.ServiceInfo
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -119,14 +121,19 @@ class BackgroundCheckDeviceTest {
             queued.discard()
         }finally{dir.deleteRecursively()}
     }
-    @Test fun systemUidtJobHasSeparatePrivateNotificationAndCanRunFromVisibleActivity()=runBlocking<Unit> {
+    @Test fun selectedTransportUsesPrivateNotificationAndValidServiceManifest()=runBlocking<Unit> {
         val scheduler=app.getSystemService(JobScheduler::class.java);val notifications=app.getSystemService(NotificationManager::class.java)
-        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+        if(Build.VERSION.SDK_INT>=33)android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
             "pm grant ${app.packageName} android.permission.POST_NOTIFICATIONS")).use{it.readBytes()}
-        val id=UUID.randomUUID().toString();val info=DuplicateCheckRuntime.job(app,id)
-        assertTrue(info.isUserInitiated);assertNotEquals(AudioExportRuntime.JOB_ID,info.id)
-        val service=app.packageManager.getServiceInfo(ComponentName(app,DuplicateCheckJob::class.java),PackageManager.ComponentInfoFlags.of(0))
-        assertFalse(service.exported);assertEquals("android.permission.BIND_JOB_SERVICE",service.permission)
+        val id=UUID.randomUUID().toString()
+        val modern=Build.VERSION.SDK_INT>=34
+        val component=ComponentName(app,if(modern)DuplicateCheckJob::class.java else LegacyDuplicateCheckService::class.java)
+        @Suppress("DEPRECATION")
+        val service=if(Build.VERSION.SDK_INT>=33)app.packageManager.getServiceInfo(component,PackageManager.ComponentInfoFlags.of(0))
+            else app.packageManager.getServiceInfo(component,0)
+        assertFalse(service.exported)
+        if(modern)assertEquals("android.permission.BIND_JOB_SERVICE",service.permission)
+        else assertTrue(service.foregroundServiceType and ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC!=0)
         val note=DuplicateCheckRuntime.notification(app,DuplicatesState(phase=DuplicatePhase.SCANNING,scanId=id,
             progress=DuplicateProgress("Synthetic check",1,2,track(1),1024),savedChecks=1))
         assertEquals(Notification.VISIBILITY_PRIVATE,note.visibility);assertEquals("Пауза",note.actions.single().title.toString())
@@ -135,9 +142,16 @@ class BackgroundCheckDeviceTest {
             scenario.onActivity{}
             try {
                 notifications.cancel(DuplicateCheckRuntime.NOTIFICATION_ID)
-                assertEquals(JobScheduler.RESULT_SUCCESS,withContext(Dispatchers.Main){scheduler.schedule(info)})
-                withTimeout(20000){while(notifications.activeNotifications.none{it.id==DuplicateCheckRuntime.NOTIFICATION_ID})delay(50)}
-                withTimeout(20000){while(scheduler.getPendingJob(DuplicateCheckRuntime.JOB_ID)!=null||DuplicateCheckRuntime.active.get())delay(50)}
+                if(modern) {
+                    val info=DuplicateCheckRuntime.job(app,id)
+                    assertTrue(info.isUserInitiated);assertNotEquals(AudioExportRuntime.JOB_ID,info.id)
+                    assertEquals(JobScheduler.RESULT_SUCCESS,withContext(Dispatchers.Main){scheduler.schedule(info)})
+                    withTimeout(20000){while(notifications.activeNotifications.none{it.id==DuplicateCheckRuntime.NOTIFICATION_ID})delay(50)}
+                    withTimeout(20000){while(scheduler.getPendingJob(DuplicateCheckRuntime.JOB_ID)!=null||DuplicateCheckRuntime.active.get())delay(50)}
+                }else {
+                    assertNull(scheduler.getPendingJob(DuplicateCheckRuntime.JOB_ID))
+                    // Foreground execution is checked by the API 29-33 service instrumentation.
+                }
             }finally{scheduler.cancel(DuplicateCheckRuntime.JOB_ID);notifications.cancel(DuplicateCheckRuntime.NOTIFICATION_ID)}
         }
     }

@@ -2,6 +2,7 @@ package app.alcovaibe.vkmusicexport
 
 import android.graphics.Bitmap
 import android.app.UiModeManager
+import android.os.Build
 import android.content.Context
 import androidx.compose.ui.test.*
 import androidx.compose.ui.graphics.toPixelMap
@@ -15,7 +16,6 @@ import org.junit.runner.RunWith
 import java.io.File
 import android.os.ParcelFileDescriptor
 
-@androidx.test.filters.SdkSuppress(minSdkVersion = 34)
 @RunWith(AndroidJUnit4::class)
 class InterfaceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
@@ -55,6 +55,18 @@ class InterfaceTest {
         // AGP uninstalls the app after instrumentation; keep test images outside app data.
         listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots", "cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png").forEach { command ->
             ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes() }
+        }
+    }
+
+    private fun setTestNightMode(context: Context,night: Boolean) {
+        val mode=if(night)UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO
+        if(Build.VERSION.SDK_INT>=31) {
+            (context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(mode)
+        }else {
+            // Application-local night mode was introduced in API 31.
+            val value=if(night)"yes" else "no"
+            ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().uiAutomation
+                .executeShellCommand("cmd uimode night $value")).use{it.readBytes()}
         }
     }
 
@@ -117,11 +129,11 @@ class InterfaceTest {
         androidx.test.espresso.Espresso.pressBack()
         ui.onNodeWithTag("music_nav_LIBRARY").performClick()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
-        ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
+        ui.runOnUiThread{setTestNightMode(context,true)}
         ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&
-            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0}
+            (Build.VERSION.SDK_INT<30||ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0)}
         ui.onNodeWithTag("native_music_screen").assertExists()
         capture("04-library-system-dark")
-        ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)}
+        ui.runOnUiThread{setTestNightMode(context,false)}
     }
 }
