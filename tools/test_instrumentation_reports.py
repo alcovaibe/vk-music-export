@@ -18,7 +18,7 @@ class InstrumentationReportTest(unittest.TestCase):
             return verify(root)
 
     def successful_report(self):
-        cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(74))
+        cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(70))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest" name="audit{i}"/>' for i in range(9))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.AccessRecoveryDeviceTest" name="access{i}"/>' for i in range(2))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MediaFinalizationDeviceTest" name="finalization{i}"/>' for i in range(4))
@@ -32,6 +32,7 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.DuplicateResumeDeviceTest" name="completeRepeat{i}"/>' for i in range(2))
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateRemovalViewModelDeviceTest" name="workflow"/>'
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.MaintenanceBackgroundDeviceTest" name="background{i}"/>' for i in range(2))
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest" name="job{i}"/>' for i in range(4))
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.ArtistFailureDeviceTest" name="diagnostics"/>'
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest" name="friends{i}"/>' for i in range(6))
         return f'<testsuites tests="130" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
@@ -101,6 +102,11 @@ class InstrumentationReportTest(unittest.TestCase):
     def test_missing_friends_profile_coverage_is_rejected(self):
         report = self.successful_report().replace('app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest', 'OtherTest')
         with self.assertRaisesRegex(ValueError, 'Required friends music'):
+            self.check([report])
+
+    def test_missing_background_job_coverage_is_rejected(self):
+        report = self.successful_report().replace('app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest', 'OtherTest')
+        with self.assertRaisesRegex(ValueError, 'Required background scan'):
             self.check([report])
 
 

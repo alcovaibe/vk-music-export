@@ -54,6 +54,8 @@ def verify(results: Path, minimum_tests: int = 130) -> int:
         raise ValueError('Required duplicate removal workflow test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.MaintenanceBackgroundDeviceTest' for name, _ in executed) < 2:
         raise ValueError('Required file maintenance background and restoration tests did not execute')
+    if sum(name == 'app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest' for name, _ in executed) < 4:
+        raise ValueError('Required background scan and user-initiated job notification tests did not execute')
     if not any(name == 'app.alcovaibe.vkmusicexport.ArtistFailureDeviceTest' for name, _ in executed):
         raise ValueError('Required artist failure diagnostics test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest' for name, _ in executed) < 6:

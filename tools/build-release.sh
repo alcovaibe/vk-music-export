@@ -17,23 +17,19 @@ done
 "$build_tools/aapt" dump badging upgrade-input/previous.apk > upgrade-input/previous.manifest.txt
 "$build_tools/aapt" dump badging upgrade-input/current.apk > upgrade-input/current.manifest.txt
 python3 - <<'PY'
-import json, os, re, shutil
+import json, os, shutil, sys
 from pathlib import Path
+sys.path.insert(0, 'tools')
+from apk_manifest import configured_min_sdk, release_manifest
 
-def manifest(name):
-    text = Path(f'upgrade-input/{name}.manifest.txt').read_text()
-    pkg = re.search(r"package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text)
-    assert pkg and pkg[1] == 'app.alcovaibe.vkmusicexport'
-    assert "sdkVersion:'36'" in text and 'application-debuggable' not in text
-    return int(pkg[2]), pkg[3]
-old, _ = manifest('previous')
-code, version = manifest('current')
-assert code == int(os.environ['APP_VERSION_CODE']) and old < code
+previous = release_manifest(Path('upgrade-input/previous.manifest.txt').read_text())
+current = release_manifest(Path('upgrade-input/current.manifest.txt').read_text(), configured_min_sdk())
+code, version = current['versionCode'], current['versionName']
+assert code == int(os.environ['APP_VERSION_CODE']) and previous['versionCode'] < code
 filename = f'VK-Music-Export-{version}-{code}.apk'
 shutil.copyfile('upgrade-input/current.apk', f'release-output/{filename}')
 Path('release-output/build-info.json').write_text(json.dumps({
-    'versionName': version, 'versionCode': code, 'minSdk': 36,
-    'applicationId': 'app.alcovaibe.vkmusicexport', 'commit': os.environ['GITHUB_SHA'],
+    **current, 'commit': os.environ['GITHUB_SHA'],
     'buildRun': os.environ['GITHUB_RUN_ID'],
     'tag': f'v{version}-build.{code}', 'apk': filename,
 }, indent=2) + '\n')

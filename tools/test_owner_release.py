@@ -27,11 +27,13 @@ class OwnerReleaseTest(unittest.TestCase):
     def test_publication_requires_exact_uploaded_bytes_and_never_rolls_latest_back(self):
         with tempfile.TemporaryDirectory() as d:
             apk=Path(d)/'app.apk';apk.write_bytes(b'fixture')
-            info=dict(versionName='0.11.0',applicationId='app.alcovaibe.vkmusicexport',minSdk=36,versionCode=1243,
+            info=dict(versionName='0.11.0',applicationId='app.alcovaibe.vkmusicexport',minSdk=owner.configured_min_sdk(),versionCode=1243,
                       tag='v0.11.0-build.1243',commit='a'*40,apk='app.apk')
             asset=dict(name='app.apk',state='uploaded',size=7,digest='sha256:'+hashlib.sha256(b'fixture').hexdigest())
             release=dict(target_commitish='a'*40,assets=[asset,{'name':'SHA256SUMS.txt'}])
             owner.validate_assets(info,release,apk,{'tag_name':'v0.10.5-build.1236'})
+            with self.assertRaises(AssertionError):
+                owner.validate_assets(dict(info,minSdk=info['minSdk']+1),release,apk,{'tag_name':'v0.10.5-build.1236'})
             for tag in ['v0.11.0-build.1244','unknown']:
                 with self.assertRaises(AssertionError): owner.validate_assets(info,release,apk,{'tag_name':tag})
             apk.write_bytes(b'changed')
@@ -55,7 +57,7 @@ class OwnerReleaseTest(unittest.TestCase):
     def test_pr50_assets_require_the_requested_new_version(self):
         with tempfile.TemporaryDirectory() as d:
             apk=Path(d)/'app.apk';apk.write_bytes(b'fixture')
-            info=dict(versionName='0.11.2',applicationId='app.alcovaibe.vkmusicexport',minSdk=36,versionCode=1255,
+            info=dict(versionName='0.11.2',applicationId='app.alcovaibe.vkmusicexport',minSdk=owner.configured_min_sdk(),versionCode=1255,
                       tag='v0.11.2-build.1255',commit='b'*40,apk='app.apk')
             asset=dict(name='app.apk',state='uploaded',size=7,digest='sha256:'+hashlib.sha256(b'fixture').hexdigest())
             release=dict(target_commitish='b'*40,assets=[asset,{'name':'SHA256SUMS.txt'}])
