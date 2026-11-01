@@ -12,7 +12,7 @@ from apk_manifest import configured_min_sdk
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
-            57: ('main', '0.11.8')}
+            58: ('main', '0.11.9')}
 
 
 def request_path(env):
@@ -69,7 +69,7 @@ def api(endpoint, method='GET', payload=None):
 def delete_requested_branches(request):
     if not request.get('delete_other_branches'):
         return
-    assert request['pull_request'] in (53, 57) and request['branch'] == 'main'
+    assert request['pull_request'] in (53, 57, 58) and request['branch'] == 'main'
     repo = 'repos/' + request['repository']
     assert api(repo)['default_branch'] == 'main'
     expected = request['branches_to_delete']

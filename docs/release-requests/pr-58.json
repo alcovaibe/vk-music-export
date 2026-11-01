@@ -1,0 +1,30 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 58,
+  "version_name": "0.11.9",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-04T23:59:59Z",
+  "build_inputs": {
+    "app": "1b0dab675a775af9065362570168c5872ce7ff1b",
+    "gradle": "214e387b12bb4a6dddf0ef5ecee8f488abdbef00",
+    "config": "0b5e837d9fecfcf825e60178a576708862b20840",
+    "tools": "b3e9170b80a9a0fb008e3da333d2ddcf71e0d9aa",
+    ".github": "5448ea18b367a9945f1a8f05b829e09bbb76dd30",
+    "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "625c75d0e702ba89981847fae5ddab72c04bfeb7",
+    "version.properties": "7a710b75fa8752cc1a3e02c75f7a98dd14810f10",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e",
+    "CHANGELOG.md": "d751849d98db54b66d4decaa63efcfacae39a9d8",
+    "LICENSE": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+    "NOTICE": "7e59d121ed67eb06e2003c4bb355a02482e46e91"
+  },
+  "request": "Владелец явно запросил дополнение PR #58 редизайном экрана доступа к музыке, слияние в main, удаление остальных веток и выпуск релиза Latest. Ручная приёмка на реальном аккаунте не заявляется.",
+  "delete_other_branches": true,
+  "branches_to_delete": {
+    "codex/player-swipe-dismiss": "902874dccc6ea27c47159b317a407d2e05ff6f95"
+  }
+}
