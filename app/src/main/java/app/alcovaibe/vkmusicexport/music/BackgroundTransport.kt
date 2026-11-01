@@ -18,7 +18,7 @@ internal object BackgroundTransport {
     internal fun usesUserInitiatedJobs(sdk: Int) = sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 
     fun startExport(context: Context): Boolean {
-        if (!usesUserInitiatedJobs(Build.VERSION.SDK_INT)) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             return ContextCompat.startForegroundService(context,
                 Intent(context,LegacyAudioExportService::class.java)) != null
         }
@@ -34,7 +34,7 @@ internal object BackgroundTransport {
     }
 
     fun startDuplicates(context: Context,id: String): Boolean {
-        if (!usesUserInitiatedJobs(Build.VERSION.SDK_INT)) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             return ContextCompat.startForegroundService(context,Intent(context,LegacyDuplicateCheckService::class.java)
                 .putExtra(DuplicateCheckRuntime.RUN_EXTRA,id)) != null
         }

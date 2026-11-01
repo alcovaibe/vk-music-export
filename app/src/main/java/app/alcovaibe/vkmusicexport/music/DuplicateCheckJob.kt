@@ -48,6 +48,7 @@ internal object DuplicateCheckRuntime {
             throw e
         }
     }
+    @androidx.annotation.RequiresApi(34)
     fun job(context: Context,id: String): JobInfo=JobInfo.Builder(JOB_ID,ComponentName(context,DuplicateCheckJob::class.java))
         .setUserInitiated(true).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setRequiresStorageNotLow(true)
         .setExtras(PersistableBundle().apply{putString(RUN_EXTRA,id)}).build()
@@ -90,6 +91,7 @@ internal object DuplicateCheckRuntime {
     }
 }
 
+@androidx.annotation.RequiresApi(34)
 class DuplicateCheckJob: JobService() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private data class Running(val id: String,val stopped: AtomicBoolean=AtomicBoolean(false),var work: Job?=null)
