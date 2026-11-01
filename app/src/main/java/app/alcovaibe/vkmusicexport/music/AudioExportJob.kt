@@ -137,6 +137,7 @@ internal object AudioExportRuntime {
                 next.currentTask==null&&it.stage=="checking_saved")})
     }
     suspend fun run(update: suspend(ExportSnapshot)->Unit){engine.run{refresh();update(state.value)}}
+    suspend fun taskStates(context: Context): Map<String,String> {initialize(context);return database.taskStates()}
     suspend fun stopped(){withContext(NonCancellable+Dispatchers.IO){database.releaseRunning();if(database.snapshot().unfinished)database.status("PAUSED",database.snapshot().error);refresh()}}
     fun notification(context: Context,snapshot: ExportSnapshot): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)

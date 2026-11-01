@@ -55,6 +55,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             else->_savedFiles.update{it.copy(visible=true)}
         }
     }
+    val friends=FriendMusicController(application,api,viewModelScope,onDownloads=::showDownloads,blocked={_state.value.busy})
     private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
     private val _artists=MutableStateFlow(MusicArtistsState());val artists=_artists.asStateFlow()
     private val _savedLibrary=MutableStateFlow<List<SavedLibraryEntry>>(emptyList());val savedLibrary=_savedLibrary.asStateFlow()
@@ -843,7 +844,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             return
         }
         if(stage!="availability")_availability.value=AvailabilityState()
-        if(stage in setOf("browser_auth","configure","forget"))_duplicates.value=DuplicatesState()
+        if(stage in setOf("browser_auth","configure","forget")){_duplicates.value=DuplicatesState();friends.reset()}
         if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
         if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
         if(!stage.startsWith("duplicates_"))_duplicates.update{it.copy(visible=false,consent=null)}
@@ -1225,6 +1226,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun cancel(){if(MaintenanceRuntime.busy)MaintenanceRuntime.pause()else stop("native_stop_button")}
     fun stopForWindow(){_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();if(_state.value.stage !in MaintenanceRuntime.stages)stop("native_window_closed")}
     fun stopInBackground() {
+        friends.pauseRead()
         _metadataLookup.value=MetadataLookupState()
         _artworkLookup.value=ArtworkLookupState()
         _duplicates.update{it.copy(consent=null)}

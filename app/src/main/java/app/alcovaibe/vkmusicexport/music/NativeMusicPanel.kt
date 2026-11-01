@@ -58,6 +58,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         onDispose{lifecycle.lifecycle.removeObserver(observer)}
     }
     val state by model.state.collectAsState()
+    val friendState by model.friends.state.collectAsState()
     val session by model.sessionState.collectAsState()
     val removal by model.removal.collectAsState()
     val artwork by model.artwork.collectAsState()
@@ -94,6 +95,13 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         action()
     }
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
+    var downloadsReturn by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
+    LaunchedEffect(destination,state.initialized,state.configured,state.busy) {
+        if(destination==MusicDestination.FRIENDS&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.user==null&&friendState.listProblem==null)model.friends.loadFriends()
+    }
+    val friendQueueItems by produceState<Map<String,String>>(emptyMap(),destination,queue.total,queue.done,queue.failed,queue.pending,queue.status) {
+        if(destination==MusicDestination.FRIENDS)value=withContext(Dispatchers.IO){runCatching{AudioExportRuntime.taskStates(context)}.getOrDefault(emptyMap())}
+    }
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
     var aboutOpen by rememberSaveable {mutableStateOf(false)}
@@ -124,6 +132,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     LaunchedEffect(state.initialized,state.busy,queue.done,queue.status) {if(state.initialized&&!state.busy)model.refreshSavedLibrary()}
     LaunchedEffect(state.initialized,state.busy) {if(state.initialized&&state.configured&&state.probe==null&&!state.busy)model.openMusic()}
     LaunchedEffect(state.stage) {if(state.stage=="browser_auth")accessOpen=true}
+    val friendTasks=remember(friendState.page,friendState.user,friendState.playlist,state.probe?.owner) {
+        val page=friendState.page;val user=friendState.user;val viewer=state.probe?.owner
+        if(page!=null&&user!=null&&viewer!=null)FriendMusicExport.tasks(page,user,viewer,friendState.playlist)else emptyList()
+    }
     val savedById=remember(localFiles,state.probe?.owner){localFiles.filter{it.present&&it.file.source?.account==state.probe?.owner}.associateBy{it.file.track.id}}
     fun openFile(row: PublishedAudio) {
         scope.launch {
@@ -148,6 +160,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     fun back() {
         when {
             accessOpen->accessOpen=false
+            destination==MusicDestination.DOWNLOADS->destination=downloadsReturn
+            destination==MusicDestination.FRIENDS&&friendState.user!=null->model.friends.back()
             destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
             category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
             category==LibraryCategory.ARTISTS&&artists.selected!=null->model.backFromArtist()
@@ -214,15 +228,21 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         title=when(destination) {
             MusicDestination.SAVED->"Сохранённое"
             MusicDestination.DOWNLOADS->"Загрузки"
+            MusicDestination.FRIENDS->if(friendState.playlist!=null)if(friendState.playlist?.kind==PlaylistKind.ALBUM)"Альбом" else "Плейлист" else if(friendState.user!=null)"Профиль друга" else "Друзья"
             else->if(category==LibraryCategory.ARTISTS)artists.album?.title?:artists.selected?.name?:"Мои исполнители" else state.selected?.title?:"Библиотека"
-        },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
-        onBack=::back,showBack=state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null,
+        },destination=destination,onDestination={destination=it},queue=queue,onDownloads={downloadsReturn=destination;destination=MusicDestination.DOWNLOADS},onAbout={aboutOpen=true},
+        prominentTitle=destination==MusicDestination.FRIENDS&&friendState.user==null,
+        onBack=::back,showBack=destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
         menuItems={closeMenu->
-            DropdownMenuItem(text={Text("Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck,onClick={closeMenu();model.checkAccess()})
+            DropdownMenuItem(text={Text(if(destination==MusicDestination.FRIENDS)"Обновить" else "Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck&&!friendState.busy,onClick={closeMenu();if(destination==MusicDestination.FRIENDS)model.friends.refresh()else model.checkAccess()})
             DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();onUpdates()})
             HorizontalDivider()
         }) {
-        if(destination==MusicDestination.DOWNLOADS) {
+        if(destination==MusicDestination.FRIENDS) {
+            friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,savedById,model::previewArtwork,
+                onPause=model::pauseQueue,onDownloads={downloadsReturn=destination;destination=MusicDestination.DOWNLOADS},
+                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true})
+        }else if(destination==MusicDestination.DOWNLOADS) {
             item("queue") {DownloadProgressContent(queue,state.busy||backgroundCheck,state.error,
                 onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,
                 onSourceRetry=model::retrySource,onExportReport={model.shareExportReport(context)})}

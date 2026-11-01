@@ -111,7 +111,7 @@ class InterfaceTest {
         ui.onNodeWithTag("saved_track_metadata").assertIsDisplayed()
         ui.onNodeWithTag("saved_file_recovery").assertIsDisplayed()
         capture("06-saved-tools")
-        ui.onNodeWithTag("music_nav_DOWNLOADS").performClick()
+        ui.onNodeWithTag("open_music_downloads").performClick()
         ui.onNodeWithTag("downloads_status").assertIsDisplayed()
         capture("07-downloads")
         ui.onNodeWithTag("music_nav_LIBRARY").performClick()

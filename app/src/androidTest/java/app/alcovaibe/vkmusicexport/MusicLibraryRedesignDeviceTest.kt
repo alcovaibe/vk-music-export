@@ -86,7 +86,7 @@ class MusicLibraryRedesignDeviceTest {
         ui.onNodeWithTag("music_nav_SAVED").performClick()
         for(tag in listOf("saved_artwork","saved_track_metadata","saved_file_recovery"))ui.onNodeWithTag(tag).assertIsDisplayed()
         screenshot("redesign-saved")
-        ui.onNodeWithTag("music_nav_DOWNLOADS").performClick()
+        ui.onNodeWithTag("open_music_downloads").performClick()
         ui.onNodeWithTag("downloads_status").assertIsDisplayed();screenshot("redesign-downloads")
     }
     @Test fun sortingChangesOnlyPresentationAndDownloadKeepsTheOriginalVkPosition()=fixture {model->

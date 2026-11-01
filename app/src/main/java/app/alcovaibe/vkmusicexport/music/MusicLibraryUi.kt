@@ -38,7 +38,7 @@ import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 
 internal enum class MusicDestination(val label: String,val icon: ImageVector) {
-    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),DOWNLOADS("Друзья",FriendsMusicIcon)
+    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),FRIENDS("Друзья",FriendsMusicIcon),DOWNLOADS("Загрузки",DownloadIcon)
 }
 internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
     TRACKS("Треки",LibraryNoteIcon),PLAYLISTS("Плейлисты",PlaylistIcon),
@@ -49,10 +49,10 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 @Composable
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
-    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},tag: String="native_music_screen",content: LazyListScope.()->Unit) {
+    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,content: LazyListScope.()->Unit) {
     BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
-        topBar={TopAppBar(title={Text(title,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
+        topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
@@ -62,7 +62,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
                 LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
             })},
         bottomBar={NavigationBar(containerColor=MaterialTheme.colorScheme.background,tonalElevation=0.dp) {
-            MusicDestination.entries.forEach{item->NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
+            listOf(MusicDestination.LIBRARY,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
                 icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},modifier=Modifier.testTag("music_nav_${item.name}"),
                 colors=NavigationBarItemDefaults.colors(indicatorColor=MaterialTheme.colorScheme.secondaryContainer))}
         }}) {padding->
@@ -132,7 +132,7 @@ private object MusicThumbnailCache {
 
 /** Only visible rows load thumbnails. Signed image addresses live in memory, never in the saved-file index. */
 @Composable
-internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String=uri?:url.orEmpty(),artist: Boolean=false) {
+internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String=uri?:url.orEmpty(),artist: Boolean=false,size: androidx.compose.ui.unit.Dp=if(artist)64.dp else 52.dp) {
     val context=LocalContext.current
     val key=identity+":"+(uri?:url.orEmpty())
     val bitmap by produceState<ImageBitmap?>(MusicThumbnailCache.images.get(key),key) {
@@ -159,7 +159,7 @@ internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String
             }
         }
     }
-    Box(Modifier.size(if(artist)64.dp else 52.dp).clip(if(artist)CircleShape else RoundedCornerShape(12.dp))
+    Box(Modifier.size(size).clip(if(artist)CircleShape else RoundedCornerShape(12.dp))
         .background(MaterialTheme.colorScheme.secondaryContainer),contentAlignment=Alignment.Center) {
         if(bitmap!=null)Image(bitmap!!,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
         else Icon(if(artist)Icons.Default.Person else LibraryNoteIcon,null,tint=MaterialTheme.colorScheme.onSecondaryContainer,modifier=Modifier.size(26.dp))

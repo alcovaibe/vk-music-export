@@ -113,6 +113,9 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             (get("covered_count")?.toIntOrNull()?:0).coerceIn(0,counts["DONE"]?:0),failures,currentTask=current,
             account=account(),sourceFailures=sourceFailures())
     }
+    @Synchronized fun taskStates(): Map<String,String> = readableDatabase.rawQuery("SELECT task_key,state FROM tasks",null).use{c->
+        buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}
+    }
     @Synchronized fun account(): Long=get("queue_account")?.toLongOrNull()?:0
     @Synchronized fun bindAccount(owner: Long)=transaction {
         musicCheck(owner>0&&(account()==0L||account()==owner),MusicError.ACCOUNT_CHANGED)
