@@ -44,7 +44,8 @@ class MaintenanceBackgroundDeviceTest {
         val real=ui.activity.application;lateinit var home: NativeMusicViewModel
         ui.runOnUiThread{home=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
         until{home.state.value.initialized}
-        shell("pm grant ${real.packageName} android.permission.POST_NOTIFICATIONS")
+        if(android.os.Build.VERSION.SDK_INT>=33)
+            shell("pm grant ${real.packageName} android.permission.POST_NOTIFICATIONS")
         try {
             for((number,stage) in MaintenanceRuntime.stages.withIndex()) {
                 val dir=File(real.cacheDir,"maintenance-life-${UUID.randomUUID()}").apply{mkdirs()};val app=isolated(real,dir)

@@ -80,6 +80,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - api-level: 29
+            sdk-level: '29'
+            target: default
+            ram-size: 2048M
+          - api-level: 30
+            sdk-level: '30'
+            target: default
+            ram-size: 2048M
+          - api-level: 31
+            sdk-level: '31'
+            target: default
+            ram-size: 2048M
+          - api-level: 32
+            sdk-level: '32'
+            target: default
+            ram-size: 2048M
+          - api-level: 33
+            sdk-level: '33'
+            target: default
+            ram-size: 2048M
           - api-level: 34
             sdk-level: '34'
             target: default
@@ -151,13 +171,13 @@ jobs:
           retention-days: 7
 
   # Keep the stable check name used by release provenance validation.
-  # This succeeds only after all Android 14–17 tests succeed.
+  # This succeeds only after all Android 10–17 tests succeed.
   interface:
     needs: interface-tests
     runs-on: ubuntu-latest
     steps:
-      - name: Confirm all four API levels passed
-        run: echo 'Interface checks passed on API 34, 35, 36 and 37.'
+      - name: Confirm all nine API levels passed
+        run: echo 'Interface checks passed on API 29, 30, 31, 32, 33, 34, 35, 36 and 37.'
 
   release:
     # Normal pushes/PRs run checks only. An owner-requested release requires its marker and pinned build inputs.

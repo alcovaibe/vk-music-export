@@ -120,6 +120,17 @@ class BackgroundCheckDeviceTest {
         }finally{dir.deleteRecursively()}
     }
     @Test fun systemUidtJobHasSeparatePrivateNotificationAndCanRunFromVisibleActivity()=runBlocking<Unit> {
+        if(android.os.Build.VERSION.SDK_INT<34) {
+            val legacy=app.packageManager.getServiceInfo(ComponentName(app,LegacyDuplicateCheckService::class.java),0)
+            assertFalse(legacy.exported)
+            assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,legacy.foregroundServiceType)
+            assertFalse(BackgroundTransport.usesUserInitiatedJobs(android.os.Build.VERSION.SDK_INT))
+            val note=DuplicateCheckRuntime.notification(app,DuplicatesState(phase=DuplicatePhase.SCANNING,scanId="test",
+                progress=DuplicateProgress("Synthetic check",1,2,track(1),1024),savedChecks=1))
+            assertEquals(Notification.VISIBILITY_PRIVATE,note.visibility)
+            assertEquals("Пауза",note.actions.single().title.toString())
+            return@runBlocking
+        }
         val scheduler=app.getSystemService(JobScheduler::class.java);val notifications=app.getSystemService(NotificationManager::class.java)
         android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
             "pm grant ${app.packageName} android.permission.POST_NOTIFICATIONS")).use{it.readBytes()}

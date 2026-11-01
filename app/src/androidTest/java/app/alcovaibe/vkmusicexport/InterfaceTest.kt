@@ -15,7 +15,6 @@ import org.junit.runner.RunWith
 import java.io.File
 import android.os.ParcelFileDescriptor
 
-@androidx.test.filters.SdkSuppress(minSdkVersion = 34)
 @RunWith(AndroidJUnit4::class)
 class InterfaceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()

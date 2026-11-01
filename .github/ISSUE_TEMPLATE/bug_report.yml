@@ -12,7 +12,7 @@ body:
     id: device
     attributes:
       label: Устройство и версия Android
-      description: Поддерживаются Android 14 и новее. Укажите модель телефона и точную версию Android.
+      description: Поддерживаются Android 10 и новее. Укажите модель телефона и точную версию Android.
     validations:
       required: true
   - type: textarea
