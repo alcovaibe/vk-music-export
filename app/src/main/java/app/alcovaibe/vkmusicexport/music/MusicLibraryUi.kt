@@ -49,7 +49,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 @Composable
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
-    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,content: LazyListScope.()->Unit) {
+    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,content: LazyListScope.()->Unit) {
     BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
@@ -61,11 +61,13 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
                 }
                 LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
             })},
-        bottomBar={NavigationBar(containerColor=MaterialTheme.colorScheme.background,tonalElevation=0.dp) {
+        bottomBar={Column {
+            PlaybackMiniPlayer(playback,onPlayerOpen)
+            NavigationBar(containerColor=MaterialTheme.colorScheme.background,tonalElevation=0.dp) {
             listOf(MusicDestination.LIBRARY,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
                 icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},modifier=Modifier.testTag("music_nav_${item.name}"),
                 colors=NavigationBarItemDefaults.colors(indicatorColor=MaterialTheme.colorScheme.secondaryContainer))}
-        }}) {padding->
+        }}}) {padding->
         key(listIdentity) {LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=24.dp),
             verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)}
@@ -170,7 +172,7 @@ internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String
 internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=null,saved: PublishedAudio?=null,downloading: Boolean=false,
     enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
     var menu by remember{mutableStateOf(false)}
-    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag)) {
+    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(onOpen!=null)Modifier.clickable(onClick=onOpen)else Modifier)) {
         Row(Modifier.padding(start=12.dp,end=4.dp,top=10.dp,bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
@@ -193,7 +195,7 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
             if(onDownload!=null||onRemove!=null||onOpen!=null)Box {
                 IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком")}
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                    onOpen?.let{DropdownMenuItem(text={Text("Открыть файл")},onClick={menu=false;it()})}
+                    onOpen?.let{DropdownMenuItem(text={Text("Воспроизвести файл")},onClick={menu=false;it()})}
                     onDownload?.let{DropdownMenuItem(enabled=enabled,text={Text("Скачать этот трек")},onClick={menu=false;it()})}
                     onRemove?.let{DropdownMenuItem(enabled=enabled,text={Text("Удалить из музыки ВК…")},modifier=Modifier.testTag("remove_from_vk"),onClick={menu=false;it()})}
                 }

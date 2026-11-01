@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 130) -> int:
+def verify(results: Path, minimum_tests: int = 135) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')
@@ -60,6 +60,8 @@ def verify(results: Path, minimum_tests: int = 130) -> int:
         raise ValueError('Required artist failure diagnostics test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest' for name, _ in executed) < 6:
         raise ValueError('Required friends music profile, access and queue tests did not execute')
+    if sum(name == 'app.alcovaibe.vkmusicexport.PlaybackDeviceTest' for name, _ in executed) < 5:
+        raise ValueError('Required background playback, controls and player interface tests did not execute')
     return len(executed)
 
 

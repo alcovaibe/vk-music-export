@@ -3,6 +3,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,7 +98,7 @@ private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit) {
 /** Rendering is driven by actual server/queue state; percentages are only used for known totals. */
 internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: FriendMusicController,configured: Boolean,enabled: Boolean,
     queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<AudioExportTask>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
-    onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit) {
+    onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={}) {
     if(!configured) {
         item("friends_connect"){Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Text("Подключи ВК, чтобы открыть друзей и доступную тебе музыку.")
@@ -191,11 +192,11 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Button(onClick={controller.download(state.selection)},shape=RoundedCornerShape(14.dp),enabled=ready&&state.selection.isNotEmpty(),modifier=Modifier.fillMaxWidth().testTag("friend_download_selected")) {
                     Icon(DownloadIcon,null);Spacer(Modifier.width(8.dp));Text("Скачать выбранное")
                 }
-            }else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).testTag("friend_download_all")) {
+            }else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_download_all")) {
                     Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else when(state.playlist.kind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.UNKNOWN->"Скачать подборку";else->"Скачать плейлист"},maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
-                OutlinedButton(onClick=controller::selectMode,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.complete&&!state.busy,modifier=Modifier.weight(1f).testTag("friend_select")){Icon(FriendSelectIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Выбрать")}
+                FilledTonalButton(onClick={onPlay(-1)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.complete&&!state.busy&&page?.tracks?.any{!it.restricted&&it.duration>0&&it.metadataError==null}==true,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
             }
             if(!state.complete&&state.busy) {
                 if(page!=null&&page.count>0)LinearProgressIndicator(progress={page.tracks.size.toFloat()/page.count},modifier=Modifier.fillMaxWidth())
@@ -226,17 +227,17 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     items(matching,key={"friend_track_${it.index+1}_${it.value.id}"}){entry->
         val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)
         FriendTrackRow(track,position,state.selecting,position in state.selection,{controller.toggle(position)},preview(track),saved[track.id],
-            ready,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause)
+            ready,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(entry.index)},playable=state.complete&&!state.busy&&track.metadataError==null&&!track.restricted&&track.duration>0)
     }
 }
 @Composable
 private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,selected: Boolean,onToggle:()->Unit,photo: String?,saved: PublishedAudio?,
-    enabled: Boolean,onDownload:()->Unit,queue: ExportSnapshot,taskKey: String?,taskState: String?,onPause:()->Unit) {
+    enabled: Boolean,onDownload:()->Unit,queue: ExportSnapshot,taskKey: String?,taskState: String?,onPause:()->Unit,onPlay:()->Unit,playable: Boolean) {
     val current=taskKey!=null&&queue.currentTask?.key==taskKey&&queue.status=="RUNNING"
     val failure=queue.failures.firstOrNull{it.task.key==taskKey}
-    Surface(onClick=onToggle,enabled=selecting||enabled,
+    Surface(
         shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
-        modifier=Modifier.fillMaxWidth().testTag("friend_track_$position")) {
+        modifier=Modifier.fillMaxWidth().testTag("friend_track_$position").combinedClickable(enabled=selecting||playable,onClick={if(selecting)onToggle()else onPlay()},onLongClick=onToggle)) {
         Row(Modifier.padding(start=if(selecting)0.dp else 10.dp,end=4.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             if(selecting)Checkbox(selected,{onToggle()},modifier=Modifier.testTag("friend_select_$position"))
             MusicThumbnail(url=photo,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id,size=44.dp)

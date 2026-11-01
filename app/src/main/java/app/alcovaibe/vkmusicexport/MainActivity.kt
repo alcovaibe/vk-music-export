@@ -32,10 +32,17 @@ class MainActivity : ComponentActivity() {
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
     private fun openNotification(intent: Intent?) {
+        if(intent?.getBooleanExtra(app.alcovaibe.vkmusicexport.music.PlaybackRuntime.OPEN_EXTRA,false)==true) {
+            nativeMusic.dismissDownloads()
+            app.alcovaibe.vkmusicexport.music.PlaybackRuntime.expanded.value=true
+            intent.removeExtra(app.alcovaibe.vkmusicexport.music.PlaybackRuntime.OPEN_EXTRA)
+        }
         intent?.getStringExtra(app.alcovaibe.vkmusicexport.music.MaintenanceRuntime.OPEN_EXTRA)?.let{stage->
+            app.alcovaibe.vkmusicexport.music.PlaybackRuntime.expanded.value=false
             nativeMusic.openMaintenanceNotification(stage);intent.removeExtra(app.alcovaibe.vkmusicexport.music.MaintenanceRuntime.OPEN_EXTRA)
         }
         if(intent?.getBooleanExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA,false)==true){
+            app.alcovaibe.vkmusicexport.music.PlaybackRuntime.expanded.value=false
             nativeMusic.openDuplicateNotification();intent.removeExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA)
         }
     }
