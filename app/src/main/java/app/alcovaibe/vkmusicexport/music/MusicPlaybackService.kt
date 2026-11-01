@@ -103,7 +103,7 @@ class MusicPlaybackService : MediaSessionService() {
             }
             override fun onAddMediaItems(session: MediaSession,controller: MediaSession.ControllerInfo,mediaItems: List<MediaItem>): ListenableFuture<List<MediaItem>> =
                 Futures.immediateFuture(emptyList())
-        }).build()
+        }).build().also{addSession(it)}
         player.addListener(object: Player.Listener {
             override fun onEvents(player: Player,events: Player.Events){publish(events.contains(Player.EVENT_TIMELINE_CHANGED)||events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED))}
             override fun onMediaItemTransition(mediaItem: MediaItem?,reason: Int) {
@@ -142,12 +142,12 @@ class MusicPlaybackService : MediaSessionService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo)=mediaSession
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
-        val result=super.onStartCommand(intent,flags,startId)
+        super.onStartCommand(intent,flags,startId)
         if(intent?.action==PlaybackRuntime.START) {
             val request=PlaybackRuntime.take(intent.getStringExtra("request"))
             if(request!=null)start(request)else if(entries.isEmpty())stopSelf()
         }
-        return result
+        return START_NOT_STICKY
     }
     private fun start(request: PlaybackRuntime.Request) {
         serial++;queueOrder=emptyList();entries=request.selection.entries;readSession=request.session;failure=null;artwork=null;loadingIndex=-1;refreshedIndex=-1
@@ -179,7 +179,7 @@ class MusicPlaybackService : MediaSessionService() {
                     }
                     currentCoroutineContext().ensureActive();uri
                 }catch(e: CancellationException){throw e}catch(e: Exception) {
-                    withContext(Dispatchers.Main){if(serial==run&&player.currentMediaItemIndex==i)failure=(e as? MusicFailure)?.code?.label?:"Не удалось открыть аудио."}
+                    withContext(Dispatchers.Main){if(serial==run&&player.currentMediaItemIndex==i)failure=if(entry.offline&&(e as? MusicFailure)?.code!=MusicError.BUSY)"Сохранённый файл изменился или недоступен. Обнови список и проверь сохранённые файлы." else (e as? MusicFailure)?.code?.label?:"Не удалось открыть аудио."}
                     throw e
                 }
             }
