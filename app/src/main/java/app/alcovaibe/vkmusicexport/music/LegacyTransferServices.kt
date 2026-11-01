@@ -24,6 +24,12 @@ class LegacyAudioExportService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)}
         catch(e: Exception) {
             Diagnostics.event("audio_queue_schedule_failure",mapOf("transport" to "foreground_service"))
+            // startForegroundService() can return successfully although promotion fails later.
+            // Never strand a durable QUEUED item after Android rejects foreground promotion.
+            scope.launch(Dispatchers.IO+NonCancellable) {
+                try{AudioExportRuntime.stopped()}
+                catch(_: Exception){Diagnostics.event("audio_queue_failure",mapOf("code" to "STORAGE"))}
+            }
             stopSelfResult(startId);return START_NOT_STICKY
         }
         if(!AudioExportRuntime.active.compareAndSet(false,true)){
