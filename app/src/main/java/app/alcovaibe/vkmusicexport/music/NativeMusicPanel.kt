@@ -9,6 +9,8 @@ import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
@@ -85,6 +87,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     var clock by remember{mutableLongStateOf(System.currentTimeMillis())}
     LaunchedEffect(Unit){while(true){clock=System.currentTimeMillis();kotlinx.coroutines.delay(30_000)}}
+    val playback by PlaybackRuntime.state.collectAsState()
+    val playerExpanded by PlaybackRuntime.expanded.collectAsState()
     val queue by AudioExportRuntime.state.collectAsState()
     val queueWorking=queue.status in setOf("RUNNING","QUEUED")
     val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
@@ -144,15 +148,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         val viewer=friendState.viewerAccount
         if(viewer==null)emptyMap()else localFiles.filter{it.present&&it.file.source?.account==viewer}.associate{it.file.track.id to it.file}
     }
+    val savedPlayback=remember(localFiles){PlaybackLists.saved(localFiles)}
+    val friendPlayback=remember(friendState){PlaybackLists.friends(friendState)}
     fun openFile(row: PublishedAudio) {
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO){SharedAudioStore(context).requireValid(row)}
-                val uri=Uri.parse(row.uri)
-                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri,row.mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    .apply{clipData=ClipData.newRawUri("Audio",uri)})
-            }catch(e: kotlinx.coroutines.CancellationException){throw e}catch(_: Exception){openError=true}
-        }
+        val index=savedPlayback.indexOfFirst{it.saved?.uri==row.uri}
+        if(index>=0)PlaybackRuntime.play(context,savedPlayback,index)
+        else PlaybackRuntime.play(context,listOf(PlaybackEntry(row.track,"Сохранённая музыка",saved=row)))
     }
     fun choose(value: LibraryCategory) {
         if(state.busy||backgroundCheck)return
@@ -175,6 +176,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             state.selected!=null->model.section(state.catalogSection)
             else->{model.stopForWindow();onDismiss()}
         }
+    }
+    if(playerExpanded) {
+        PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare)
+        return
     }
     if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
         item("access") {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -239,6 +244,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->if(category==LibraryCategory.ARTISTS)artists.album?.title?:artists.selected?.name?:"Мои исполнители" else state.selected?.title?:"Библиотека"
         },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         prominentTitle=destination==MusicDestination.FRIENDS&&friendState.user==null,
+        playback=playback,onPlayerOpen={PlaybackRuntime.expanded.value=true},
         listIdentity=if(destination==MusicDestination.FRIENDS)"friends:${friendState.user?.id}:${friendState.playlist?.key}" else null,
         onBack=::back,showBack=destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
         menuItems={closeMenu->
@@ -249,7 +255,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(destination==MusicDestination.FRIENDS) {
             friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
-                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true})
+                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.play(context,friendPlayback,index)})
         }else if(destination==MusicDestination.DOWNLOADS) {
             item("queue") {DownloadProgressContent(queue,state.busy||backgroundCheck,state.error,
                 onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,
@@ -267,7 +273,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Файлы: ${localFiles.size}",style=MaterialTheme.typography.titleMedium)
                 Text("Копии остаются здесь после удаления музыки из ВК. Проверка целостности доступна в инструментах.",style=MaterialTheme.typography.bodySmall)
                 if(localError)Text("Не удалось прочитать список файлов. Повтори обновление.",color=MaterialTheme.colorScheme.error)
-                TextButton(onClick=model::refreshSavedLibrary){Text("Обновить сохранённое")}
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick=model::refreshSavedLibrary,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),
+                        modifier=Modifier.weight(1f).testTag("refresh_saved_music")) {
+                        Icon(Icons.Default.Refresh,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Обновить сохранённое",maxLines=2)
+                    }
+                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty(),shape=RoundedCornerShape(14.dp),
+                        contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),modifier=Modifier.weight(1f).testTag("play_saved_music")) {
+                        Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2)
+                    }
+                }
                 if(localFiles.isEmpty()&&!localError)Text("Скачанная музыка появится здесь.")
             }}
             itemsIndexed(localFiles,key={_,row->"saved_${row.file.uri}"}){i,entry->

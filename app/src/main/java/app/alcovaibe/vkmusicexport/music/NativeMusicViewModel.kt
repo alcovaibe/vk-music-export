@@ -1142,6 +1142,21 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         }
     }
+    fun downloadPlayback(entry: PlaybackEntry) {
+        val task=entry.download?:return
+        if(entry.offline||_state.value.busy)return
+        run("player_download") {g->withContext(Dispatchers.IO) {
+            AudioExportRuntime.initialize(getApplication())
+            val queue=AudioExportRuntime.state.value
+            musicCheck(!queue.unfinished&&queue.status !in setOf("RUNNING","QUEUED"),MusicError.BUSY)
+            val a=sessions?.current()?:access();val owner=api.accountOwner(a);active(g)
+            musicCheck(owner==entry.account&&task.source?.account==owner,MusicError.ACCOUNT_CHANGED)
+            api.resolve(a,task.track);active(g)
+            if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.readSessionId==a.readSessionId,MusicError.ACCESS)
+            AudioExportRuntime.replace(getApplication(),listOf(task),account=owner)
+            active(g);startDownloads(false)
+        }}
+    }
     fun download(track: NativeTrack,position: Int) {
         Diagnostics.button("native_music_download_one")
         val s=_state.value
@@ -1245,6 +1260,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         work?.cancel()
     }
     fun forget() {
+        PlaybackRuntime.stopOnline()
         if(_state.value.busy)return
         Diagnostics.button("native_music_forget_access")
         run("forget") {g->

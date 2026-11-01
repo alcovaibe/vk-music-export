@@ -93,8 +93,8 @@ class FriendsMusicDeviceTest {
         ui.onAllNodesWithText("vk.com/",substring=true).assertCountEquals(0)
         ui.onAllNodesWithText("VK Music Export").assertCountEquals(0)
         shot("friend-profile")
-        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_select"));ui.onNodeWithTag("friend_select").performClick()
-        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_select_3"));ui.onNodeWithTag("friend_select_3").performClick()
+        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_play"));ui.onNodeWithTag("friend_play").assertTextContains("Воспроизвести")
+        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_track_3"));ui.onNodeWithTag("friend_track_3").performTouchInput{longClick()}
         assertEquals(setOf(3),model.friends.state.value.selection);top();shot("friend-selection")
         ui.onNodeWithContentDescription("Назад").performClick();assertFalse(model.friends.state.value.selecting)
         ui.onNodeWithTag("friend_tab_PLAYLISTS").performClick()
