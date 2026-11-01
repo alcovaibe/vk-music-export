@@ -59,16 +59,16 @@ class DiagnosticsDeviceTest {
             assertNotNull(send)
             val shared=send!!
             assertEquals(Intent.ACTION_SEND,shared.action);assertEquals("application/json",shared.type)
-            assertTrue(send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
+            assertTrue(shared.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
             @Suppress("DEPRECATION")
             val uri=if(android.os.Build.VERSION.SDK_INT>=33)
                 shared.getParcelableExtra(Intent.EXTRA_STREAM,Uri::class.java)
             else shared.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             assertNotNull(uri)
             val exportedUri=uri!!
-            assertEquals("${ui.activity.packageName}.diagnostics",uri.authority)
-            assertEquals(uri,send.clipData!!.getItemAt(0).uri)
-            val report=Json.parseToJsonElement(ui.activity.contentResolver.openInputStream(uri)!!.bufferedReader().use{it.readText()}).jsonObject
+            assertEquals("${ui.activity.packageName}.diagnostics",exportedUri.authority)
+            assertEquals(exportedUri,shared.clipData!!.getItemAt(0).uri)
+            val report=Json.parseToJsonElement(ui.activity.contentResolver.openInputStream(exportedUri)!!.bufferedReader().use{it.readText()}).jsonObject
             assertEquals(1,report.getValue("schema").jsonPrimitive.int)
             val run=report.getValue("run_id").jsonPrimitive.content
             assertTrue(report.getValue("events").jsonArray.isNotEmpty())
