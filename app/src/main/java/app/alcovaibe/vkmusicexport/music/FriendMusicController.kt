@@ -90,10 +90,10 @@ internal class FriendMusicController(private val application: Application,privat
                 guard();mutable.update{it.copy(tracks=page,tracksComplete=true)}
             }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){mutable.update{it.copy(problems=it.problems+(FriendMusicTab.TRACKS to FriendMusicProblem.from(e)))}}
             try {
-                val catalog=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false)
+                val catalog=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false,partial={part->mutable.update{it.copy(catalog=part)}})
                 guard();mutable.update{it.copy(catalog=catalog)}
-                if(!catalog.complete)mutable.update{it.copy(problems=it.problems+listOf(FriendMusicTab.PLAYLISTS,FriendMusicTab.ALBUMS).associateWith{FriendMusicProblem(MusicError.INCOMPLETE)})}
-            }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){mutable.update{it.copy(problems=it.problems+listOf(FriendMusicTab.PLAYLISTS,FriendMusicTab.ALBUMS).associateWith{FriendMusicProblem.from(e)})}}
+                if(!catalog.complete)mutable.update{it.copy(problems=it.problems+listOf(FriendMusicTab.PLAYLISTS,FriendMusicTab.ALBUMS,FriendMusicTab.COLLECTIONS).associateWith{FriendMusicProblem(MusicError.INCOMPLETE)})}
+            }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){mutable.update{it.copy(problems=it.problems+listOf(FriendMusicTab.PLAYLISTS,FriendMusicTab.ALBUMS,FriendMusicTab.COLLECTIONS).associateWith{FriendMusicProblem.from(e)})}}
         }
     }
     fun playlist(list: NativePlaylist) {

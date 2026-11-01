@@ -28,6 +28,7 @@ class FriendsMusicDeviceTest {
     private val playlist=NativePlaylist(-55,7,"В дорогу",3,null,null,null,0,PlaylistKind.PLAYLIST,following=false)
     private val album=NativePlaylist(-66,9,"Северные огни",3,null,null,null,1,PlaylistKind.ALBUM,following=false)
     private inner class Api: MusicApi {
+        var extra: NativePlaylist?=null
         var rows=listOf(MusicFriend(34,"Алина","Смирнова","@old"),MusicFriend(35,"Ирина","Лебедева","@irina"),
             MusicFriend(36,"Максим","Ковалёв"),MusicFriend(37,"Денис","Орлов"),MusicFriend(38,"Софья","Белова"),
             MusicFriend(39,"Артём","Миронов"),MusicFriend(40,"Полина","Жукова"),MusicFriend(41,"Егор","Рябов"))
@@ -42,7 +43,7 @@ class FriendsMusicDeviceTest {
         }
         override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog {
             if(owner==35L)throw MusicFailure(MusicError.DENIED,201)
-            return if(owner==34L)NativeCatalog(listOf(playlist,album),2)else NativeCatalog(emptyList(),0)
+            return if(owner==34L)NativeCatalog(listOfNotNull(playlist,album,extra),if(extra==null)2 else 3)else NativeCatalog(emptyList(),0)
         }
         override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int)=if(owner==34L)NativeCatalog(listOf(album),1)else NativeCatalog(emptyList(),0)
         override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=NativePage(songs,3)
@@ -74,7 +75,7 @@ class FriendsMusicDeviceTest {
     private fun top(){ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(0)}
     @Test fun searchProfilesSelectionAndPlaylistTabsFollowTheConceptAndKeepAlbumsSeparate()=fixture {model,_->
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
-        ui.waitUntil(15000){model.friends.state.value.friendsComplete}
+        ui.waitUntil(15000){model.friends.state.value.friendsComplete&&!model.friends.state.value.busy}
         ui.onNodeWithText("Друзей: 8").assertExists();shot("friends-list")
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_41"))
         ui.onNodeWithTag("friend_41").performClick()
@@ -128,10 +129,24 @@ class FriendsMusicDeviceTest {
         }finally{scope.cancel();runBlocking(Dispatchers.IO){AudioExportRuntime.clear(app)}}
     }
     @Test fun deniedMusicIsExplicitAndChangedCredentialsDiscardLateProfileResults()=fixture {model,api->
-        ui.onNodeWithTag("music_nav_FRIENDS").performClick();ui.waitUntil(15000){model.friends.state.value.friendsComplete}
+        ui.onNodeWithTag("music_nav_FRIENDS").performClick();ui.waitUntil(15000){model.friends.state.value.friendsComplete&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_35").performClick();ui.waitUntil(15000){!model.friends.state.value.busy&&model.friends.state.value.problems.isNotEmpty()}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_music_problem"))
-        ui.onNodeWithText("Доступ к музыке запрещён").assertIsDisplayed();shot("friend-denied")
+        ui.onNodeWithText("Доступ к музыке запрещён").assertIsDisplayed()
+        ui.onNodeWithTag("friend_problem_message").assertTextEquals("ВК запретил доступ к аудиозаписям этого профиля.")
+        ui.onNodeWithTag("friend_problem_code").assertTextEquals("Код API ВК: 201")
+        ui.onAllNodes(hasText("Открыть в ВК") and hasAnyAncestor(hasTestTag("friend_music_problem"))).assertCountEquals(0)
+        for(tag in listOf("friend_problem_message","friend_problem_code")) {
+            val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            ui.onNodeWithTag(tag).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult){it(layouts)}
+            val layout=layouts.single()
+            for(line in 0 until layout.lineCount)assertEquals(layout.size.width/2f,(layout.getLineLeft(line)+layout.getLineRight(line))/2f,1f)
+        }
+        top()
+        val badge=ui.onNodeWithText("Музыка недоступна",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val open=ui.onNodeWithText("Открыть в ВК",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        assertEquals(badge.center.y,open.center.y,2f)
+        shot("friend-denied")
         assertNull(model.friends.state.value.count(FriendMusicTab.TRACKS))
         assertFalse(model.friends.state.value.problems.getValue(FriendMusicTab.TRACKS).description.contains("владелец ограничил"))
         val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>();api.entered=entered;api.hold=release
@@ -143,6 +158,24 @@ class FriendsMusicDeviceTest {
             ui.waitUntil(15000){!model.friends.state.value.busy&&model.friends.state.value.listProblem?.code==MusicError.ACCOUNT_CHANGED}
             assertNull(model.friends.state.value.user);assertTrue(model.friends.state.value.friends.isEmpty())
         }finally{release.complete(Unit)}
+    }
+    @Test fun unclassifiedCollectionsRemainAccessibleWithoutAppearingAsAlbumsOrPlaylists()=fixture {model,api->
+        api.extra=NativePlaylist(-88,10,"Без подтверждённого типа",2,null,null,null,null)
+        ui.onNodeWithTag("music_nav_FRIENDS").performClick()
+        ui.waitUntil(15000){model.friends.state.value.friendsComplete&&!model.friends.state.value.busy}
+        ui.onNodeWithTag("friend_34").performClick()
+        ui.waitUntil(15000){model.friends.state.value.catalog?.complete==true&&!model.friends.state.value.busy}
+        ui.onNodeWithTag("friend_tab_PLAYLISTS").performClick()
+        ui.onNodeWithTag("friend_collection_-88_10").assertDoesNotExist()
+        ui.onNodeWithTag("friend_tab_ALBUMS").performClick()
+        ui.onNodeWithTag("friend_collection_-88_10").assertDoesNotExist()
+        ui.onNodeWithTag("friend_tab_COLLECTIONS").performClick()
+        ui.onNodeWithTag("friend_collection_-88_10").assertIsDisplayed()
+        ui.onNodeWithTag("friend_collection_-55_7").assertDoesNotExist()
+        shot("friend-unclassified")
+        ui.onNodeWithTag("friend_collection_-88_10").performClick()
+        ui.waitUntil(15000){model.friends.state.value.playlistComplete&&!model.friends.state.value.busy}
+        ui.onNodeWithTag("friend_playlist_header").assertIsDisplayed()
     }
     @Test fun scopedHttpDenialDoesNotInvalidateTheAccountButExplicitTokenRejectionIsPreserved()=runBlocking {
         val access=MusicAccess("a".repeat(64),"CI/1",accountId=12)

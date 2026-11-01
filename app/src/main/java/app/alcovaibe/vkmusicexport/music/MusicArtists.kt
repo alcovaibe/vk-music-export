@@ -16,7 +16,7 @@ internal object MusicArtists {
     private fun str(e: JsonElement?)=(e as? JsonPrimitive)?.contentOrNull
     private fun title(o: JsonObject): String {
         val layout=o["layout"] as? JsonObject
-        val raw=o["title"]?:o["text"]?:layout?.get("title")?:((layout?.get("header") as? JsonObject)?.get("title"))
+        val raw=o["title"]?:o["text"]?:(o["header"] as? JsonObject)?.get("title")?:layout?.get("title")?:((layout?.get("header") as? JsonObject)?.get("title"))
         return (str(raw)?:str((raw as? JsonObject)?.get("text"))).orEmpty().replace('\u00a0',' ').trim().lowercase()
             .replace(Regex("\\s+")," ").replace(Regex("\\s*(?:[·•]\\s*|\\()?\\d+\\)?$"),"").trim()
     }
@@ -73,8 +73,8 @@ internal object MusicArtists {
     private fun navigation(o: JsonObject): List<JsonObject> {
         val layout=o["layout"] as? JsonObject
         val header=layout?.get("header") as? JsonObject
-        val nodes=listOf(o,layout,header).filterNotNull()
-        val buttons=nodes.flatMap{node->listOf("actions","buttons","links").flatMap{key->
+        val nodes=listOf(o,layout,header,o["header"] as? JsonObject).filterNotNull()
+        val buttons=nodes.filter{it["url"]!=null||it["section_id"]!=null}+nodes.flatMap{node->listOf("actions","buttons","links").flatMap{key->
             (node[key] as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}
         }}+listOfNotNull(((o["meta"] as? JsonObject)?.get("show_all_info")) as? JsonObject)
         return buttons.flatMap{button->listOf(button)+listOf("action","link").mapNotNull{key->
@@ -93,8 +93,11 @@ internal object MusicArtists {
         if(url.queryParameter("owner_id")?.let{owner!=null&&it.toLongOrNull()!=owner}==true)return null
         return url.toString()
     }
-    private fun sections(o: JsonObject)=(((o["catalog"] as? JsonObject)?.get("sections") as? JsonArray).orEmpty()).mapNotNull{it as? JsonObject}+
-        listOfNotNull(o["section"] as? JsonObject)
+    private fun sections(o: JsonObject): List<JsonObject> {
+        val catalog=o["catalog"] as? JsonObject
+        return ((catalog?.get("sections")?:o["sections"]) as? JsonArray).orEmpty().mapNotNull{it as? JsonObject}+
+            listOfNotNull(o["section"] as? JsonObject,catalog?.get("header") as? JsonObject,o["header"] as? JsonObject)
+    }
 
     private data class Target(val method: String,val id: String,val from: String?=null,val trusted: Boolean=true,val own: Boolean=false)
     private suspend fun collect(initial: JsonObject,subscriptions: Boolean,owner: Long?,

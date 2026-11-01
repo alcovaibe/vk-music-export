@@ -9,9 +9,9 @@ internal data class MusicFriend(val id: Long,val firstName: String,val lastName:
     override fun toString()="MusicFriend([metadata omitted])"
 }
 internal data class FriendsPage(val items: List<MusicFriend>,val count: Int)
-internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы") }
-internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?=null,val httpStatus: Int?=null) {
-    val description get()=when {
+internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы"),COLLECTIONS("Подборки") }
+internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?=null,val httpStatus: Int?=null,val field: String?=null,val position: Int?=null) {
+    val message get()=when {
         remoteCode==201->"ВК запретил доступ к аудиозаписям этого профиля."
         code==MusicError.DENIED->"ВК не разрешил этому подключению получить данный музыкальный раздел."
         code==MusicError.METHOD->"Этот метод недоступен текущему подключению ВК."
@@ -20,8 +20,12 @@ internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?
         code==MusicError.NETWORK||code==MusicError.TLS||code==MusicError.HTTP->"Не удалось получить данные по сети. Повтори попытку."
         code==MusicError.ACCOUNT_CHANGED->"Подключение ВК изменилось. Обнови список друзей."
         else->code.label
-    }+(remoteCode?.let{" Код API ВК: $it."}?:httpStatus?.let{" HTTP $it."}.orEmpty())
-    companion object {fun from(e: Exception)=(e as? MusicFailure)?.let{FriendMusicProblem(it.code,it.remoteCode,it.httpStatus)}?:FriendMusicProblem(MusicError.RESPONSE)}
+    }
+    val codeText get()=(remoteCode?.let{"Код API ВК: $it"}?:httpStatus?.let{"HTTP $it"}?:"Код приложения: ${code.name}")+
+        (field?.let{" · поле: $it"}.orEmpty())+(position?.let{" · позиция: $it"}.orEmpty())
+    val description get()="$message $codeText."
+    companion object {fun from(e: Exception)=(e as? MusicFailure)?.let{FriendMusicProblem(it.code,it.remoteCode,it.httpStatus,
+        (it as? NativeDataFailure)?.field,(it as? NativeDataFailure)?.position)}?:FriendMusicProblem(MusicError.RESPONSE)}
 }
 internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(),val friendsTotal: Int?=null,val friendsComplete: Boolean=false,
     val busy: Boolean=false,val preparing: Boolean=false,val friendsQuery: String="",val musicQuery: String="",
@@ -31,10 +35,11 @@ internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(
     val selecting: Boolean=false,val selection: Set<Int> = emptySet(),val message: String?=null,val viewerAccount: Long?=null) {
     val page get()=if(playlist!=null)playlistTracks else tracks
     val complete get()=if(playlist!=null)playlistComplete else tracksComplete
-    fun collections()=catalog?.lists.orEmpty().filter{it.kind==if(tab==FriendMusicTab.ALBUMS)PlaylistKind.ALBUM else PlaylistKind.PLAYLIST}
+    fun collections()=catalog?.lists.orEmpty().filter{it.kind==kind(tab)}
+    private fun kind(tab: FriendMusicTab)=when(tab){FriendMusicTab.ALBUMS->PlaylistKind.ALBUM;FriendMusicTab.COLLECTIONS->PlaylistKind.UNKNOWN;else->PlaylistKind.PLAYLIST}
     fun count(tab: FriendMusicTab): Int?=when(tab) {
         FriendMusicTab.TRACKS->tracks?.count
-        else->catalog?.takeIf{it.complete}?.lists?.count{it.kind==if(tab==FriendMusicTab.ALBUMS)PlaylistKind.ALBUM else PlaylistKind.PLAYLIST}
+        else->catalog?.takeIf{it.complete}?.lists?.count{it.kind==kind(tab)}
     }
 }
 internal object FriendMusicProtocol {
@@ -77,7 +82,7 @@ internal object FriendMusicExport {
             if(list==null)user.id.toString() else "${user.id}:${list.key}")
         val folder=ExportLayout.component(user.name,120)+" [${user.id}]"
         val folders=listOf("Друзья",folder)+(list?.let{listOf(ExportLayout.component(
-            (if(it.kind==PlaylistKind.ALBUM)"Альбом — " else "Плейлист — ")+it.title,120)+" [${it.owner}_${it.id}]")}?:emptyList())
+            (when(it.kind){PlaylistKind.ALBUM->"Альбом — ";PlaylistKind.UNKNOWN->"Подборка — ";else->"Плейлист — "})+it.title,120)+" [${it.owner}_${it.id}]")}?:emptyList())
         val occurrences=mutableMapOf<String,Int>()
         return page.tracks.mapIndexed{index,track->
             val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence

@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -28,11 +29,11 @@ private fun FriendSearch(value: String,label: String,tag: String,onValue:(String
             focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent))
 }
 @Composable
-private fun FriendBadge(text: String,error: Boolean=false) {
-    Surface(shape=RoundedCornerShape(24.dp),color=if(error)MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer) {
+private fun FriendBadge(text: String,error: Boolean=false,modifier: Modifier=Modifier) {
+    Surface(modifier=modifier,shape=RoundedCornerShape(24.dp),color=if(error)MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer) {
         Row(Modifier.padding(horizontal=10.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
             Icon(if(error)FriendErrorIcon else Icons.Default.Check,null,Modifier.size(18.dp),tint=if(error)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
-            Text(text,style=MaterialTheme.typography.labelMedium,color=if(error)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onTertiaryContainer)
+            Text(text,textAlign=TextAlign.Center,style=MaterialTheme.typography.labelMedium,color=if(error)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }
 }
@@ -47,12 +48,15 @@ private fun FriendProfileHeader(user: MusicFriend,available: Boolean,problem: Fr
                     user.handle?.let{Text(it,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.testTag("friend_handle"))}
                 }
             }
-            FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(6.dp),modifier=Modifier.fillMaxWidth()) {
-                if(problem!=null)FriendBadge("Раздел недоступен",true)
-                else if(available)FriendBadge("Музыка доступна")
-                else Text("Проверяем доступ…",Modifier.padding(vertical=8.dp),style=MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick=onOpen,shape=RoundedCornerShape(12.dp),contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),modifier=Modifier.testTag("friend_open_vk")) {
-                    Icon(FriendOpenIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Открыть в ВК")
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()) {
+                Box(Modifier.weight(1f),contentAlignment=Alignment.CenterStart) {
+                    if(problem!=null)FriendBadge(if(problem.code==MusicError.DENIED)"Музыка недоступна" else "Ошибка загрузки",true)
+                    else if(available)FriendBadge("Музыка доступна")
+                    else Text("Проверяем доступ…",Modifier.padding(vertical=6.dp),style=MaterialTheme.typography.bodySmall)
+                }
+                OutlinedButton(onClick=onOpen,shape=RoundedCornerShape(12.dp),
+                    contentPadding=PaddingValues(horizontal=9.dp,vertical=0.dp),modifier=Modifier.heightIn(min=36.dp).testTag("friend_open_vk")) {
+                    Icon(FriendOpenIcon,null,Modifier.size(16.dp));Spacer(Modifier.width(4.dp));Text("Открыть в ВК",style=MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -62,7 +66,7 @@ private fun FriendProfileHeader(user: MusicFriend,available: Boolean,problem: Fr
 private fun FriendTabs(state: FriendMusicState,onTab:(FriendMusicTab)->Unit) {
     Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface) {
         Row(Modifier.fillMaxWidth().padding(3.dp),horizontalArrangement=Arrangement.spacedBy(3.dp)) {
-            FriendMusicTab.entries.forEach{tab->
+            FriendMusicTab.entries.filter{it!=FriendMusicTab.COLLECTIONS||state.catalog?.lists?.any{list->list.kind==PlaylistKind.UNKNOWN}==true}.forEach{tab->
                 val selected=state.tab==tab
                 Surface(onClick={onTab(tab)},shape=RoundedCornerShape(15.dp),modifier=Modifier.weight(1f).testTag("friend_tab_${tab.name}"),
                     color=if(selected)MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -77,14 +81,14 @@ private fun FriendTabs(state: FriendMusicState,onTab:(FriendMusicTab)->Unit) {
     }
 }
 @Composable
-private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit,onOpen:(()->Unit)?=null) {
+private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit) {
     Surface(shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,modifier=Modifier.fillMaxWidth().testTag("friend_music_problem")) {
         Column(Modifier.padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Icon(if(problem.code==MusicError.DENIED)Icons.Default.Lock else Icons.Default.Info,null,Modifier.size(52.dp),tint=MaterialTheme.colorScheme.primary)
             Text(when(problem.code){MusicError.DENIED->"Доступ к музыке запрещён";MusicError.METHOD->"Раздел недоступен подключению";else->"Не удалось загрузить раздел"},
-                style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-            Text(problem.description,style=MaterialTheme.typography.bodyMedium)
-            if(onOpen!=null)Button(onClick=onOpen,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()){Icon(FriendOpenIcon,null);Spacer(Modifier.width(8.dp));Text("Открыть в ВК")}
+                style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth())
+            Text(problem.message,style=MaterialTheme.typography.bodyMedium,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().testTag("friend_problem_message"))
+            Text(problem.codeText,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().testTag("friend_problem_code"))
             TextButton(onClick=onRetry,modifier=Modifier.testTag("friend_retry")){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(6.dp));Text("Повторить")}
         }
     }
@@ -151,11 +155,11 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     }
     if(state.tab!=FriendMusicTab.TRACKS&&state.playlist==null) {
         if(state.busy&&state.catalog==null)item("friend_catalog_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Получаем подборки…")}
-        problem?.let{item("friend_catalog_problem"){FriendProblemCard(it,controller::refresh){onOpenVk(user)}}}
+        problem?.let{item("friend_catalog_problem"){FriendProblemCard(it,controller::refresh)}}
         val collections=state.collections()
-        if(state.catalog?.complete==true&&collections.isEmpty()&&problem==null)item("friend_collections_empty"){Text(if(state.tab==FriendMusicTab.ALBUMS)"Нет доступных альбомов" else "Нет доступных плейлистов")}
+        if(state.catalog?.complete==true&&collections.isEmpty()&&problem==null)item("friend_collections_empty"){Text(when(state.tab){FriendMusicTab.ALBUMS->"Нет доступных альбомов";FriendMusicTab.COLLECTIONS->"Нет подборок без типа";else->"Нет доступных плейлистов"})}
         val unknown=state.catalog?.lists?.count{it.kind==PlaylistKind.UNKNOWN}?:0
-        if(unknown>0)item("friend_unclassified"){Text("ВК не подтвердил тип некоторых подборок: $unknown. Они не включены в плейлисты или альбомы.",style=MaterialTheme.typography.bodySmall)}
+        if(unknown>0)item("friend_unclassified"){Text(if(state.tab==FriendMusicTab.COLLECTIONS)"ВК не подтвердил тип этих подборок. Они доступны для просмотра и скачивания." else "Подборки без подтверждённого типа: $unknown. Они доступны во вкладке «Подборки».",style=MaterialTheme.typography.bodySmall)}
         items(collections,key={"friend_collection_${it.key}"}){list->
             Surface(onClick={controller.playlist(list)},shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
                 enabled=!state.preparing,modifier=Modifier.fillMaxWidth().testTag("friend_collection_${list.owner}_${list.id}")) {
@@ -171,7 +175,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
         return
     }
     if(problem!=null&&state.page==null) {
-        item("friend_tracks_problem"){FriendProblemCard(problem,{state.playlist?.let(controller::playlist)?:controller.refresh()}){onOpenVk(user)}}
+        item("friend_tracks_problem"){FriendProblemCard(problem,{state.playlist?.let(controller::playlist)?:controller.refresh()})}
         return
     }
     item("friend_music_search"){FriendSearch(state.musicQuery,if(state.playlist==null)"Поиск по музыке" else "Поиск по трекам плейлиста","friend_music_search",controller::musicQuery)}
@@ -191,7 +195,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 }
             }else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).testTag("friend_download_all")) {
-                    Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else if(state.playlist.kind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист",maxLines=2,overflow=TextOverflow.Ellipsis)
+                    Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else when(state.playlist.kind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.UNKNOWN->"Скачать подборку";else->"Скачать плейлист"},maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
                 OutlinedButton(onClick=controller::selectMode,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.complete&&!state.busy,modifier=Modifier.weight(1f).testTag("friend_select")){Icon(FriendSelectIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Выбрать")}
             }
@@ -201,10 +205,12 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Text(if(page!=null)"Получено ${page.tracks.size} из ${page.count} треков" else "Получаем музыку…",style=MaterialTheme.typography.bodySmall)
             }
             if(!state.complete&&!state.busy&&problem==null)TextButton(onClick=controller::refresh){Text("Повторить загрузку")}
+            if(problem!=null&&page!=null&&!state.complete)Text("Получено ${page.tracks.size} из ${page.count} треков. Уже полученные записи показаны ниже.",
+                modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,style=MaterialTheme.typography.bodySmall)
             if(state.preparing) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Проверяем актуальный список перед скачиванием…",style=MaterialTheme.typography.bodySmall)}
         }
     }
-    problem?.let{item("friend_tracks_problem"){FriendProblemCard(it,{state.playlist?.let(controller::playlist)?:controller.refresh()}){onOpenVk(user)}}}
+    problem?.let{item("friend_tracks_problem"){FriendProblemCard(it,{state.playlist?.let(controller::playlist)?:controller.refresh()})}}
     state.message?.let{item("friend_message"){Text(it,style=MaterialTheme.typography.bodyMedium)}}
     if(queue.unfinished||queue.status in setOf("RUNNING","QUEUED"))item("friend_queue_progress") {
         Surface(onClick=onDownloads,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,modifier=Modifier.fillMaxWidth()) {
