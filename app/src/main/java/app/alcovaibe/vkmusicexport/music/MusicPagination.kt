@@ -28,7 +28,11 @@ internal object MusicPagination {
             currentCoroutineContext().ensureActive();if(++attempts>10000)break
             val page=fetch(offset,cursor)
             musicCheck(expected==null||page.count==expected,MusicError.LIBRARY_CHANGED);expected=page.count
-            if(page.lists.isEmpty()) {complete=offset==page.count;break}
+            if(page.lists.isEmpty()) {
+                val next=page.nextFrom
+                if(next!=null&&cursors.add(next)){cursor=next;continue}
+                complete=next==null&&offset==page.count;break
+            }
             if(!pages.add(page.lists.map{it.key}))break
             musicCheck(offset+page.lists.size<=page.count,MusicError.LIBRARY_CHANGED)
             page.lists.forEach{lists.putIfAbsent(it.key,it)};offset+=page.lists.size

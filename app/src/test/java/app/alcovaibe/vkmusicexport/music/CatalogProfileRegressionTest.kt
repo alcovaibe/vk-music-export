@@ -42,6 +42,11 @@ class CatalogProfileRegressionTest {
             else NativeCatalog(listOf(item(3,0)),3,nextFrom=null,cursorBased=true)
         })
         assertEquals(listOf(0 to null,2 to "next"),calls);assertEquals(3,result.lists.size);assertTrue(result.complete)
+        val afterEmpty=MusicPagination.catalogCursor({_,cursor->
+            if(cursor==null)NativeCatalog(emptyList(),1,nextFrom="after-empty",cursorBased=true)
+            else NativeCatalog(listOf(item(1,0)),1,cursorBased=true)
+        })
+        assertTrue(afterEmpty.complete);assertEquals(1,afterEmpty.lists.size)
         var n=0
         val stuck=MusicPagination.catalogCursor({_,_->n++;NativeCatalog(listOf(item(n,0)),3,nextFrom="same",cursorBased=true)})
         assertFalse(stuck.complete);assertEquals(2,stuck.lists.size)
