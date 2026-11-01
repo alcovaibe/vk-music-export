@@ -33,8 +33,8 @@ internal object PlaybackRuntime {
     private var generation=0
     internal fun publish(value: PlaybackState){mutable.value=value}
     internal fun take(id: String?)=pending?.takeIf{it.id==id}.also{if(it!=null)pending=null}
-    fun play(context: Context,entries: List<PlaybackEntry>,start: Int=0,position: Long=0) {
-        val selected=PlaybackLists.select(entries,start)?:return
+    fun play(context: Context,entries: List<PlaybackEntry>,start: Int=-1,position: Long=0) {
+        val selected=PlaybackLists.select(entries,if(start==-1)PlaybackLists.firstPlayable(entries)else start)?:return
         val app=context.applicationContext;val g=++generation
         expanded.value=true
         scope.launch {
@@ -81,10 +81,10 @@ class MusicPlaybackService : MediaSessionService() {
     private var refreshedIndex=-1
     private var loadingIndex=-1
     private var lastArtIndex=-1
+    private var queueOrder: List<Int> = emptyList()
     private val sessions by lazy{MusicSessions.get(this)}
     private val api by lazy{VkAudioClient(sessions=sessions)}
     private val covers by lazy{ArtworkLoader(api)}
-    internal var resolveForTest: (suspend(PlaybackEntry)->Uri)?=null
     override fun onCreate() {
         super.onCreate()
         player=ExoPlayer.Builder(this).build().apply {
@@ -105,7 +105,7 @@ class MusicPlaybackService : MediaSessionService() {
                 Futures.immediateFuture(emptyList())
         }).build()
         player.addListener(object: Player.Listener {
-            override fun onEvents(player: Player,events: Player.Events){publish()}
+            override fun onEvents(player: Player,events: Player.Events){publish(events.contains(Player.EVENT_TIMELINE_CHANGED)||events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED))}
             override fun onMediaItemTransition(mediaItem: MediaItem?,reason: Int) {
                 if(loadingIndex!=player.currentMediaItemIndex){loadingIndex=player.currentMediaItemIndex;refreshedIndex=-1;failure=null;loadCover()}
             }
@@ -121,12 +121,19 @@ class MusicPlaybackService : MediaSessionService() {
         })
         PlaybackRuntime.service=this
         scope.launch {
+            MaintenanceRuntime.status.collect {status->
+                if(status.busy&&entries.getOrNull(player.currentMediaItemIndex)?.offline==true&&player.playWhenReady) {
+                    player.pause();player.stop();failure="Обработка файлов приостановила прослушивание. После неё обнови сохранённое и запусти трек снова.";publish()
+                }
+            }
+        }
+        scope.launch {
             var tick=0
             while(isActive) {
                 publish()
                 if(++tick%4==0&&entries.getOrNull(player.currentMediaItemIndex)?.offline==false) {
                     val expected=readSession
-                    val valid=withContext(Dispatchers.IO){MusicAccessStore(this@MusicPlaybackService).read()?.readSessionId==expected}
+                    val valid=withContext(Dispatchers.IO){runCatching{MusicAccessStore(this@MusicPlaybackService).read()?.readSessionId==expected}.getOrDefault(false)}
                     if(!valid){player.pause();player.clearMediaItems();failure="Подключение ВК изменилось. Запусти музыку заново.";publish()}
                 }
                 delay(500)
@@ -143,7 +150,7 @@ class MusicPlaybackService : MediaSessionService() {
         return result
     }
     private fun start(request: PlaybackRuntime.Request) {
-        serial++;entries=request.selection.entries;readSession=request.session;failure=null;artwork=null;loadingIndex=-1;refreshedIndex=-1
+        serial++;queueOrder=emptyList();entries=request.selection.entries;readSession=request.session;failure=null;artwork=null;loadingIndex=-1;refreshedIndex=-1
         player.setMediaSources(sources(),request.selection.start,request.position)
         player.prepare();player.play();loadCover();publish()
     }
@@ -153,10 +160,12 @@ class MusicPlaybackService : MediaSessionService() {
             .setAlbumTitle(entry.track.album?.title).setDescription(entry.sourceLabel).build()).build()
     private fun sources(): List<MediaSource> {
         val expectedSession=readSession;val run=serial
+        val factory=PlaybackMediaSource.factory(this)
         return entries.mapIndexed {i,entry->
-            PlaybackMediaSource(item(i,entry),PlaybackMediaSource.factory(this)) {
+            PlaybackMediaSource(item(i,entry),factory) {
                 try {
-                    val uri=resolveForTest?.invoke(entry)?:if(entry.offline) {
+                    val uri=if(entry.offline) {
+                        musicCheck(!MaintenanceRuntime.busy,MusicError.BUSY)
                         withContext(Dispatchers.IO){SharedAudioStore(this@MusicPlaybackService).requireValid(checkNotNull(entry.saved))}
                         Uri.parse(checkNotNull(entry.saved).uri)
                     }else {
@@ -207,14 +216,23 @@ class MusicPlaybackService : MediaSessionService() {
             }
         }
     }
-    private fun publish() {
+    private fun publish(refreshOrder: Boolean=false) {
         if(!::player.isInitialized)return
+        if(refreshOrder||queueOrder.size!=entries.size) {
+            val timeline=player.currentTimeline
+            val ordered=mutableListOf<Int>();val seen=mutableSetOf<Int>()
+            var i=timeline.getFirstWindowIndex(player.shuffleModeEnabled)
+            while(i!=C.INDEX_UNSET&&i in entries.indices&&seen.add(i)) {
+                ordered.add(i);i=timeline.getNextWindowIndex(i,Player.REPEAT_MODE_OFF,player.shuffleModeEnabled)
+            }
+            queueOrder=if(ordered.size==entries.size)ordered else entries.indices.toList()
+        }
         val previous=PlaybackRuntime.state.value
         val duration=player.duration.takeIf{it!=C.TIME_UNSET&&it>0}?:entries.getOrNull(player.currentMediaItemIndex)?.track?.duration?.toLong()?.times(1000)?:0
         PlaybackRuntime.publish(previous.copy(entries=entries,index=player.currentMediaItemIndex.coerceAtLeast(0),playing=player.isPlaying,
-            buffering=player.playbackState==Player.STATE_BUFFERING,positionMs=player.currentPosition.coerceAtLeast(0),durationMs=duration,
+            buffering=player.playbackState==Player.STATE_BUFFERING,playWhenReady=player.playWhenReady,positionMs=player.currentPosition.coerceAtLeast(0),durationMs=duration,
             bufferedMs=player.bufferedPosition.coerceAtLeast(0),seekable=player.isCurrentMediaItemSeekable,shuffle=player.shuffleModeEnabled,
-            repeat=player.repeatMode,previous=player.hasPreviousMediaItem()||player.currentPosition>3000,next=player.hasNextMediaItem(),error=failure,artwork=artwork))
+            repeat=player.repeatMode,previous=player.hasPreviousMediaItem()||player.currentPosition>3000,next=player.hasNextMediaItem(),error=failure,artwork=artwork,order=queueOrder))
     }
     internal fun toggle() {failure=null;if(player.isPlaying||player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)player.pause()else{player.prepare();player.play()};publish()}
     internal fun playIndex(index: Int){if(index in entries.indices){failure=null;player.seekTo(index,0);player.prepare();player.play()}}

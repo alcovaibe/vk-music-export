@@ -1,6 +1,5 @@
 package app.alcovaibe.vkmusicexport.music
 
-import android.content.ClipData
 import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
@@ -273,13 +272,13 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Text("Файлы: ${localFiles.size}",style=MaterialTheme.typography.titleMedium)
                 Text("Копии остаются здесь после удаления музыки из ВК. Проверка целостности доступна в инструментах.",style=MaterialTheme.typography.bodySmall)
                 if(localError)Text("Не удалось прочитать список файлов. Повтори обновление.",color=MaterialTheme.colorScheme.error)
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick=model::refreshSavedLibrary,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),
-                        modifier=Modifier.weight(1f).testTag("refresh_saved_music")) {
+                        modifier=Modifier.weight(1f).fillMaxHeight().testTag("refresh_saved_music")) {
                         Icon(Icons.Default.Refresh,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Обновить сохранённое",maxLines=2)
                     }
-                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty(),shape=RoundedCornerShape(14.dp),
-                        contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),modifier=Modifier.weight(1f).testTag("play_saved_music")) {
+                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty()&&!state.busy,shape=RoundedCornerShape(14.dp),
+                        contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),modifier=Modifier.weight(1f).fillMaxHeight().testTag("play_saved_music")) {
                         Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2)
                     }
                 }
@@ -288,7 +287,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             itemsIndexed(localFiles,key={_,row->"saved_${row.file.uri}"}){i,entry->
                 val row=entry.file
                 Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.present},onOpen=if(entry.present)({openFile(row)})else null)
+                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.present},onOpen=if(entry.present&&!state.busy)({openFile(row)})else null)
                     if(!entry.present)Text("${row.displayName}: файл недоступен или размер изменился. Открой проверку сохранённых файлов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 }
             }

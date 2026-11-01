@@ -3,6 +3,7 @@ package app.alcovaibe.vkmusicexport.music
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,9 +71,9 @@ internal fun PlaybackMiniPlayer(state: PlaybackState,onOpen:()->Unit) {
                 Text(entry.track.displayTitle,style=MaterialTheme.typography.labelLarge,maxLines=1,overflow=TextOverflow.Ellipsis)
                 Text(entry.track.artist,style=MaterialTheme.typography.bodySmall,maxLines=1,overflow=TextOverflow.Ellipsis)
             }
-            if(state.buffering)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)
+            if(state.buffering&&state.playWhenReady)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)
             IconButton(onClick={PlaybackRuntime.toggle(context)},modifier=Modifier.testTag("mini_player_toggle")) {
-                Icon(if(state.playing||state.buffering)FriendPauseIcon else PlayerPlayIcon,if(state.playing||state.buffering)"Пауза" else "Продолжить")
+                Icon(if(state.playWhenReady&&state.error==null)FriendPauseIcon else PlayerPlayIcon,if(state.playWhenReady&&state.error==null)"Пауза" else "Продолжить")
             }
             IconButton(onClick=PlaybackRuntime::next,enabled=state.next){Icon(PlayerNextIcon,"Следующий трек")}
         }
@@ -122,17 +122,17 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                     }
                 }
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                    IconToggleButton(checked=state.shuffle,onCheckedChange={PlaybackRuntime.shuffle()},modifier=Modifier.testTag("player_shuffle")) {
+                    IconToggleButton(checked=state.shuffle,onCheckedChange={PlaybackRuntime.shuffle()},modifier=Modifier.background(if(state.shuffle)MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,CircleShape).testTag("player_shuffle")) {
                         Icon(PlayerShuffleIcon,if(state.shuffle)"Случайный порядок включён" else "Включить случайный порядок",
                             tint=if(state.shuffle)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick=PlaybackRuntime::previous,enabled=state.previous,modifier=Modifier.testTag("player_previous")){Icon(PlayerPreviousIcon,"Предыдущий трек",Modifier.size(30.dp))}
                     FilledIconButton(onClick={PlaybackRuntime.toggle(context)},enabled=current!=null,shape=CircleShape,modifier=Modifier.size(72.dp).testTag("player_toggle")) {
-                        if(state.buffering)CircularProgressIndicator(Modifier.size(32.dp),color=MaterialTheme.colorScheme.onPrimary,strokeWidth=2.dp)
-                        else Icon(if(state.playing)FriendPauseIcon else PlayerPlayIcon,if(state.playing)"Пауза" else "Воспроизвести",Modifier.size(35.dp))
+                        if(state.buffering&&state.playWhenReady)CircularProgressIndicator(Modifier.size(32.dp),color=MaterialTheme.colorScheme.onPrimary,strokeWidth=2.dp)
+                        else Icon(if(state.playWhenReady&&state.error==null)FriendPauseIcon else PlayerPlayIcon,if(state.playWhenReady&&state.error==null)"Пауза" else "Воспроизвести",Modifier.size(35.dp))
                     }
                     IconButton(onClick=PlaybackRuntime::next,enabled=state.next,modifier=Modifier.testTag("player_next")){Icon(PlayerNextIcon,"Следующий трек",Modifier.size(30.dp))}
-                    IconButton(onClick=PlaybackRuntime::repeat,modifier=Modifier.testTag("player_repeat")) {
+                    IconButton(onClick=PlaybackRuntime::repeat,modifier=Modifier.background(if(state.repeat!=0)MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,CircleShape).testTag("player_repeat")) {
                         Box(contentAlignment=Alignment.Center) {
                             Icon(PlayerRepeatIcon,when(state.repeat){1->"Повторять трек";2->"Повторять очередь";else->"Повтор выключен"},
                                 tint=if(state.repeat!=0)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -163,7 +163,8 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
             Text("Очередь воспроизведения",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
             Text(if(state.shuffle)"Случайный порядок" else "По порядку",color=MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=440.dp).testTag("playback_queue_list"),contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                itemsIndexed(state.entries,key={index,_->index}) {index,entry->
+                itemsIndexed(state.order.ifEmpty{state.entries.indices.toList()},key={_,index->index}) {_,index->
+                    val entry=state.entries[index]
                     Surface(onClick={PlaybackRuntime.service?.playIndex(index);queue=false},shape=RoundedCornerShape(14.dp),
                         color=if(index==state.index)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         modifier=Modifier.fillMaxWidth().testTag("playback_queue_$index")) {

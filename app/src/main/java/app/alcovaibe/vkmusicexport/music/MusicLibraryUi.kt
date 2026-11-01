@@ -172,7 +172,7 @@ internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String
 internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=null,saved: PublishedAudio?=null,downloading: Boolean=false,
     enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
     var menu by remember{mutableStateOf(false)}
-    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag)) {
+    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(onOpen!=null)Modifier.clickable(onClick=onOpen)else Modifier)) {
         Row(Modifier.padding(start=12.dp,end=4.dp,top=10.dp,bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
@@ -195,7 +195,7 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
             if(onDownload!=null||onRemove!=null||onOpen!=null)Box {
                 IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком")}
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                    onOpen?.let{DropdownMenuItem(text={Text("Открыть файл")},onClick={menu=false;it()})}
+                    onOpen?.let{DropdownMenuItem(text={Text("Воспроизвести файл")},onClick={menu=false;it()})}
                     onDownload?.let{DropdownMenuItem(enabled=enabled,text={Text("Скачать этот трек")},onClick={menu=false;it()})}
                     onRemove?.let{DropdownMenuItem(enabled=enabled,text={Text("Удалить из музыки ВК…")},modifier=Modifier.testTag("remove_from_vk"),onClick={menu=false;it()})}
                 }

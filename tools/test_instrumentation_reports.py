@@ -35,10 +35,11 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest" name="job{i}"/>' for i in range(4))
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.ArtistFailureDeviceTest" name="diagnostics"/>'
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest" name="friends{i}"/>' for i in range(6))
-        return f'<testsuites tests="130" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.PlaybackDeviceTest" name="playback{i}"/>' for i in range(4))
+        return f'<testsuites tests="134" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 130)
+        self.assertEqual(self.check([self.successful_report()], '0'), 134)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -108,6 +109,11 @@ class InstrumentationReportTest(unittest.TestCase):
         report = self.successful_report().replace('app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest', 'OtherTest')
         with self.assertRaisesRegex(ValueError, 'Required background scan'):
             self.check([report])
+
+
+    def test_missing_playback_coverage_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Required background playback'):
+            self.check([self.successful_report().replace('app.alcovaibe.vkmusicexport.PlaybackDeviceTest', 'OtherTest')])
 
 
 if __name__ == '__main__':

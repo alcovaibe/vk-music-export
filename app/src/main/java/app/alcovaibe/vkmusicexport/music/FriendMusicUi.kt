@@ -192,11 +192,11 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Button(onClick={controller.download(state.selection)},shape=RoundedCornerShape(14.dp),enabled=ready&&state.selection.isNotEmpty(),modifier=Modifier.fillMaxWidth().testTag("friend_download_selected")) {
                     Icon(DownloadIcon,null);Spacer(Modifier.width(8.dp));Text("Скачать выбранное")
                 }
-            }else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).testTag("friend_download_all")) {
+            }else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_download_all")) {
                     Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else when(state.playlist.kind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.UNKNOWN->"Скачать подборку";else->"Скачать плейлист"},maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
-                FilledTonalButton(onClick={onPlay(0)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.complete&&!state.busy&&page?.tracks?.isNotEmpty()==true,modifier=Modifier.weight(1f).testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
+                FilledTonalButton(onClick={onPlay(-1)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.complete&&!state.busy&&page?.tracks?.any{!it.restricted&&it.duration>0&&it.metadataError==null}==true,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
             }
             if(!state.complete&&state.busy) {
                 if(page!=null&&page.count>0)LinearProgressIndicator(progress={page.tracks.size.toFloat()/page.count},modifier=Modifier.fillMaxWidth())
