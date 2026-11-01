@@ -26,7 +26,7 @@ internal object DuplicateCheckRuntime {
     fun initialize(context: Context){task(context).restore()}
     fun forget(context: Context){
         musicCheck(!transferring,MusicError.BUSY)
-        context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
+        BackgroundTransport.stopDuplicates(context)
         task(context).discard()
         context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
@@ -38,12 +38,12 @@ internal object DuplicateCheckRuntime {
                 id=task(context).prepare()
             }
             val result=withContext(Dispatchers.Main) {
-                context.getSystemService(JobScheduler::class.java).schedule(job(context,id!!))
+                if(BackgroundTransport.startDuplicates(context,id!!)) JobScheduler.RESULT_SUCCESS else JobScheduler.RESULT_FAILURE
             }
             if(result!=JobScheduler.RESULT_SUCCESS)task(context).pause(id!!,"Android не запустил проверку. Результаты сохранены; повтори из приложения.")
         }catch(e: Exception){
             id?.let{value->withContext(NonCancellable+Dispatchers.IO){
-                context.getSystemService(JobScheduler::class.java).cancel(JOB_ID);task(context).pause(value)
+                BackgroundTransport.stopDuplicates(context);task(context).pause(value)
             }}
             throw e
         }
@@ -68,7 +68,7 @@ internal object DuplicateCheckRuntime {
     suspend fun pause(context: Context,id: String) {
         if(mutable.value.scanId!=id||!mutable.value.busy)return
         task(context).pause(id)
-        context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
+        BackgroundTransport.stopDuplicates(context)
         context.getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,notification(context,state.value))
     }
     fun notification(context: Context,s: DuplicatesState): Notification {
@@ -124,7 +124,7 @@ class DuplicateCheckJob: JobService() {
             run.stopped.set(true);run.work?.cancel()
             CoroutineScope(SupervisorJob()+Dispatchers.IO).launch{runCatching{DuplicateCheckRuntime.interrupted(this@DuplicateCheckJob,run.id)}}
         }
-        Diagnostics.event("audio_duplicates_system_stop",mapOf("reason" to params.stopReason));return false
+        Diagnostics.event("audio_duplicates_system_stop",mapOf("reason" to if(android.os.Build.VERSION.SDK_INT>=31) params.stopReason else -1));return false
     }
     override fun onDestroy(){
         running?.let{run->
