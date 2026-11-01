@@ -19,8 +19,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import okhttp3.*
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -157,7 +156,7 @@ class PlaybackDeviceTest {
         var player: ExoPlayer?=null
         try {
             ui.runOnUiThread {
-                val factory=DefaultMediaSourceFactory(app).setDataSourceFactory(DefaultDataSource.Factory(app,OkHttpDataSource.Factory(client)))
+                val factory=DefaultMediaSourceFactory(app).setDataSourceFactory(PlaybackDataSources.online(client))
                 val item=MediaItem.Builder().setMediaId("opaque-test-id").setUri("vkmusic://test/1").build()
                 val source=PlaybackMediaSource(item,factory){Uri.parse("https://audio.userapi.com/index.m3u8")}
                 assertTrue(requested.isEmpty())
@@ -181,6 +180,16 @@ class PlaybackDeviceTest {
                 playing.pause();playing.seekTo(500)
             }
         }finally {ui.runOnUiThread{player?.release()}}
+    }
+
+    @Test fun onlineResourcesCannotOpenLocalFilesContentProvidersOrInlineData()=fixture {rows->
+        val factory=PlaybackDataSources.online()
+        for(address in listOf(rows.first().saved!!.uri,"file:///data/local/tmp/private.mp3","data:audio/mpeg;base64,AAAA","http://audio.userapi.com/song.mp3")) {
+            val source=factory.createDataSource()
+            try{source.open(DataSpec(Uri.parse(address)));fail("A non-HTTPS media resource was opened")}
+            catch(e: java.io.IOException){assertEquals("PLAYBACK_ADDRESS",e.message)}
+            finally{source.close()}
+        }
     }
 
 }

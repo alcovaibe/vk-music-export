@@ -7,7 +7,9 @@ import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.ContentDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.source.*
@@ -31,6 +33,28 @@ internal object PlaybackNetwork {
         }
         throw IOException("PLAYBACK_REDIRECT_LIMIT")
     }.build()
+}
+
+/** HTTP validation also applies to manifests' file/content/data URIs, before any delegate can open them. */
+@androidx.annotation.OptIn(UnstableApi::class)
+internal object PlaybackDataSources {
+    private class Checked(private val delegate: DataSource,private val validate: (Uri)->Unit): DataSource by delegate {
+        override fun open(dataSpec: DataSpec): Long {
+            try{validate(dataSpec.uri)}catch(_: Exception){throw IOException("PLAYBACK_ADDRESS")}
+            return delegate.open(dataSpec)
+        }
+    }
+    fun online(client: okhttp3.OkHttpClient=PlaybackNetwork.client()): DataSource.Factory {
+        val remote=OkHttpDataSource.Factory(client).setUserAgent("VK-Music-Export-Player/1")
+        return DataSource.Factory{Checked(remote.createDataSource()){MediaAddress.require(it.toString());Unit}}
+    }
+    fun offline(context: Context)=DataSource.Factory {
+        Checked(ContentDataSource(context)) {u->
+            musicCheck(u.scheme=="content"&&u.authority=="media"&&u.query==null&&u.fragment==null&&
+                u.pathSegments.size==4&&u.pathSegments.take(3)==listOf("external_primary","audio","media")&&
+                (u.lastPathSegment?.toLongOrNull()?:0)>0,MusicError.STORAGE)
+        }
+    }
 }
 
 /** Resolve only when the player prepares this item, on IO, with a fresh checked read session. */
@@ -91,7 +115,7 @@ internal class PlaybackMediaSource(private var publicItem: MediaItem,private val
         super.releaseSourceInternal();child=null;failure=null;lastTimeline=null
     }
     companion object {
-        fun factory(context: Context)=DefaultMediaSourceFactory(context).setDataSourceFactory(
-            DefaultDataSource.Factory(context,OkHttpDataSource.Factory(PlaybackNetwork.client()).setUserAgent("VK-Music-Export-Player/1")))
+        fun factory(context: Context,offline: Boolean=false)=DefaultMediaSourceFactory(context).setDataSourceFactory(
+            if(offline)PlaybackDataSources.offline(context)else PlaybackDataSources.online())
     }
 }

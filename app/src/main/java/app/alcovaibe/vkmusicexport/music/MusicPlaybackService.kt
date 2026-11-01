@@ -160,9 +160,10 @@ class MusicPlaybackService : MediaSessionService() {
             .setAlbumTitle(entry.track.album?.title).setDescription(entry.sourceLabel).build()).build()
     private fun sources(): List<MediaSource> {
         val expectedSession=readSession;val run=serial
-        val factory=PlaybackMediaSource.factory(this)
+        val onlineFactory by lazy{PlaybackMediaSource.factory(this)}
+        val offlineFactory by lazy{PlaybackMediaSource.factory(this,offline=true)}
         return entries.mapIndexed {i,entry->
-            PlaybackMediaSource(item(i,entry),factory) {
+            PlaybackMediaSource(item(i,entry),if(entry.offline)offlineFactory else onlineFactory) {
                 try {
                     val uri=if(entry.offline) {
                         musicCheck(!MaintenanceRuntime.busy,MusicError.BUSY)
