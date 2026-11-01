@@ -49,7 +49,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 @Composable
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
-    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,content: LazyListScope.()->Unit) {
+    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,content: LazyListScope.()->Unit) {
     BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
@@ -66,9 +66,9 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
                 icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},modifier=Modifier.testTag("music_nav_${item.name}"),
                 colors=NavigationBarItemDefaults.colors(indicatorColor=MaterialTheme.colorScheme.secondaryContainer))}
         }}) {padding->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),
+        key(listIdentity) {LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=24.dp),
-            verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)
+            verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)}
     }
 }
 

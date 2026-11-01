@@ -75,7 +75,13 @@ class FriendsMusicDeviceTest {
     @Test fun searchProfilesSelectionAndPlaylistTabsFollowTheConceptAndKeepAlbumsSeparate()=fixture {model,_->
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
         ui.waitUntil(15000){model.friends.state.value.friendsComplete}
-        shot("friends-list")
+        ui.onNodeWithText("Друзей: 8").assertExists();shot("friends-list")
+        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_41"))
+        ui.onNodeWithTag("friend_41").performClick()
+        ui.waitUntil(15000){!model.friends.state.value.busy&&model.friends.state.value.tracksComplete}
+        ui.onNodeWithTag("friend_profile_header").assertIsDisplayed()
+        ui.onNodeWithContentDescription("Назад").performClick()
+        ui.onNodeWithTag("friends_search").assertIsDisplayed()
         ui.onNodeWithTag("friends_search").performTextInput("алина")
         ui.onNodeWithTag("friend_34").assertIsDisplayed();ui.onNodeWithTag("friend_35").assertDoesNotExist();shot("friends-search")
         ui.onNodeWithTag("friend_34").performClick()
