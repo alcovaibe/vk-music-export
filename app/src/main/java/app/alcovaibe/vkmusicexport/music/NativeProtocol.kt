@@ -32,6 +32,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 }
 internal enum class MusicFailureKind { DNS, CONNECT, SOCKET, TIMEOUT, TLS, PROTOCOL, EOF, IO, MEDIA_PARSE, OTHER }
 internal open class MusicFailure(val code: MusicError,val remoteCode: Int? = null,val kind: MusicFailureKind? = null,open val httpStatus: Int? = null) : Exception(code.name)
+internal class NativeDataFailure(val field: String,val position: Int?=null): MusicFailure(MusicError.RESPONSE) {
+    fun atOffset(offset: Int)=NativeDataFailure(field,position?.let{offset+it})
+}
 internal fun musicCheck(ok: Boolean, error: MusicError = MusicError.RESPONSE) { if (!ok) throw MusicFailure(error) }
 /** Not a data class: accidental toString must not reveal a credential. */
 internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: Long?=null,
@@ -46,20 +49,28 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
 
 @Serializable internal data class MusicAlbum(val id: String, val title: String)
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
-    val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null) {
+    val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null) {
     val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
         if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
     }?:title
 }
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
-    val kind: PlaylistKind=PlaylistKind.UNKNOWN,val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null) {
-    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo)
+    val kind: PlaylistKind=when(nativeType){0->PlaylistKind.PLAYLIST;1->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN},val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null,val typeConflict: Boolean=false) {
+    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo,typeConflict)
+    fun reconciled(other: NativePlaylist): NativePlaylist {
+        val conflict=typeConflict||other.typeConflict||(kind!=PlaylistKind.UNKNOWN&&other.kind!=PlaylistKind.UNKNOWN&&kind!=other.kind)
+        val resolved=if(conflict)PlaylistKind.UNKNOWN else if(kind==PlaylistKind.UNKNOWN)other.kind else kind
+        return NativePlaylist(owner,id,title,maxOf(count,other.count),accessKey?:other.accessKey,originalOwner?:other.originalOwner,originalId?:other.originalId,
+            nativeType,resolved,following?:other.following,deleted||other.deleted,photo?:other.photo,conflict)
+    }
     val key get() = "playlist:$owner:$id"
     override fun toString() = "NativePlaylist([metadata omitted])"
 }
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
-internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int,val complete: Boolean=lists.size==count)
+internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int,val complete: Boolean=lists.size==count,val nextFrom: String?=null,val cursorBased: Boolean=false) {
+    override fun toString()="NativeCatalog([metadata omitted])"
+}
 internal data class NativeProbe(val owner: Long, val library: NativePage)
 @Serializable internal enum class PlaylistKind(val folder: String) { PLAYLIST("Плейлисты"), ALBUM("Альбомы"), UNKNOWN("Подборки") }
 
@@ -104,45 +115,69 @@ internal object NativeProtocol {
     }
     private fun long(o: JsonObject, key: String): Long {
         val p = o[key] as? JsonPrimitive
-        musicCheck(p != null && !p.isString)
-        return p!!.longOrNull ?: throw MusicFailure(MusicError.RESPONSE)
+        if(p==null||p.isString)throw NativeDataFailure(key)
+        return p.longOrNull ?: throw NativeDataFailure(key)
     }
     private fun count(o: JsonObject): Int {
-        val n = long(o, "count"); musicCheck(n in 0..1_000_000); return n.toInt()
+        val n = long(o, "count"); if(n !in 0..1_000_000)throw NativeDataFailure("count"); return n.toInt()
     }
     private fun text(o: JsonObject, key: String): String {
-        val p = o[key] as? JsonPrimitive; musicCheck(p?.isString == true)
-        val value = p!!.content
-        musicCheck(value.isNotBlank() && value.length <= 500 && value.none { it < ' ' || it == '\u007f' })
-        return value.trim()
+        val p = o[key] as? JsonPrimitive
+        if(p?.isString!=true)throw NativeDataFailure(key)
+        val value = p.content.replace(Regex("[\\r\\n\\t]+")," ").trim()
+        if(value.isBlank()||value.length>500||value.any{it<' '||it=='\u007f'})throw NativeDataFailure(key)
+        return value
     }
     fun owner(response: JsonElement): Long = parse {
         val a = response as? JsonArray; musicCheck(a?.size == 1)
         val id = long(a!![0].jsonObject, "id"); musicCheck(id > 0); return id
     }
-    private fun track(o: JsonObject): NativeTrack {
+    private fun track(o: JsonObject,warning:(String)->Unit={}): NativeTrack {
         val owner = long(o, "owner_id"); val id = long(o, "id")
-        musicCheck(owner != 0L && id > 0)
-        val duration = long(o, "duration"); musicCheck(duration in 0..Int.MAX_VALUE.toLong())
-        val album = (o["album"] as? JsonObject)?.let {
-            val albumId=long(it,"id");musicCheck(albumId>0)
-            val albumOwner=(it["owner_id"] as? JsonPrimitive)?.longOrNull
-            MusicAlbum(if(albumOwner==null)"album:$albumId" else "${albumOwner}_$albumId",text(it,"title"))
+        if(owner==0L)throw NativeDataFailure("owner_id")
+        if(id<=0)throw NativeDataFailure("id")
+        val duration = long(o, "duration"); if(duration !in 0..Int.MAX_VALUE.toLong())throw NativeDataFailure("duration")
+        val albumValue=o["album"]?.takeUnless{it is JsonNull}
+        val album=albumValue?.let { raw->
+            // An incomplete optional release descriptor must not discard the audio or its position.
+            try {
+                val a=raw as? JsonObject?:throw NativeDataFailure("album")
+                val albumId=long(a,"id");if(albumId<=0)throw NativeDataFailure("album.id")
+                val albumOwner=(a["owner_id"] as? JsonPrimitive)?.longOrNull?.takeIf{it!=0L}
+                MusicAlbum(if(albumOwner==null)"album:$albumId" else "${albumOwner}_$albumId",text(a,"title"))
+            }catch(_: MusicFailure){warning("album");null}
         }
         // URL availability is a separate fact; never filter the position out of the library.
-        val restricted = o["is_restricted"]?.jsonPrimitive?.let { it.booleanOrNull == true || it.intOrNull == 1 } ?: false
+        val restriction=o["is_restricted"]?.takeUnless{it is JsonNull}
+        val restricted=when(restriction) {
+            null->false
+            is JsonPrimitive->restriction.booleanOrNull?:when(restriction.intOrNull){0->false;1->true;else->throw NativeDataFailure("is_restricted")}
+            else->throw NativeDataFailure("is_restricted")
+        }
         val subtitle=o["subtitle"]?.takeUnless{it is JsonNull}?.let {
-            val p=it as? JsonPrimitive;musicCheck(p?.isString==true)
-            musicCheck(p!!.content.length<=500&&p.content.none{c->c<' '||c=='\u007f'})
+            val p=it as? JsonPrimitive;if(p?.isString!=true)throw NativeDataFailure("subtitle")
+            if(p.content.length>500||p.content.any{c->c<' '||c=='\u007f'})throw NativeDataFailure("subtitle")
             if(p.content.isBlank())null else text(o,"subtitle")
         }
         return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(), restricted, album,subtitle)
     }
-    fun page(response: JsonElement): NativePage = parse {
+    fun page(response: JsonElement,warning:(String,Int)->Unit={_,_->}): NativePage = parse {
         val o = response as? JsonObject ?: throw MusicFailure(MusicError.RESPONSE)
         val total = count(o); val items = o["items"] as? JsonArray ?: throw MusicFailure(MusicError.RESPONSE)
         musicCheck(items.size <= LIMIT && items.size <= total)
-        return NativePage(items.map { track(it.jsonObject) }, total)
+        return NativePage(items.mapIndexed { index,row->
+            try{track(row as? JsonObject?:throw NativeDataFailure("items")){warning(it,index+1)}}
+            catch(e: NativeDataFailure){
+                val o=row as? JsonObject?:throw NativeDataFailure("items",index+1)
+                // Keep a known VK identity and its original position. Never invent an ID or export guessed metadata.
+                val owner=try{long(o,"owner_id").also{if(it==0L)throw NativeDataFailure("owner_id")}}catch(f: NativeDataFailure){throw NativeDataFailure(f.field,index+1)}
+                val id=try{long(o,"id").also{if(it<=0)throw NativeDataFailure("id")}}catch(f: NativeDataFailure){throw NativeDataFailure(f.field,index+1)}
+                warning(e.field,index+1)
+                val duration=(o["duration"] as? JsonPrimitive)?.takeIf{!it.isString}?.longOrNull?.takeIf{it in 0..Int.MAX_VALUE.toLong()}?.toInt()?:0
+                NativeTrack("${owner}_$id",runCatching{text(o,"title")}.getOrDefault("Запись с ошибкой данных"),
+                    runCatching{text(o,"artist")}.getOrDefault("Описание недоступно"),duration,restricted=true,metadataError=e.field)
+            }
+        }, total)
     }
     fun catalog(response: JsonElement): NativeCatalog = parse {
         val o = response as? JsonObject ?: throw MusicFailure(MusicError.RESPONSE)
@@ -151,19 +186,34 @@ internal object NativeProtocol {
         val lists = items.map { e ->
             val p = e.jsonObject; val owner = long(p,"owner_id"); val id = long(p,"id")
             musicCheck(owner != 0L && id > 0)
-            val accessKey = (p["access_key"] as? JsonPrimitive)?.content?.also {
+            val accessKey = (p["access_key"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.also {
                 musicCheck(it.length <= 512 && it.all { c -> c.code in 33..126 })
             }
             val original = p["original"] as? JsonObject
+            val originalOwner=(original?.get("owner_id") as? JsonPrimitive)?.longOrNull?.takeIf{it!=0L}
+            val originalId=((original?.get("playlist_id")?:original?.get("id")) as? JsonPrimitive)?.longOrNull?.takeIf{it>0}
+            val explicitKind=when((p["type"] as? JsonPrimitive)?.content) {
+                "album","1"->PlaylistKind.ALBUM;"playlist","0"->PlaylistKind.PLAYLIST;else->PlaylistKind.UNKNOWN
+            }
+            val releaseKind=when((p["album_type"] as? JsonPrimitive)?.content) {
+                "album","single","ep"->PlaylistKind.ALBUM;"collection"->PlaylistKind.PLAYLIST;else->PlaylistKind.UNKNOWN
+            }
+            val conflict=explicitKind!=PlaylistKind.UNKNOWN&&releaseKind!=PlaylistKind.UNKNOWN&&explicitKind!=releaseKind
+            val kind=when {
+                conflict->PlaylistKind.UNKNOWN
+                explicitKind!=PlaylistKind.UNKNOWN->explicitKind
+                else->releaseKind
+            }
             NativePlaylist(owner,id,text(p,"title"),count(p),accessKey,
-                original?.let { long(it,"owner_id") }, original?.let { long(it,"playlist_id") },
-                (p["type"] as? JsonPrimitive)?.intOrNull,
-                when((p["type"] as? JsonPrimitive)?.takeIf{it.isString}?.content) {
-                    "album"->PlaylistKind.ALBUM;"playlist"->PlaylistKind.PLAYLIST
-                    else->if((p["album_type"] as? JsonPrimitive)?.content in setOf("album","single","ep"))PlaylistKind.ALBUM else PlaylistKind.UNKNOWN
-                },flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]))
+                originalOwner.takeIf{originalId!=null}, originalId.takeIf{originalOwner!=null},
+                (p["type"] as? JsonPrimitive)?.intOrNull,kind,
+                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"]),conflict)
         }
-        return NativeCatalog(lists,total)
+        val cursorValue=o["next_from"]
+        if(cursorValue!=null&&cursorValue !is JsonNull&&(cursorValue !is JsonPrimitive||!cursorValue.isString))throw NativeDataFailure("next_from")
+        val next=(cursorValue as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotEmpty()}
+        if(next!=null&&(next.length>8192||next.any{it<' '||it=='\u007f'}))throw NativeDataFailure("next_from")
+        return NativeCatalog(lists,total,nextFrom=next,cursorBased="next_from" in o)
     }
     private fun flag(o: JsonObject,key: String): Boolean? = (o[key] as? JsonPrimitive)?.let{it.booleanOrNull?:it.intOrNull?.let{n->when(n){0->false;1->true;else->null}}}
     private fun artworkMatch(o: JsonObject): ArtworkMatch {

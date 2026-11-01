@@ -274,7 +274,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             AudioCompleteness.matchesCatalogue(before.durationMs,task.track.duration,before.track.duration),MusicError.INCOMPLETE)
         // done() atomically records this reference and its queue counters. A crash here
         // leaves the original record available for the next attempt, with no file writes.
-        before.copy(taskKey=task.key,track=if(task.track.duration>0)task.track else task.track.copy(duration=before.track.duration),
+        before.copy(taskKey=task.key,track=if(task.track.metadataError!=null)before.track else if(task.track.duration>0)task.track else task.track.copy(duration=before.track.duration),
             source=task.source,occurrence=task.occurrence)
     }
     @Synchronized fun savedLibraryCopies(track: NativeTrack,owner: Long=0): List<PublishedAudio> = readableDatabase.rawQuery(

@@ -235,7 +235,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         title=when(destination) {
             MusicDestination.SAVED->"Сохранённое"
             MusicDestination.DOWNLOADS->"Загрузки"
-            MusicDestination.FRIENDS->if(friendState.playlist!=null)if(friendState.playlist?.kind==PlaylistKind.ALBUM)"Альбом" else "Плейлист" else if(friendState.user!=null)"Профиль друга" else "Друзья"
+            MusicDestination.FRIENDS->if(friendState.playlist!=null)when(friendState.playlist?.kind){PlaylistKind.ALBUM->"Альбом";PlaylistKind.UNKNOWN->"Подборка";else->"Плейлист"} else if(friendState.user!=null)"Профиль друга" else "Друзья"
             else->if(category==LibraryCategory.ARTISTS)artists.album?.title?:artists.selected?.name?:"Мои исполнители" else state.selected?.title?:"Библиотека"
         },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         prominentTitle=destination==MusicDestination.FRIENDS&&friendState.user==null,

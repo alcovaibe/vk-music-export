@@ -23,6 +23,12 @@ internal interface MusicApi {
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
     suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog? = null
+    suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int,startFrom: String?): NativeCatalog {
+        musicCheck(startFrom==null,MusicError.INCOMPLETE);return catalogPage(access,owner,offset)
+    }
+    suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int,startFrom: String?): NativeCatalog? {
+        musicCheck(startFrom==null,MusicError.INCOMPLETE);return albumCatalogPage(access,owner,offset)
+    }
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
     suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack): Unit = throw MusicFailure(MusicError.METHOD)
     suspend fun artwork(access: MusicAccess,track: NativeTrack): String? = null
@@ -150,24 +156,40 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     }
     override suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
         musicCheck(offset in 0..1_000_000)
-        return NativeProtocol.page(request(access,"audio.get",mapOf("owner_id" to owner.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+        return trackPage(request(access,"audio.get",mapOf("owner_id" to owner.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())),offset)
     }
     override suspend fun catalog(access: MusicAccess, owner: Long)=catalogPage(access,owner,0)
-    override suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
+    override suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int)=catalogPage(access,owner,offset,null)
+    override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int)=albumCatalogPage(access,owner,offset,null)
+    override suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int,startFrom: String?)=catalogPageFiltered(access,owner,offset,startFrom,false)
+    override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int,startFrom: String?)=catalogPageFiltered(access,owner,offset,startFrom,true)
+    private suspend fun catalogPageFiltered(access: MusicAccess,owner: Long,offset: Int,startFrom: String?,albums: Boolean): NativeCatalog {
         musicCheck(offset in 0..1_000_000)
-        return NativeProtocol.catalog(request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"filters" to "all","count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+        val fields=mutableMapOf("owner_id" to owner.toString(),"count" to NativeProtocol.LIMIT.toString())
+        // The full list is the default; some clients ignore an explicit filters=all.
+        if(albums)fields["filters"]="albums"
+        if(startFrom!=null)fields["start_from"]=startFrom else fields["offset"]=offset.toString()
+        val response=request(access,"audio.getPlaylists",fields)
+        return decoded("audio.getPlaylists",offset){NativeProtocol.catalog(response)}
     }
-    override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
-        musicCheck(offset in 0..1_000_000)
-        return NativeProtocol.catalog(request(access,"audio.getPlaylists",mapOf("owner_id" to owner.toString(),"filters" to "albums",
-            "count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))
+    private fun <T> decoded(method: String,offset: Int,read:()->T): T = try{read()}catch(e: NativeDataFailure) {
+        val failure=e.atOffset(offset)
+        observe("native_music_parse_failure",mapOf("method" to method,"offset" to offset,"field" to failure.field,"position" to failure.position))
+        throw failure
+    }catch(e: MusicFailure) {
+        if(e.code!=MusicError.RESPONSE)throw e
+        observe("native_music_parse_failure",mapOf("method" to method,"offset" to offset,"field" to "response"))
+        throw NativeDataFailure("response")
     }
+    private fun trackPage(response: JsonElement,offset: Int)=decoded("audio.get",offset){NativeProtocol.page(response){field,index->
+        observe("native_music_record_metadata",mapOf("incomplete" to (field!="album"),"method" to "audio.get","offset" to offset,"field" to field,"position" to offset+index))
+    }}
     override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
     override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
         musicCheck(offset in 0..1_000_000)
         val params = mutableMapOf("owner_id" to list.owner.toString(),"playlist_id" to list.id.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())
         list.accessKey?.let {params["access_key"]=it}
-        return NativeProtocol.page(request(access,"audio.get",params))
+        return trackPage(request(access,"audio.get",params),offset)
     }
     override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack) {
         val id=LibraryRemovalProtocol.audioId(owner,track)
