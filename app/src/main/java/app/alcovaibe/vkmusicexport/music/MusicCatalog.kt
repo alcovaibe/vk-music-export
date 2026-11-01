@@ -19,9 +19,9 @@ internal object MusicCatalog {
         }
         val albums=first?.let{MusicPagination.catalogCursor({offset,cursor->guard();if(offset==0&&cursor==null)it else api.albumCatalogPage(access,owner,offset,cursor)?:throw MusicFailure(MusicError.INCOMPLETE)})}
         val merged=linkedMapOf<String,NativePlaylist>()
-        (all.lists+albums?.lists.orEmpty()).forEach{merged.putIfAbsent(it.key,it)}
+        (all.lists+albums?.lists.orEmpty()).forEach{list->merged[list.key]=merged[list.key]?.reconciled(list)?:list}
         // A filter response may be ignored by VK. Never let it overrule explicit item metadata.
-        val filterConfirmed=albums?.complete==true&&albums.lists.none{it.kind==PlaylistKind.PLAYLIST}&&
+        val filterConfirmed=all.complete&&albums?.complete==true&&albums.lists.none{it.kind==PlaylistKind.PLAYLIST}&&
             albums.lists.map{it.key}.toSet()!=all.lists.map{it.key}.toSet()
         val albumKeys=if(filterConfirmed)albums!!.lists.flatMap{listOf(it.key)+listOfNotNull(it.originalOwner?.let{o->it.originalId?.let{i->"playlist:$o:$i"}})}.toSet() else emptySet()
         val current=merged.values.filter(::eligible).map{list->

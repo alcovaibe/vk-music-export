@@ -182,7 +182,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         throw NativeDataFailure("response")
     }
     private fun trackPage(response: JsonElement,offset: Int)=decoded("audio.get",offset){NativeProtocol.page(response){field,index->
-        observe("native_music_optional_metadata",mapOf("method" to "audio.get","offset" to offset,"field" to field,"position" to offset+index))
+        observe("native_music_record_metadata",mapOf("incomplete" to (field!="album"),"method" to "audio.get","offset" to offset,"field" to field,"position" to offset+index))
     }}
     override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
     override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {

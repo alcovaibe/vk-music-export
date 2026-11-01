@@ -59,8 +59,21 @@ class CatalogProfileRegressionTest {
         val rows=NativeProtocol.page(json("""{"count":2,"items":[{"owner_id":12,"id":1,"title":"One","artist":"Artist","duration":1,"album":{"id":0}},{"owner_id":12,"id":2,"title":"Two\nLive","artist":"Artist","duration":2,"album":{"thumb":{}}}]}""")){f,i->warnings.add(f to i)}
         assertEquals(listOf("12_1","12_2"),rows.tracks.map{it.id});assertTrue(rows.tracks.all{it.album==null})
         assertEquals("Two Live",rows.tracks[1].title);assertEquals(listOf("album" to 1,"album" to 2),warnings)
-        try {NativeProtocol.page(json("""{"count":1,"items":[{"owner_id":12,"id":3,"title":"PRIVATE","artist":"SECRET","duration":{}}]}"""));fail("Required metadata must not be guessed")}
-        catch(e: NativeDataFailure){assertEquals("duration",e.field);assertEquals(1,e.position);assertEquals(201,e.atOffset(200).position);assertFalse(e.toString().contains("SECRET"))}
+        val partial=NativeProtocol.page(json("""{"count":2,"items":[{"owner_id":12,"id":3,"title":"Known title","artist":"Artist","duration":{}},{"owner_id":12,"id":4,"title":"Next","artist":"Artist","duration":4}]}"""))
+        assertEquals(listOf("12_3","12_4"),partial.tracks.map{it.id})
+        assertEquals("duration",partial.tracks[0].metadataError);assertTrue(partial.tracks[0].restricted)
+        assertFalse(partial.tracks[1].restricted);assertNull(partial.tracks[1].metadataError)
+        try {NativeProtocol.page(json("""{"count":1,"items":[{"owner_id":12,"id":{},"title":"PRIVATE","artist":"SECRET","duration":1}]}"""));fail("A missing identity must not be guessed")}
+        catch(e: NativeDataFailure){assertEquals("id",e.field);assertEquals(1,e.position);assertEquals(201,e.atOffset(200).position);assertFalse(e.toString().contains("SECRET"))}
+    }
+
+    @Test fun richerDuplicateTypeIsRetainedAndConflictingResponsesRemainUnclassified()=runTest {
+        val unknown=NativePlaylist(12,1,"Untyped",1,null,null,null,null)
+        val typed=item(1,1)
+        val result=MusicCatalog.load(api(NativeCatalog(listOf(unknown),1),NativeCatalog(listOf(typed),1)),MusicAccess("synthetic","CI"),12)
+        assertEquals(PlaylistKind.ALBUM,result.lists.single().kind)
+        val conflict=MusicCatalog.load(api(NativeCatalog(listOf(item(1,0)),1),NativeCatalog(listOf(typed),1)),MusicAccess("synthetic","CI"),12)
+        assertEquals(PlaylistKind.UNKNOWN,conflict.lists.single().kind);assertTrue(conflict.lists.single().typeConflict)
     }
     @Test fun catalogHeaderCanOpenTheSubscriptionsSectionWithoutMixingRecommendations()=runTest {
         val result=MusicArtists.subscriptions{method,fields->
@@ -75,7 +88,7 @@ class CatalogProfileRegressionTest {
             val form=chain.request().body as FormBody
             val values=(0 until form.size).associate{form.name(it) to form.value(it)};forms.add(values)
             val body=when {
-                chain.request().url.encodedPath.endsWith("audio.get")->"""{"response":{"count":300,"items":[{"owner_id":12,"id":3,"title":"PRIVATE_TITLE","artist":"PRIVATE_ARTIST","duration":{}}]}}"""
+                chain.request().url.encodedPath.endsWith("audio.get")->"""{"response":{"count":300,"items":[{"owner_id":12,"id":{},"title":"PRIVATE_TITLE","artist":"PRIVATE_ARTIST","duration":3}]}}"""
                 values["start_from"]==null->"""{"response":{"count":2,"next_from":"cursor","items":[{"owner_id":12,"id":1,"title":"Playlist","count":1,"type":0}]}}"""
                 else->"""{"response":{"count":2,"next_from":"","items":[{"owner_id":12,"id":2,"title":"Album","count":1,"type":1}]}}"""
             }
@@ -87,8 +100,8 @@ class CatalogProfileRegressionTest {
         assertTrue(result.complete);assertEquals(2,result.lists.size)
         assertFalse(forms[0].containsKey("filters"));assertEquals("0",forms[0]["offset"])
         assertEquals("cursor",forms[1]["start_from"]);assertFalse(forms[1].containsKey("offset"))
-        try{api.libraryPage(access,34,200);fail("Required duration is malformed")}
-        catch(e: NativeDataFailure){assertEquals("duration",e.field);assertEquals(201,e.position)}
+        try{api.libraryPage(access,34,200);fail("Required identity is malformed")}
+        catch(e: NativeDataFailure){assertEquals("id",e.field);assertEquals(201,e.position)}
         assertTrue(events.any{it.contains("native_music_parse_failure")&&it.contains("position=201")})
         assertFalse(events.joinToString().contains("PRIVATE"));assertFalse(events.joinToString().contains(access.token))
     }

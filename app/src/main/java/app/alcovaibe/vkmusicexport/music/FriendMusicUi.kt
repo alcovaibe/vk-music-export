@@ -207,6 +207,8 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
             if(!state.complete&&!state.busy&&problem==null)TextButton(onClick=controller::refresh){Text("Повторить загрузку")}
             if(problem!=null&&page!=null&&!state.complete)Text("Получено ${page.tracks.size} из ${page.count} треков. Уже полученные записи показаны ниже.",
                 modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,style=MaterialTheme.typography.bodySmall)
+            val metadataErrors=page?.tracks?.count{it.metadataError!=null}?:0
+            if(metadataErrors>0)Text("Неполные описания записей: $metadataErrors. Они отмечены в списке; остальные треки доступны.",style=MaterialTheme.typography.bodySmall)
             if(state.preparing) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Проверяем актуальный список перед скачиванием…",style=MaterialTheme.typography.bodySmall)}
         }
     }
@@ -253,6 +255,7 @@ private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,s
                     IconButton(onClick=onPause){Icon(FriendPauseIcon,"Приостановить очередь")}
                 }
                 saved!=null->FriendRowStatus(Icons.Default.CheckCircle,"Скачано",MaterialTheme.colorScheme.tertiary)
+                track.metadataError!=null->FriendRowStatus(FriendErrorIcon,"Ошибка данных",MaterialTheme.colorScheme.error)
                 failure!=null||track.restricted||track.duration==0->FriendRowStatus(FriendErrorIcon,
                     if(failure!=null&&failure.error !in setOf(MusicError.UNAVAILABLE,MusicError.DENIED))"Ошибка" else "Недоступно",MaterialTheme.colorScheme.error)
                 taskState in setOf("PENDING","RUNNING")->FriendRowStatus(FriendQueueIcon,if(queue.status=="PAUSED")"На паузе" else "В очереди",MaterialTheme.colorScheme.primary)

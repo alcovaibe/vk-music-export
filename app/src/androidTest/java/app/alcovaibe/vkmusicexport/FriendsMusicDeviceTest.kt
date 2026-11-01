@@ -177,6 +177,20 @@ class FriendsMusicDeviceTest {
         ui.waitUntil(15000){model.friends.state.value.playlistComplete&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_playlist_header").assertIsDisplayed()
     }
+    @Test fun incompleteRemoteMetadataNeverReplacesVerifiedLocalMetadataWhenReusingAudio()=runBlocking {
+        val folder=File(inst.targetContext.cacheDir,"friend-reuse-${java.util.UUID.randomUUID()}").apply{mkdirs()}
+        val context=object: android.content.ContextWrapper(inst.targetContext){override fun getNoBackupFilesDir()=folder}
+        try {AudioExportStore(context).use{store->
+            val original=NativeTrack("90_3","Original title","Original artist",226)
+            val before=PublishedAudio("saved",original,"content://media/external/audio/media/1","original.mp3",ExportLayout.ROOT+"Моя музыка/",
+                "mp3","audio/mpeg",226000,100,"a".repeat(64),source=ExportSource(12,"library","my"))
+            store.imported(before)
+            val bad=original.copy(title="Запись с ошибкой данных",artist="Описание недоступно",restricted=true,metadataError="artist")
+            val task=FriendMusicExport.tasks(NativePage(listOf(bad),1),MusicFriend(34,"Друг",""),12).single()
+            val linked=store.link(task,before)
+            assertEquals(original,linked.track);assertEquals(before.uri,linked.uri);assertEquals(task.source,linked.source)
+        }}finally{folder.deleteRecursively()}
+    }
     @Test fun scopedHttpDenialDoesNotInvalidateTheAccountButExplicitTokenRejectionIsPreserved()=runBlocking {
         val access=MusicAccess("a".repeat(64),"CI/1",accountId=12)
         for(index in 0..3) {
