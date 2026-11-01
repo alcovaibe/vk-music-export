@@ -1,5 +1,7 @@
 # VK Music Export
 
+[![Количество скачиваний](https://img.shields.io/github/downloads/alcovaibe/vk-music-export/total?label=%D0%9A%D0%BE%D0%BB%D0%B8%D1%87%D0%B5%D1%81%D1%82%D0%B2%D0%BE%20%D1%81%D0%BA%D0%B0%D1%87%D0%B8%D0%B2%D0%B0%D0%BD%D0%B8%D0%B9&color=007ec6)](https://github.com/alcovaibe/vk-music-export/releases)
+
 Android-приложение с открытым исходным кодом для сохранения и воспроизведения доступной музыки своей библиотеки и друзей ВК. Поддерживает отдельные треки, плейлисты и альбомы, фоновое скачивание, встроенные обложки, исправление названий и поиск дубликатов.
 
 **Требуется Android 14 или новее (API 34+).** [Скачать актуальный стабильный APK](https://github.com/alcovaibe/vk-music-export/releases/latest)
