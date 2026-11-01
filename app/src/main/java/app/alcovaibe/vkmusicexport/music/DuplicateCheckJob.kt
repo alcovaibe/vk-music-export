@@ -91,7 +91,7 @@ internal object DuplicateCheckRuntime {
     }
 }
 
-@androidx.annotation.RequiresApi(34)
+@android.annotation.TargetApi(34)
 class DuplicateCheckJob: JobService() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private data class Running(val id: String,val stopped: AtomicBoolean=AtomicBoolean(false),var work: Job?=null)

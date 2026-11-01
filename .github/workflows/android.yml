@@ -40,7 +40,12 @@ jobs:
       - name: Test, lint and R8 with committed dependency verification
         run: |
           test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
-          ./gradlew --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace
+          ./gradlew --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease writeDependencyInventory --stacktrace || {
+            for report in app/build/reports/lint-results-{debug,release}.txt app/build/intermediates/lint_intermediate_text_report/{debug,release}/lintReport{Debug,Release}/lint-results-{debug,release}.txt; do
+              if [[ -f "$report" ]]; then echo "=== $report ==="; sed -n '1,300p' "$report"; fi
+            done
+            exit 1
+          }
       - name: Generate SBOM and scan resolved dependencies with OSV
         run: python3 tools/dependency-audit.py
       - name: Upload dependency evidence

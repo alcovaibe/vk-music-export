@@ -152,7 +152,7 @@ internal object AudioExportRuntime {
     }
 }
 
-@androidx.annotation.RequiresApi(34)
+@android.annotation.TargetApi(34)
 class AudioExportJob: JobService() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private var work: Job?=null;@Volatile private var stopped=false
