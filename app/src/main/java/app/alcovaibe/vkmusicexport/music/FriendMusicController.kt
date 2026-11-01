@@ -16,6 +16,7 @@ internal class FriendMusicController(private val application: Application,privat
     fun reset(){generation++;work?.cancel();work=null;lease=null;mutable.value=FriendMusicState()}
     fun pauseRead(){generation++;work?.cancel();work=null;mutable.update{it.copy(busy=false,preparing=false,selecting=false,selection=emptySet())}}
     fun back() {
+        if(state.value.selecting){mutable.update{it.copy(selecting=false,selection=emptySet())};return}
         pauseRead()
         mutable.update{if(it.playlist!=null)it.copy(playlist=null,playlistTracks=null,playlistComplete=false,playlistProblem=null,musicQuery="",message=null)
             else it.copy(user=null,tracks=null,tracksComplete=false,catalog=null,problems=emptyMap(),musicQuery="",message=null)}

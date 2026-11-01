@@ -18,7 +18,7 @@ internal object MusicArtists {
         val layout=o["layout"] as? JsonObject
         val raw=o["title"]?:o["text"]?:layout?.get("title")?:((layout?.get("header") as? JsonObject)?.get("title"))
         return (str(raw)?:str((raw as? JsonObject)?.get("text"))).orEmpty().replace('\u00a0',' ').trim().lowercase()
-            .replace(Regex("\\s+")," ").replace(Regex("\\s*(?:[·•]|\\()?\\d+\\)?$"),"").trim()
+            .replace(Regex("\\s+")," ").replace(Regex("\\s*(?:[·•]\\s*|\\()?\\d+\\)?$"),"").trim()
     }
     private fun ownSection(o: JsonObject)=title(o) in ownTitles||str(o["type"]) in setOf("my_music","my_audio","own_music")
     private fun subscribed(o: JsonObject,own: Boolean=false)=title(o) in subscriptionTitles||own&&title(o) in artistTitles||

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package app.alcovaibe.vkmusicexport.music
 
 import androidx.compose.foundation.layout.*
@@ -5,7 +7,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +31,7 @@ private fun FriendSearch(value: String,label: String,tag: String,onValue:(String
 private fun FriendBadge(text: String,error: Boolean=false) {
     Surface(shape=RoundedCornerShape(24.dp),color=if(error)MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer) {
         Row(Modifier.padding(horizontal=10.dp,vertical=5.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
-            Icon(if(error)Icons.Default.ErrorOutline else Icons.Default.Check,null,Modifier.size(18.dp),tint=if(error)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
+            Icon(if(error)FriendErrorIcon else Icons.Default.Check,null,Modifier.size(18.dp),tint=if(error)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary)
             Text(text,style=MaterialTheme.typography.labelMedium,color=if(error)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }
@@ -51,7 +52,7 @@ private fun FriendProfileHeader(user: MusicFriend,available: Boolean,problem: Fr
                 else if(available)FriendBadge("Музыка доступна")
                 else Text("Проверяем доступ…",Modifier.padding(vertical=8.dp),style=MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick=onOpen,contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),modifier=Modifier.testTag("friend_open_vk")) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Открыть в ВК")
+                    Icon(FriendOpenIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Открыть в ВК")
                 }
             }
         }
@@ -83,7 +84,7 @@ private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit,onOpe
             Text(when(problem.code){MusicError.DENIED->"Доступ к музыке запрещён";MusicError.METHOD->"Раздел недоступен подключению";else->"Не удалось загрузить раздел"},
                 style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
             Text(problem.description,style=MaterialTheme.typography.bodyMedium)
-            if(onOpen!=null)Button(onClick=onOpen,modifier=Modifier.fillMaxWidth()){Icon(Icons.AutoMirrored.Filled.OpenInNew,null);Spacer(Modifier.width(8.dp));Text("Открыть в ВК")}
+            if(onOpen!=null)Button(onClick=onOpen,modifier=Modifier.fillMaxWidth()){Icon(FriendOpenIcon,null);Spacer(Modifier.width(8.dp));Text("Открыть в ВК")}
             TextButton(onClick=onRetry,modifier=Modifier.testTag("friend_retry")){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(6.dp));Text("Повторить")}
         }
     }
@@ -187,7 +188,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Button(onClick={controller.download()},enabled=ready,modifier=Modifier.testTag("friend_download_all")) {
                     Icon(DownloadIcon,null);Spacer(Modifier.width(8.dp));Text(if(state.playlist==null)"Скачать всё" else if(state.playlist.kind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")
                 }
-                OutlinedButton(onClick=controller::selectMode,enabled=state.complete&&!state.busy,modifier=Modifier.testTag("friend_select")){Icon(Icons.Default.CheckBox,null);Spacer(Modifier.width(6.dp));Text("Выбрать")}
+                OutlinedButton(onClick=controller::selectMode,enabled=state.complete&&!state.busy,modifier=Modifier.testTag("friend_select")){Icon(FriendSelectIcon,null);Spacer(Modifier.width(6.dp));Text("Выбрать")}
             }
             if(!state.complete&&state.busy) {
                 if(page!=null&&page.count>0)LinearProgressIndicator(progress={page.tracks.size.toFloat()/page.count},modifier=Modifier.fillMaxWidth())
@@ -238,13 +239,22 @@ private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,s
                     val p=queue.progress
                     if(p!=null&&p.segments>0)CircularProgressIndicator(progress={p.segment.toFloat()/p.segments},modifier=Modifier.size(24.dp),strokeWidth=2.dp)
                     else CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp)
-                    IconButton(onClick=onPause){Icon(Icons.Default.Pause,"Приостановить очередь")}
+                    IconButton(onClick=onPause){Icon(FriendPauseIcon,"Приостановить очередь")}
                 }
-                saved!=null->Icon(Icons.Default.CheckCircle,"Скачано",Modifier.size(30.dp).padding(3.dp),tint=MaterialTheme.colorScheme.tertiary)
-                failure!=null||track.restricted||track.duration==0->Icon(Icons.Default.ErrorOutline,"Недоступно",Modifier.size(30.dp).padding(3.dp),tint=MaterialTheme.colorScheme.error)
-                taskState in setOf("PENDING","RUNNING")->Icon(Icons.Default.PlaylistPlay,if(queue.status=="PAUSED")"Очередь приостановлена" else "В очереди",Modifier.size(30.dp).padding(3.dp),tint=MaterialTheme.colorScheme.primary)
+                saved!=null->FriendRowStatus(Icons.Default.CheckCircle,"Скачано",MaterialTheme.colorScheme.tertiary)
+                failure!=null||track.restricted||track.duration==0->FriendRowStatus(FriendErrorIcon,
+                    if(failure!=null&&failure.error !in setOf(MusicError.UNAVAILABLE,MusicError.DENIED))"Ошибка" else "Недоступно",MaterialTheme.colorScheme.error)
+                taskState in setOf("PENDING","RUNNING")->FriendRowStatus(FriendQueueIcon,if(queue.status=="PAUSED")"На паузе" else "В очереди",MaterialTheme.colorScheme.primary)
                 else->IconButton(onClick=onDownload,enabled=enabled,modifier=Modifier.testTag("friend_download_$position")){Icon(DownloadIcon,"Скачать этот трек")}
             }
         }
+    }
+}
+
+@Composable
+private fun FriendRowStatus(icon: androidx.compose.ui.graphics.vector.ImageVector,text: String,color: Color) {
+    Column(Modifier.widthIn(max=76.dp).padding(horizontal=4.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+        Icon(icon,null,Modifier.size(22.dp),tint=color)
+        Text(text,style=MaterialTheme.typography.labelSmall,color=color,maxLines=2,overflow=TextOverflow.Ellipsis)
     }
 }

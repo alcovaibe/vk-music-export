@@ -56,6 +56,8 @@ def verify(results: Path, minimum_tests: int = 124) -> int:
         raise ValueError('Required file maintenance background and restoration tests did not execute')
     if not any(name == 'app.alcovaibe.vkmusicexport.ArtistFailureDeviceTest' for name, _ in executed):
         raise ValueError('Required artist failure diagnostics test did not execute')
+    if sum(name == 'app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest' for name, _ in executed) < 3:
+        raise ValueError('Required friends music profile, access and queue tests did not execute')
     return len(executed)
 
 

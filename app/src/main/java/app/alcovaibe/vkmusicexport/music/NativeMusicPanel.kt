@@ -137,6 +137,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(page!=null&&user!=null&&viewer!=null)FriendMusicExport.tasks(page,user,viewer,friendState.playlist)else emptyList()
     }
     val savedById=remember(localFiles,state.probe?.owner){localFiles.filter{it.present&&it.file.source?.account==state.probe?.owner}.associateBy{it.file.track.id}}
+    val friendSavedById=remember(savedById){savedById.mapValues{it.value.file}}
     fun openFile(row: PublishedAudio) {
         scope.launch {
             try {
@@ -239,7 +240,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             HorizontalDivider()
         }) {
         if(destination==MusicDestination.FRIENDS) {
-            friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,savedById,model::previewArtwork,
+            friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads={downloadsReturn=destination;destination=MusicDestination.DOWNLOADS},
                 onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true})
         }else if(destination==MusicDestination.DOWNLOADS) {

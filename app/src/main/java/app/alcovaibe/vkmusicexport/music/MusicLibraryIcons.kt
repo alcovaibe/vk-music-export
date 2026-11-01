@@ -30,3 +30,23 @@ internal val FriendsMusicIcon=ImageVector.Builder("FriendsMusic",24.dp,24.dp,555
     addPath(addPathNodes("M 384 348.5 A 44 44 0 1 1 296 348.5 A 44 44 0 1 1 384 348.5 Z M 533 320.5 A 46 46 0 1 1 441 320.5 A 46 46 0 1 1 533 320.5 Z"),fill=SolidColor(Color.Black))
     addPath(addPathNodes("M 363 165.5 Q 363 153.5 377 150.5 L 510 124.5 Q 533 120.5 533 143.5 L 533 320.5 L 508 320.5 L 508 197.5 L 387 220.5 L 387 348.5 L 363 348.5 Z"),fill=SolidColor(Color.Black))
 }.build()
+
+internal val FriendOpenIcon=ImageVector.Builder("OpenVkProfile",24.dp,24.dp,24f,24f).apply {
+    path(fill=null,stroke=SolidColor(Color.Black),strokeLineWidth=2f) {
+        moveTo(14f,3f);lineTo(21f,3f);lineTo(21f,10f);moveTo(21f,3f);lineTo(11f,13f)
+        moveTo(10f,4f);lineTo(4f,4f);lineTo(4f,20f);lineTo(20f,20f);lineTo(20f,14f)
+    }
+}.build()
+internal val FriendErrorIcon=ImageVector.Builder("MusicAccessError",24.dp,24.dp,24f,24f).apply {
+    addPath(addPathNodes("M12 3 A9 9 0 1 1 12 21 A9 9 0 1 1 12 3 Z M12 7 L12 13 M12 16 L12 18"),
+        fill=null,stroke=SolidColor(Color.Black),strokeLineWidth=2f)
+}.build()
+internal val FriendSelectIcon=ImageVector.Builder("SelectMusic",24.dp,24.dp,24f,24f).apply {
+    addPath(addPathNodes("M4 4 H20 V20 H4 Z M7 12 L10 15 L17 8"),fill=null,stroke=SolidColor(Color.Black),strokeLineWidth=2f)
+}.build()
+internal val FriendPauseIcon=ImageVector.Builder("PauseDownloadQueue",24.dp,24.dp,24f,24f).apply {
+    addPath(addPathNodes("M6 4 H10 V20 H6 Z M14 4 H18 V20 H14 Z"),fill=SolidColor(Color.Black))
+}.build()
+internal val FriendQueueIcon=ImageVector.Builder("QueuedMusic",24.dp,24.dp,24f,24f).apply {
+    addPath(addPathNodes("M4 6 H20 M4 12 H17 M4 18 H14"),fill=null,stroke=SolidColor(Color.Black),strokeLineWidth=2f)
+}.build()
