@@ -22,6 +22,7 @@ internal interface MusicApi {
     fun previewArtwork(track: NativeTrack): String? = null
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
+    suspend fun playlistDetails(access: MusicAccess,list: NativePlaylist): NativePlaylist? = null
     suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog? = null
     suspend fun catalogPage(access: MusicAccess,owner: Long,offset: Int,startFrom: String?): NativeCatalog {
         musicCheck(startFrom==null,MusicError.INCOMPLETE);return catalogPage(access,owner,offset)
@@ -118,16 +119,16 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         fields.forEach { (k,v) -> form.add(k,v) }
         val req = Request.Builder().url("https://api.vk.com/method/$method")
             .header("User-Agent",access.agent).post(form.build()).build()
-        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists"->"catalog";"audio.delete"->"library_remove";"audio.search"->"cover_search";else->"resolve_media"}
-        observe("native_music_request",mapOf("stage" to step,"phase" to "start","transport" to "native_https_api"))
+        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists","audio.getPlaylistById"->"catalog";"audio.delete"->"library_remove";"audio.search"->"cover_search";else->"resolve_media"}
+        observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "start","transport" to "native_https_api"))
         return try {
             MusicApiPacer.awaitSlot()
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
-            observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
+            observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
             // A private friend's section or a denied search is not proof that the account token expired.
             val scopedRead=method=="friends.get"||method=="users.get"&&fields["user_ids"]!=null||
-                method in setOf("audio.get","audio.getPlaylists")&&fields["owner_id"]?.toLongOrNull()?.let{it!=access.accountId}==true
+                method in setOf("audio.get","audio.getPlaylists","audio.getPlaylistById")&&fields["owner_id"]?.toLongOrNull()?.let{it!=access.accountId}==true
             if(response.status==403&&(scopedRead||method in setOf("audio.search","audio.getById"))) {
                 val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
                 if(explicit?.remoteCode!=null)throw explicit
@@ -141,11 +142,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             if(response.status!=200)throw MusicFailure(MusicError.HTTP,httpStatus=response.status)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes)).also(::rememberPreviews)}
         } catch(e: CancellationException){throw e}
-          catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
+          catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"method" to method,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
           catch(e: Exception){
               currentCoroutineContext().ensureActive()
               val failure=if(e is IOException)networkFailure(e) else MusicFailure(MusicError.RESPONSE,kind=MusicFailureKind.OTHER)
-              observe("native_music_failure",mapOf("stage" to step,"code" to failure.code.name,"kind" to failure.kind?.name))
+              observe("native_music_failure",mapOf("stage" to step,"method" to method,"code" to failure.code.name,"kind" to failure.kind?.name))
               throw failure
           }
     }
@@ -170,7 +171,22 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         if(albums)fields["filters"]="albums"
         if(startFrom!=null)fields["start_from"]=startFrom else fields["offset"]=offset.toString()
         val response=request(access,"audio.getPlaylists",fields)
-        return decoded("audio.getPlaylists",offset){NativeProtocol.catalog(response)}
+        return decoded("audio.getPlaylists",offset){NativeProtocol.catalog(response)}.also{page->
+            observe("native_catalog_page",mapOf("filter" to if(albums)"albums" else "all","offset" to offset,
+                "cursor_requested" to (startFrom!=null),"cursor_field" to ((response as? kotlinx.serialization.json.JsonObject)?.containsKey("next_from")==true),
+                "has_next_cursor" to (page.nextFrom!=null),"next_offset" to page.nextOffset,"entries" to page.lists.size,"expected_count" to page.count,
+                "playlists" to page.lists.count{it.kind==PlaylistKind.PLAYLIST},"albums" to page.lists.count{it.kind==PlaylistKind.ALBUM},
+                "untyped" to page.lists.count{it.kind==PlaylistKind.UNKNOWN}))
+        }
+    }
+    override suspend fun playlistDetails(access: MusicAccess,list: NativePlaylist): NativePlaylist {
+        val fields=mutableMapOf("owner_id" to list.owner.toString(),"playlist_id" to list.id.toString())
+        list.accessKey?.let{fields["access_key"]=it}
+        val response=request(access,"audio.getPlaylistById",fields)
+        val detail=decoded("audio.getPlaylistById",0){NativeProtocol.playlistDetails(response)}
+        musicCheck(detail.key==list.key,MusicError.RESPONSE)
+        observe("native_catalog_type",mapOf("resolved" to (detail.kind!=PlaylistKind.UNKNOWN),"kind" to detail.kind.name))
+        return detail
     }
     private fun <T> decoded(method: String,offset: Int,read:()->T): T = try{read()}catch(e: NativeDataFailure) {
         val failure=e.atOffset(offset)

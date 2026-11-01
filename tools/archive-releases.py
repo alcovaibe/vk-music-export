@@ -137,6 +137,7 @@ def main(apply=False):
                 continue
             # These workflow artifacts contain reports/screenshots/metadata only.
             if artifact['name'] in {'Android-reports', 'Dependency-evidence', 'Release-archive-audit',
+                                    'Android-interface-API-34', 'Android-interface-API-35',
                                     'Android-interface-API-36', 'Android-interface-API-37'}:
                 continue
             sha = artifact.get('workflow_run', {}).get('head_sha')

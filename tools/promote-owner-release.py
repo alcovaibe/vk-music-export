@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+from apk_manifest import configured_min_sdk
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
@@ -39,7 +40,7 @@ def validate_context(request, env, event, now):
 
 def validate_assets(info, release, apk, latest, version_name='0.11.0'):
     assert info['versionName'] == version_name and info['applicationId'] == 'app.alcovaibe.vkmusicexport'
-    assert info['minSdk'] == 36 and info['versionCode'] > 1236
+    assert info['minSdk'] == configured_min_sdk() and info['versionCode'] > 1236
     assert info['tag'] == f"v{info['versionName']}-build.{info['versionCode']}"
     assert release['target_commitish'] == info['commit']
     assets = [a for a in release['assets'] if a['name'] == info['apk']]

@@ -29,6 +29,7 @@ class FriendsMusicDeviceTest {
     private val album=NativePlaylist(-66,9,"Северные огни",3,null,null,null,1,PlaylistKind.ALBUM,following=false)
     private inner class Api: MusicApi {
         var extra: NativePlaylist?=null
+        var ignoreAlbumFilter=false
         var rows=listOf(MusicFriend(34,"Алина","Смирнова","@old"),MusicFriend(35,"Ирина","Лебедева","@irina"),
             MusicFriend(36,"Максим","Ковалёв"),MusicFriend(37,"Денис","Орлов"),MusicFriend(38,"Софья","Белова"),
             MusicFriend(39,"Артём","Миронов"),MusicFriend(40,"Полина","Жукова"),MusicFriend(41,"Егор","Рябов"))
@@ -45,7 +46,8 @@ class FriendsMusicDeviceTest {
             if(owner==35L)throw MusicFailure(MusicError.DENIED,201)
             return if(owner==34L)NativeCatalog(listOfNotNull(playlist,album,extra),if(extra==null)2 else 3)else NativeCatalog(emptyList(),0)
         }
-        override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int)=if(owner==34L)NativeCatalog(listOf(album),1)else NativeCatalog(emptyList(),0)
+        override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int)=if(ignoreAlbumFilter)catalog(access,owner)else if(owner==34L)NativeCatalog(listOf(album),1)else NativeCatalog(emptyList(),0)
+        override suspend fun playlistDetails(access: MusicAccess,list: NativePlaylist)=extra?.takeIf{it.key==list.key}?.classified(PlaylistKind.PLAYLIST)
         override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=NativePage(songs,3)
         override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio network request in this fixture")
     }
@@ -159,20 +161,23 @@ class FriendsMusicDeviceTest {
             assertNull(model.friends.state.value.user);assertTrue(model.friends.state.value.friends.isEmpty())
         }finally{release.complete(Unit)}
     }
-    @Test fun unclassifiedCollectionsRemainAccessibleWithoutAppearingAsAlbumsOrPlaylists()=fixture {model,api->
+    @Test fun canonicalCardsClassifyMissingTypesWithoutAnExtraTabWhenVkIgnoresTheAlbumFilter()=fixture {model,api->
         api.extra=NativePlaylist(-88,10,"Без подтверждённого типа",2,null,null,null,null)
+        api.ignoreAlbumFilter=true
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
         ui.waitUntil(15000){model.friends.state.value.friendsComplete&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_34").performClick()
         ui.waitUntil(15000){model.friends.state.value.catalog?.complete==true&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_tab_PLAYLISTS").performClick()
-        ui.onNodeWithTag("friend_collection_-88_10").assertDoesNotExist()
+        ui.onNodeWithTag("friend_collection_-88_10").assertIsDisplayed()
+        ui.onNodeWithTag("friend_tab_COLLECTIONS").assertDoesNotExist()
+        ui.onNodeWithText("Подборки").assertDoesNotExist()
         ui.onNodeWithTag("friend_tab_ALBUMS").performClick()
         ui.onNodeWithTag("friend_collection_-88_10").assertDoesNotExist()
-        ui.onNodeWithTag("friend_tab_COLLECTIONS").performClick()
+        ui.onNodeWithTag("friend_tab_PLAYLISTS").performClick()
         ui.onNodeWithTag("friend_collection_-88_10").assertIsDisplayed()
-        ui.onNodeWithTag("friend_collection_-55_7").assertDoesNotExist()
-        shot("friend-unclassified")
+        ui.onNodeWithTag("friend_collection_-55_7").assertIsDisplayed()
+        shot("friend-classified-playlists")
         ui.onNodeWithTag("friend_collection_-88_10").performClick()
         ui.waitUntil(15000){model.friends.state.value.playlistComplete&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_playlist_header").assertIsDisplayed()

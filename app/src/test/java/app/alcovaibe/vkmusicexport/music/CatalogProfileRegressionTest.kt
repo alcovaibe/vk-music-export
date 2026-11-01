@@ -24,15 +24,15 @@ class CatalogProfileRegressionTest {
         assertEquals(listOf(PlaylistKind.PLAYLIST,PlaylistKind.ALBUM),result.lists.map{it.kind})
         assertTrue(result.complete)
     }
-    @Test fun albumsReturnedOnlyByTheAlbumRequestAreRetainedAndConflictsStayUnclassified()=runTest {
+    @Test fun explicitTypeWinsOverReleaseHintsAndAlbumOnlyResultsAreRetained()=runTest {
         val raw=NativeProtocol.catalog(json("""{"count":2,"items":[{"owner_id":12,"id":1,"title":"Playlist","count":1,"type":0},{"owner_id":12,"id":2,"title":"Conflict","count":1,"type":0,"album_type":"album"}]}"""))
         val extra=item(3,1)
         val result=MusicCatalog.load(api(raw,NativeCatalog(listOf(raw.lists[1],extra),2)),MusicAccess("synthetic","CI"),12)
         assertEquals(listOf(1L,2L,3L),result.lists.map{it.id})
-        assertEquals(PlaylistKind.UNKNOWN,result.lists[1].kind)
-        val state=FriendMusicState(catalog=result,tab=FriendMusicTab.COLLECTIONS)
-        assertEquals(listOf(2L),state.collections().map{it.id})
-        assertEquals(listOf(1L),state.copy(tab=FriendMusicTab.PLAYLISTS).collections().map{it.id})
+        assertEquals(PlaylistKind.PLAYLIST,result.lists[1].kind)
+        val state=FriendMusicState(catalog=result,tab=FriendMusicTab.PLAYLISTS)
+        assertEquals(listOf(1L,2L),state.collections().map{it.id})
+        assertEquals(listOf(3L),state.copy(tab=FriendMusicTab.ALBUMS).collections().map{it.id})
     }
     @Test fun cursorPagesPreserveAllListsAndRepeatedCursorsRemainIncomplete()=runTest {
         val calls=mutableListOf<Pair<Int,String?>>()

@@ -43,13 +43,17 @@ class MusicCatalogTest {
         assertEquals(1,ExportLayout.library(page,albums=false).size)
         assertEquals(2,ExportLayout.library(page,albums=true).size)
     }
-    @Test fun repeatedCollectionPositionsDoNotProduceFalseIncompleteWarningsButStuckPagesDo()=runBlocking {
-        val a=list(1,PlaylistKind.PLAYLIST);val b=list(2,PlaylistKind.ALBUM);val c=list(3,PlaylistKind.PLAYLIST)
+    @Test fun repeatedPositionsRetainRicherTypesWithoutFalseIncompleteWarningsButStuckPagesDo()=runBlocking {
+        val a=list(1,PlaylistKind.PLAYLIST);val b=list(2,PlaylistKind.UNKNOWN);val c=list(3,PlaylistKind.PLAYLIST)
+        val typedB=list(2,PlaylistKind.ALBUM)
         val offsets=mutableListOf<Int>()
-        val result=MusicPagination.catalog({offset->offsets.add(offset);NativeCatalog(if(offset==0)listOf(a,b)else listOf(b,c),4)})
-        assertEquals(listOf(0,2),offsets);assertEquals(listOf(a,b,c),result.lists);assertTrue(result.complete)
+        val result=MusicPagination.catalog({offset->offsets.add(offset);NativeCatalog(if(offset==0)listOf(a,b)else listOf(typedB,c),4)})
+        assertEquals(listOf(0,2),offsets);assertEquals(listOf(a.key,b.key,c.key),result.lists.map{it.key});assertTrue(result.complete)
+        assertEquals(listOf(PlaylistKind.PLAYLIST,PlaylistKind.ALBUM,PlaylistKind.PLAYLIST),result.lists.map{it.kind})
         assertFalse(MusicPagination.catalog({NativeCatalog(listOf(a,b),4)}).complete)
         assertFalse(MusicPagination.catalog({offset->NativeCatalog(if(offset==0)listOf(a)else emptyList(),4)}).complete)
+        val enriched=MusicPagination.catalog({offset->NativeCatalog(listOf(if(offset==0)b else typedB),3)})
+        assertFalse(enriched.complete);assertEquals(PlaylistKind.ALBUM,enriched.lists.single().kind)
     }
     @Test fun unsupportedAlbumFilterLeavesUntypedCollectionsDownloadableWithoutConsultingOldChoices()=runBlocking {
         val unknown=list(7,PlaylistKind.UNKNOWN)

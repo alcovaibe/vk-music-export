@@ -9,7 +9,7 @@ internal enum class CatalogSection(val title: String,val kind: PlaylistKind?) {
 }
 
 internal object MusicCatalog {
-    /** Explicit item metadata wins over filters; only consistent album membership refines unknown types. */
+    /** The same server classification is used for the viewer and friends. */
     suspend fun load(api: MusicApi,access: MusicAccess,owner: Long,guard: suspend()->Unit={},personal: Boolean=true,partial:(NativeCatalog)->Unit={},progress:(Int,Int)->Unit={_,_->}): NativeCatalog {
         fun eligible(list: NativePlaylist)=!list.deleted&&(!personal||list.owner==owner||list.following!=false)
         val all=MusicPagination.catalogCursor({offset,cursor->guard();api.catalogPage(access,owner,offset,cursor).also{guard()}},progress,{part->partial(part.copy(lists=part.lists.filter(::eligible)))})
@@ -26,8 +26,23 @@ internal object MusicCatalog {
         val albumKeys=if(filterConfirmed)albums!!.lists.flatMap{listOf(it.key)+listOfNotNull(it.originalOwner?.let{o->it.originalId?.let{i->"playlist:$o:$i"}})}.toSet() else emptySet()
         val current=merged.values.filter(::eligible).map{list->
             val original=list.originalOwner?.let{o->list.originalId?.let{i->"playlist:$o:$i"}}
-            if(list.kind==PlaylistKind.UNKNOWN&&!list.typeConflict&&(list.key in albumKeys||original in albumKeys))list.classified(PlaylistKind.ALBUM)else list
+            if(list.kind!=PlaylistKind.UNKNOWN)list
+            else if(!list.typeConflict&&filterConfirmed)list.classified(if(list.key in albumKeys||original in albumKeys)PlaylistKind.ALBUM else PlaylistKind.PLAYLIST)
+            else {
+                guard()
+                val detail=try{api.playlistDetails(access,list).also{guard()}}catch(e: MusicFailure){
+                    if(e.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.ACCOUNT_CHANGED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT))throw e
+                    null
+                }
+                if(detail==null||detail.kind==PlaylistKind.UNKNOWN)list else {
+                    musicCheck(detail.key==list.key)
+                    NativePlaylist(list.owner,list.id,detail.title,detail.count,detail.accessKey?:list.accessKey,
+                        detail.originalOwner?:list.originalOwner,detail.originalId?:list.originalId,detail.nativeType,detail.kind,
+                        detail.following?:list.following,detail.deleted||list.deleted,detail.photo?:list.photo)
+                }
+            }
         }
+        guard()
         return NativeCatalog(current,maxOf(all.count,merged.size),all.complete&&(albums?.complete!=false))
     }
 

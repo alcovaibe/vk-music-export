@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from apk_manifest import configured_min_sdk, release_manifest
 
 repo = os.environ['GITHUB_REPOSITORY']
 assert os.environ['GITHUB_REF'] == 'refs/heads/main'
@@ -37,9 +38,8 @@ def load(folder, run_id):
     actual = re.search(r'Signer #1 certificate SHA-256 digest: (\w+)', sig)
     assert actual and actual[1] == hashlib.sha256(cert).hexdigest()
     manifest = subprocess.check_output([str(sdk / 'aapt'), 'dump', 'badging', str(apk)], text=True)
-    assert f"package: name='app.alcovaibe.vkmusicexport' versionCode='{info['versionCode']}' versionName='{info['versionName']}'" in manifest
-    assert "sdkVersion:'36'" in manifest and 'application-debuggable' not in manifest
-    assert info['applicationId'] == 'app.alcovaibe.vkmusicexport' and info['minSdk'] == 36
+    verified = release_manifest(manifest, configured_min_sdk())
+    assert all(info.get(key) == value for key, value in verified.items()), 'APK metadata differs from build-info'
     assert info['tag'] == f"v{info['versionName']}-build.{info['versionCode']}"
     return out, info, apk
 
