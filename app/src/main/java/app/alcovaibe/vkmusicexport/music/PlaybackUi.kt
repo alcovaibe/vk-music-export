@@ -164,7 +164,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
     Surface(color=MaterialTheme.colorScheme.background,modifier=Modifier.fillMaxSize().testTag("music_player").swipeDownToCollapse(scroll,onDismiss)) {
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             val cover=minOf(maxWidth-32.dp,maxHeight*.43f)
-            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal=16.dp),
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).testTag("player_content").padding(horizontal=16.dp),
                 horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(14.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min=48.dp),verticalAlignment=Alignment.CenterVertically) {
                     IconButton(onClick=onDismiss,modifier=Modifier.testTag("player_collapse")){Icon(PlayerCollapseIcon,"Свернуть плеер")}

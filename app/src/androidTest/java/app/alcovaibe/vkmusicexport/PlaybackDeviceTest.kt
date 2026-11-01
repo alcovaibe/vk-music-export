@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
@@ -180,9 +181,16 @@ class PlaybackDeviceTest {
         }
         ui.waitUntil(10000){PlaybackRuntime.state.value.positionMs>500}
         ui.onNodeWithTag("music_player").assertIsDisplayed()
-        // Scrolling back to the top must not also dismiss the screen.
-        ui.onNodeWithTag("music_player").performTouchInput {swipeUp()}
-        ui.onNodeWithTag("music_player").performTouchInput {swipeDown()}
+        // Begin inside the scroll viewport, with its position explicitly away from the top.
+        ui.onNodeWithTag("player_connection").performScrollTo()
+        val axis=ui.onNodeWithTag("player_content").fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        assertTrue("Large text must provide scrollable content for this scenario",axis.value()>0f)
+        ui.onNodeWithTag("player_content").performTouchInput {
+            swipeDown(startY=height*.25f,endY=height*.7f,durationMillis=450)
+        }
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        ui.onNodeWithTag("player_collapse").performScrollTo()
+        ui.onNodeWithTag("player_artwork").performTouchInput {swipeUp()}
         ui.onNodeWithTag("music_player").assertIsDisplayed()
         ui.onNodeWithTag("player_collapse").performScrollTo()
         ui.runOnUiThread{PlaybackRuntime.toggle(app)}
