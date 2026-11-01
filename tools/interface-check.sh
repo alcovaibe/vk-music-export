@@ -50,7 +50,7 @@ for report in Path('app/build/outputs/androidTest-results/connected').rglob('TES
                 print((error.text or error.get('message', ''))[:12000])
 PYFAILURES
 if [[ "$result" == 0 ]]; then
-  python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected
+  python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected "$expected_api"
   result=$?
 fi
 # Historical stable APKs cannot install on Android 10–13: use compatible debug builds.

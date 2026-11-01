@@ -8,14 +8,14 @@ verify = runpy.run_path(str(Path(__file__).with_name('verify-instrumentation.py'
 
 
 class InstrumentationReportTest(unittest.TestCase):
-    def check(self, reports, exit_code=None):
+    def check(self, reports, exit_code=None, api_level=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for index, report in enumerate(reports):
                 (root / f'TEST-{index}.xml').write_text(report)
             if exit_code is not None:
                 (root / 'test-result-exit-code.txt').write_text(exit_code)
-            return verify(root)
+            return verify(root, api_level=api_level)
 
     def successful_report(self):
         cases = ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.InterfaceTest" name="case{i}"/>' for i in range(70))
@@ -40,6 +40,17 @@ class InstrumentationReportTest(unittest.TestCase):
 
     def test_successful_full_suite_is_accepted(self):
         self.assertEqual(self.check([self.successful_report()], '0'), 136)
+
+    def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
+        report = self.successful_report()
+        for api in range(29, 34):
+            with self.subTest(api=api), self.assertRaisesRegex(ValueError, 'Required legacy foreground'):
+                self.check([report], '0', api_level=api)
+            executed = report.replace('name="job0"',
+                                      'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
+            self.assertEqual(self.check([executed], '0', api_level=api), 136)
+        # UIDT-era devices do not need to run the legacy FGS test.
+        self.assertEqual(self.check([report], '0', api_level=34), 136)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
