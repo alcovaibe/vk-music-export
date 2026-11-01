@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -39,7 +40,7 @@ private val AccessCollapseIcon=accessIcon("CollapseAccessInfo","M5 15 L12 8 L19 
 
 @Composable
 private fun AccessCard(tag: String,content: @Composable ColumnScope.()->Unit) {
-    Surface(shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,
+    Surface(shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
         modifier=Modifier.fillMaxWidth().testTag(tag)) {
         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
     }
@@ -108,7 +109,9 @@ internal fun MusicAccessManagementScreen(
                     }else {
                         Text(if(state.accessDamaged)"Сохрани новый доступ через Chrome или удали повреждённые данные. Музыка и очередь останутся."
                             else "Войди через Chrome, чтобы открыть свою музыку и музыкальные профили друзей.",style=MaterialTheme.typography.bodyLarge)
-                        OutlinedButton(onClick=onManual,enabled=enabled,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Настроить доступ ВК")}
+                        OutlinedButton(onClick=onManual,enabled=enabled,shape=RoundedCornerShape(14.dp),
+                            colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),
+                            border=BorderStroke(1.dp,if(enabled)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Настроить доступ ВК")}
                     }
                 }
             }
@@ -120,6 +123,8 @@ internal fun MusicAccessManagementScreen(
                     }
                     Text("Открой вход в Chrome. Если ВК покажет шестизначный код, вернись в приложение и введи его. Если код не потребуется, подключение проверится автоматически.",style=MaterialTheme.typography.bodyLarge)
                     if(state.stage!="browser_auth")OutlinedButton(onClick=onConnect,enabled=enabled,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(12.dp),
+                        colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),
+                        border=BorderStroke(1.dp,if(enabled)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
                         modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("music_access_connect")) {
                         Text(if(state.configured)"Войти заново через Chrome" else "Войти через Chrome")
                     }
