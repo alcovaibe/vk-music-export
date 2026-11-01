@@ -25,7 +25,7 @@ internal class DuplicateScanCache(context: Context,private val wall: ()->Long=Sy
     private fun load() {
         try {
             if(!journal.baseFile.exists()&&!File(journal.baseFile.path+".bak").exists())return
-            val bytes=journal.openRead().use{it.readNBytes(MAX_JSON+1)}
+            val bytes=journal.openRead().use{it.readBoundedBytes(MAX_JSON+1)}
             require(bytes.size<=MAX_JSON)
             val data=Json.parseToJsonElement(strictUtf8(bytes)).jsonObject
             require(data.getValue("schema").jsonPrimitive.int==2)

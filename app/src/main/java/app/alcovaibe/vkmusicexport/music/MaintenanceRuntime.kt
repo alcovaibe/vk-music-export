@@ -48,11 +48,11 @@ internal object MaintenanceRuntime {
         snapshot=try {
             val file=journal!!
             if(!file.baseFile.exists()&&!File(path+".bak").exists())MaintenanceCheckpoint() else {
-                val bytes=file.openRead().use{it.readNBytes(MAX_BYTES+1)};require(bytes.size<=MAX_BYTES)
+                val bytes=file.openRead().use{it.readBoundedBytes(MAX_BYTES+1)};require(bytes.size<=MAX_BYTES)
                 val record=json.decodeFromString<MaintenanceCheckpoint>(strictUtf8(bytes))
                 val loaded=if(record.queueToken.isEmpty())record else {
                     require(Regex("[0-9a-f-]{36}").matches(record.queueToken))
-                    val queueBytes=AtomicFile(File(file.baseFile.parentFile,"maintenance-targets-${record.queueToken}.json")).openRead().use{it.readNBytes(MAX_BYTES+1)}
+                    val queueBytes=AtomicFile(File(file.baseFile.parentFile,"maintenance-targets-${record.queueToken}.json")).openRead().use{it.readBoundedBytes(MAX_BYTES+1)}
                     require(queueBytes.size<=MAX_BYTES)
                     val queue=json.decodeFromString<MaintenanceTargets>(strictUtf8(queueBytes))
                     require(queue.token==record.queueToken&&queue.stage==record.status.stage&&queue.owner==record.owner)

@@ -22,7 +22,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
     private fun read(): Request?=synchronized(lock) {
         if(!file.baseFile.exists()&&!File(file.baseFile.path+".bak").exists())return@synchronized null
         runCatching {
-            val bytes=file.openRead().use{it.readNBytes(4097)};require(bytes.size<=4096)
+            val bytes=file.openRead().use{it.readBoundedBytes(4097)};require(bytes.size<=4096)
             val o=Json.parseToJsonElement(strictUtf8(bytes)).jsonObject
             Request(o.getValue("id").jsonPrimitive.content,o.getValue("credential").jsonPrimitive.content,o.getValue("phase").jsonPrimitive.content)
                 .also{require(it.id.length==36&&it.credential.length in 1..128&&it.phase in setOf("QUEUED","RUNNING","PAUSED","DONE"))}
