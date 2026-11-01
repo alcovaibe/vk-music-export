@@ -30,7 +30,8 @@ internal object MusicPagination {
             musicCheck(expected==null||page.count==expected,MusicError.LIBRARY_CHANGED);expected=page.count
             if(page.lists.isEmpty()) {
                 val next=page.nextFrom
-                if(next!=null&&cursors.add(next)){cursor=next;continue}
+                if(next!=null){if(!cursors.add(next))break;cursor=next;continue}
+                if(cursor!=null||page.cursorBased){complete=offset==page.count;break}
                 if(page.nextOffset!=null) {
                     musicCheck(page.nextOffset>offset&&page.nextOffset<=page.count,MusicError.LIBRARY_CHANGED)
                     offset=page.nextOffset
@@ -39,7 +40,10 @@ internal object MusicPagination {
                 }
                 complete=next==null&&offset==page.count;break
             }
-            if(!pages.add(page.lists.map{it.key}))break
+            if(!pages.add(page.lists.map{it.key})) {
+                page.lists.forEach{lists[it.key]=lists[it.key]?.reconciled(it)?:it}
+                partial(NativeCatalog(lists.values.toList(),page.count,false));break
+            }
             musicCheck(offset+page.lists.size<=page.count,MusicError.LIBRARY_CHANGED)
             page.lists.forEach{lists[it.key]=lists[it.key]?.reconciled(it)?:it}
             val advanced=page.nextOffset?:offset+page.lists.size

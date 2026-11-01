@@ -42,6 +42,7 @@ internal object MusicCatalog {
                 }
             }
         }
+        guard()
         return NativeCatalog(current,maxOf(all.count,merged.size),all.complete&&(albums?.complete!=false))
     }
 

@@ -120,11 +120,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         val req = Request.Builder().url("https://api.vk.com/method/$method")
             .header("User-Agent",access.agent).post(form.build()).build()
         val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists","audio.getPlaylistById"->"catalog";"audio.delete"->"library_remove";"audio.search"->"cover_search";else->"resolve_media"}
-        observe("native_music_request",mapOf("stage" to step,"phase" to "start","transport" to "native_https_api"))
+        observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "start","transport" to "native_https_api"))
         return try {
             MusicApiPacer.awaitSlot()
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
-            observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
+            observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
             // A private friend's section or a denied search is not proof that the account token expired.
             val scopedRead=method=="friends.get"||method=="users.get"&&fields["user_ids"]!=null||
@@ -142,11 +142,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             if(response.status!=200)throw MusicFailure(MusicError.HTTP,httpStatus=response.status)
             withContext(Dispatchers.Default){NativeProtocol.envelope(strictUtf8(response.bytes)).also(::rememberPreviews)}
         } catch(e: CancellationException){throw e}
-          catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
+          catch(e: MusicFailure){observe("native_music_failure",mapOf("stage" to step,"method" to method,"code" to e.code.name,"vk_code" to e.remoteCode,"kind" to e.kind?.name));throw e}
           catch(e: Exception){
               currentCoroutineContext().ensureActive()
               val failure=if(e is IOException)networkFailure(e) else MusicFailure(MusicError.RESPONSE,kind=MusicFailureKind.OTHER)
-              observe("native_music_failure",mapOf("stage" to step,"code" to failure.code.name,"kind" to failure.kind?.name))
+              observe("native_music_failure",mapOf("stage" to step,"method" to method,"code" to failure.code.name,"kind" to failure.kind?.name))
               throw failure
           }
     }
