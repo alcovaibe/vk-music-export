@@ -1,0 +1,117 @@
+name: "Android 10–13 test / Проверка Android 10–13"
+description: "Report real-device compatibility results, including successful checks / Результаты проверки на реальном устройстве, в том числе успешные"
+title: "[Android 10–13] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help verify VK Music Export on **physical Android 10–13 devices (API 29–33)**.
+        Помогите проверить VK Music Export на **физических устройствах Android 10–13 (API 29–33)**.
+
+        **The current stable v0.11.9 APK requires Android 14+ and cannot be tested on Android 10–13.**
+        **Текущий стабильный APK v0.11.9 требует Android 14+ и не устанавливается на Android 10–13.**
+        Use an API 29-compatible test APK built from the compatibility PR. The GitHub Actions debug APK is signed with a debug certificate: it cannot update an existing release-signed installation in place.
+        Используйте тестовый APK с minSdk 29 из PR совместимости. Debug APK из GitHub Actions подписан тестовым ключом и не обновляет релизную установку поверх неё.
+        Do not delete your installed app or its data just to run this test. Use a spare device or a fresh installation.
+        Не удаляйте установленное приложение и данные ради теста. Используйте запасное устройство или новую установку.
+
+        **Do not post VK tokens, cookies, account IDs, signed links, names of friends or raw diagnostic files.**
+        **Не публикуйте токены ВК, cookie, ID аккаунтов, подписанные ссылки, имена друзей и исходные файлы диагностики.**
+
+  - type: input
+    id: manufacturer
+    attributes:
+      label: "Device manufacturer / Производитель"
+      placeholder: "Samsung"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: "Device model / Модель"
+      placeholder: "Galaxy S10"
+    validations:
+      required: true
+
+  - type: input
+    id: android
+    attributes:
+      label: "Android version and API / Android и API"
+      placeholder: "Android 11, API 30"
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: "Firmware and security patch / Прошивка и патч безопасности"
+      placeholder: "One UI / MIUI / Android build (optional)"
+    validations:
+      required: false
+
+  - type: input
+    id: build
+    attributes:
+      label: "Test APK and commit / Тестовый APK и коммит"
+      description: "Include PR/Actions run, versionCode and commit SHA; do not paste any private URL / Укажите PR/запуск Actions, versionCode и SHA коммита"
+      placeholder: "PR #59, run number, commit SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: "Overall result / Общий результат"
+      options:
+        - "Passed checked scenarios / Проверенные сценарии работают"
+        - "Partly working / Работает частично"
+        - "Blocking bug / Критическая ошибка"
+        - "Could not install / Не удалось установить"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: "Scenario results / Результаты сценариев"
+      description: "Replace each item with PASS, FAIL or NOT TESTED; do not report untested features as successful. / Напротив каждого пункта укажите ОК, СБОЙ или НЕ ПРОВЕРЯЛ."
+      value: |
+        Install and launch / Установка и запуск: НЕ ПРОВЕРЯЛ
+        VK login / Вход в ВК: НЕ ПРОВЕРЯЛ
+        Library and playlists / Библиотека и плейлисты: НЕ ПРОВЕРЯЛ
+        Download MP3/M4A / Скачивание MP3/M4A: НЕ ПРОВЕРЯЛ
+        M3U8 saved in Music / M3U8 в папке Music: НЕ ПРОВЕРЯЛ
+        Playback, lock screen / Плеер, заблокированный экран: НЕ ПРОВЕРЯЛ
+        Background download and notification / Фоновая загрузка и уведомление: НЕ ПРОВЕРЯЛ
+        Pause and resume / Пауза и продолжение: НЕ ПРОВЕРЯЛ
+        Duplicate scan / Поиск дубликатов: НЕ ПРОВЕРЯЛ
+        Network loss and recovery / Пропадание и восстановление сети: НЕ ПРОВЕРЯЛ
+        Restart without data loss / Перезапуск без потери данных: НЕ ПРОВЕРЯЛ
+    validations:
+      required: true
+
+  - type: textarea
+    id: findings
+    attributes:
+      label: "Failures, reproduction steps, and details / Ошибки, шаги и подробности"
+      description: "For failed cases, describe what happened and expected behavior / Для сбоев опишите действия, фактический и ожидаемый результат"
+      placeholder: "Optional if all tested scenarios pass / Необязательно, если проверенные сценарии работают"
+    validations:
+      required: false
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: "Screenshots or sanitized logs / Скриншоты или очищенные логи"
+      description: "Optional. Remove tokens, IDs, names and private media links / Необязательно. Удалите токены, ID, имена и личные ссылки"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: "Confirmation / Подтверждение"
+      options:
+        - label: "This report identifies a real device and actual scenarios; I removed secrets and private data. / Указано реальное устройство и действительно выполненные сценарии; личные данные и секреты удалены."
+          required: true

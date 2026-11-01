@@ -1,31 +1,136 @@
-name: Ошибка
-description: Сообщить о проблеме без токенов и личных данных
+name: "Bug report / Сообщить об ошибке"
+description: "Report a problem with VK Music Export / Сообщить о проблеме VK Music Export"
+title: "[Bug] "
 body:
-  - type: input
-    id: version
+  - type: markdown
     attributes:
-      label: Версия и номер сборки
-      description: Версия — меню трёх точек → «О приложении»; номер сборки — поле version_code в JSON-отчёте. Укажите оба значения.
+      value: |
+        Thank you for reporting a bug. Please provide as much information as possible.
+        Спасибо за сообщение об ошибке. Пожалуйста, укажите как можно больше информации.
+
+        **Do not include VK tokens, cookies, passwords, signed music links, signing keys, account IDs or personal data.**
+        **Не публикуйте токены ВК, cookie, пароли, подписанные ссылки на музыку, ключи подписи, ID аккаунтов и личные данные.**
+        Review all screenshots and exported diagnostics before attaching them.
+        Просмотрите скриншоты и экспортированную диагностику перед отправкой.
+
+  - type: input
+    id: app_version
+    attributes:
+      label: "App version / Версия приложения"
+      description: "Version, versionCode and, for a test build, commit SHA / Версия, номер сборки и SHA коммита для тестовой сборки"
+      placeholder: "0.11.9 / 1311 / commit (if test build)"
     validations:
       required: true
-  - type: input
-    id: device
+
+  - type: dropdown
+    id: build_source
     attributes:
-      label: Устройство и версия Android
-      description: Поддерживаются Android 10 и новее. Укажите модель телефона и точную версию Android.
+      label: "APK source / Источник APK"
+      options:
+        - "GitHub Releases (stable) / GitHub Releases (стабильная)"
+        - "GitHub Actions (test build) / GitHub Actions (тестовая сборка)"
+        - "Other / Другое"
+        - "Unknown / Не знаю"
     validations:
       required: true
+
+  - type: input
+    id: manufacturer
+    attributes:
+      label: "Device manufacturer / Производитель устройства"
+      description: "Example / Пример: Samsung, Xiaomi, Google"
+      placeholder: "Samsung"
+    validations:
+      required: true
+
+  - type: input
+    id: device_model
+    attributes:
+      label: "Device model / Модель устройства"
+      description: "Example / Пример: Galaxy S25"
+      placeholder: "Galaxy S25"
+    validations:
+      required: true
+
+  - type: input
+    id: android_version
+    attributes:
+      label: "Android version / Версия Android"
+      description: "Include API level and firmware if known / Укажите API и прошивку, если знаете"
+      placeholder: "Android 10 (API 29)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Affected feature / Где возникает ошибка?"
+      options:
+        - "Login and account / Авторизация и аккаунт"
+        - "Download and playlists / Скачивание и плейлисты"
+        - "Background transfers and notifications / Фоновые операции и уведомления"
+        - "Duplicates / Поиск дубликатов"
+        - "Playback / Воспроизведение"
+        - "Updates and installation / Обновление и установка"
+        - "Interface or other / Интерфейс или другое"
+    validations:
+      required: true
+
   - type: textarea
-    id: diagnostics
+    id: problem
     attributes:
-      label: Код ошибки и диагностика
-      description: Для музыки друга укажите вкладку и этап сбоя; для исполнителей — текст ошибки и метод/код ВК. JSON текущего или предыдущего запуска доступен в меню трёх точек. Просмотрите файл и снимки перед отправкой; не публикуйте account ID, имена друзей, токены, cookie и подписанные ссылки. Отчёт выгрузки содержит личные данные.
+      label: "What happened? / Что произошло?"
+      description: "Include the error message without secrets / Укажите сообщение об ошибке без секретов"
+      placeholder: "Describe what happened / Опишите проблему"
     validations:
-      required: false
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior / Ожидаемое поведение"
+      description: "What did you expect? / Какой результат ожидался?"
+      placeholder: "Describe the expected result / Опишите ожидаемый результат"
+    validations:
+      required: true
+
   - type: textarea
     id: steps
     attributes:
-      label: Шаги, ожидаемый и фактический результат
-      description: Не указывайте токены, cookie и подписанные URL. Просмотрите диагностику перед приложением файла.
+      label: "Steps to reproduce / Шаги для воспроизведения"
+      description: "List exact actions, including backgrounding, screen lock or network changes if relevant / Перечислите точные действия, в том числе сворачивание, блокировку или смену сети"
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
     validations:
       required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: "How often does it happen? / Как часто это происходит?"
+      options:
+        - "Every time / Каждый раз"
+        - "Sometimes / Иногда"
+        - "Only once / Только один раз"
+        - "I don't know / Не знаю"
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: "Screenshots, video, or logs / Скриншоты, видео или логи"
+      description: "Optional. Remove VK tokens, signed URLs, names, IDs and other private information before attaching anything. / Необязательно. Удалите токены ВК, подписанные URL, имена, ID и другие личные данные."
+      placeholder: "Optional / Необязательно"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: "Confirmation / Подтверждение"
+      options:
+        - label: "I have not included passwords, VK tokens, cookies, personal data, or other secrets. / Я не публикую пароли, токены ВК, cookie, личные данные и другие секреты."
+          required: true

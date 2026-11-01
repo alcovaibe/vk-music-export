@@ -54,8 +54,10 @@ class LegacyAudioExportService : Service() {
                     }finally{AudioExportRuntime.active.set(false)}
                     withContext(Dispatchers.Main) {
                         val notification=AudioExportRuntime.notification(this@LegacyAudioExportService,AudioExportRuntime.state.value)
+                        // A foreground notification retains FLAG_ONGOING_EVENT on API 30–33.
+                        // Remove it first, then publish an ordinary completion/pause notice.
+                        stopForeground(STOP_FOREGROUND_REMOVE)
                         getSystemService(NotificationManager::class.java).notify(AudioExportRuntime.NOTIFICATION_ID,notification)
-                        stopForeground(STOP_FOREGROUND_DETACH)
                         stopSelfResult(startId)
                     }
                 }
@@ -101,9 +103,10 @@ class LegacyDuplicateCheckService : Service() {
                     updates.cancelAndJoin()
                     DuplicateCheckRuntime.interrupted(this@LegacyDuplicateCheckService,id)
                     withContext(Dispatchers.Main){
+                        // A completed scan must not leave an uncancellable FGS notification.
+                        stopForeground(STOP_FOREGROUND_REMOVE)
                         getSystemService(NotificationManager::class.java).notify(DuplicateCheckRuntime.NOTIFICATION_ID,
                             DuplicateCheckRuntime.notification(this@LegacyDuplicateCheckService,DuplicateCheckRuntime.state.value))
-                        stopForeground(STOP_FOREGROUND_DETACH)
                         stopSelfResult(startId)
                     }
                 }

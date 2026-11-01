@@ -205,8 +205,13 @@ class BackgroundCheckDeviceTest {
                 withTimeout(15000) {
                     while(DuplicateCheckRuntime.active.get())delay(50)
                 }
-                withTimeout(15000){
-                    while(manager.activeNotifications.none{it.id==DuplicateCheckRuntime.NOTIFICATION_ID})delay(50)
+                // Completion and foreground teardown are asynchronous. Wait for the
+                // *final* notification, not the still-ongoing notification from startForeground().
+                withTimeout(15000) {
+                    while(manager.activeNotifications.none {
+                        it.id==DuplicateCheckRuntime.NOTIFICATION_ID &&
+                            it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0
+                    })delay(50)
                 }
                 val status=manager.activeNotifications.first{it.id==DuplicateCheckRuntime.NOTIFICATION_ID}
                 assertEquals(Notification.VISIBILITY_PRIVATE,status.notification.visibility)
