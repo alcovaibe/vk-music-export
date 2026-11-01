@@ -180,62 +180,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->{model.stopForWindow();onDismiss()}
         }
     }
-    if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
-        item("access") {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                Text("Вход через Chrome",style=MaterialTheme.typography.titleMedium)
-                Text("Открой заявку в Chrome. Если VK ID покажет код подключения из 6 цифр, вернись сюда: приложение откроет экран для этого кода. Если код не потребуется, результат будет проверен автоматически.")
-                Text("Это внутренний протокол ВК. Веб-сессия может иметь права шире музыки, а музыкальный метод может быть недоступен. Новый доступ сохраняется только после успешной проверки музыки.",style=MaterialTheme.typography.bodySmall)
-                Text("Удаление данных доступа завершает только локальный вход. Для отзыва сессии используй настройки аккаунта ВК. Музыка и очередь остаются.",style=MaterialTheme.typography.bodySmall)
-                if(state.stage!="browser_auth")Button(enabled=state.initialized&&!state.busy&&!backgroundCheck,onClick=model::authenticate) {
-                    Text(if(state.configured)"Подключить ВК заново через Chrome" else "Подключить ВК через Chrome")
-                }
-                state.authPhase?.let{Text(it.label,Modifier.testTag("native_auth_phase"))}
-                if(state.busy&&state.stage=="browser_auth") {
-                    if(!state.stopping && state.authPhase in setOf(DeviceAuthPhase.READY,DeviceAuthPhase.WAITING,DeviceAuthPhase.REQUEST_OPENED))
-                        Button(onClick={model.openAuthChrome(context)}){Text("Открыть подтверждение ВК")}
-                    Text("Срок заявки идёт и в Chrome: не более 5 минут. Проверка результата продолжается после возвращения в приложение.",style=MaterialTheme.typography.bodySmall)
-                }
-                state.authIssue?.let{Text(it.label+" Код: AUTH_"+it.name,color=MaterialTheme.colorScheme.error)}
-                HorizontalDivider()
-                if(!state.initialized)LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(if(state.configured)"Доступ ВК сохранён на устройстве" else "Музыкальный доступ ВК не настроен")
-                if(state.configured) {
-                    session.accountId?.let{Text("Аккаунт ВК: $it",style=MaterialTheme.typography.bodySmall)}
-                    val expiry=session.expiresAtMs
-                    Text(when {
-                        session.status==SessionStatus.RENEWING->"Обновляем доступ ВК…"
-                        session.status==SessionStatus.LOGIN_REQUIRED->"Доступ нужно подключить заново через Chrome."
-                        expiry==null->"ВК не сообщил срок действия этого токена."
-                        expiry<=clock->"Срок токена истёк."
-                        else->"Токен действует до "+java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(expiry))
-                    },Modifier.testTag("vk_access_lifetime"),style=MaterialTheme.typography.bodySmall)
-                    Text(if(session.renewable)"Включена автоматическая попытка продления. Если ВК отклонит её, понадобится новый вход."
-                        else "Автопродление недоступно для этого входа. Новый вход через Chrome может подключить его.",style=MaterialTheme.typography.bodySmall)
-                    if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ. Прежние данные сохранены; приложение повторит попытку позже.",style=MaterialTheme.typography.bodySmall)
-                }
-                if(!state.configured)Button(enabled=state.initialized&&!state.busy&&!backgroundCheck,onClick={Diagnostics.button("native_music_access_dialog");configure=true}) {
-                    Text("Настроить доступ ВК")
-                }
-                if(state.configured) {
-                    OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
-                }
-                if(state.configured||state.accessDamaged)TextButton(enabled=!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::forget){Text("Удалить только данные доступа ВК")}
-                state.message?.let{Text(it)}
-                state.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
-                if(state.busy) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(if(state.stopping)"Завершаем предыдущую операцию…"
-                    else if(state.waitingForSlot)"Ожидаем завершения предыдущей операции…"
-                    else if(state.preparing!=null)state.preparing!!
-                    else if(state.stage=="browser_auth")state.authPhase?.label?:"Ожидание входа ВК"
-                    else if(state.stage.startsWith("duplicates_"))duplicates.progress.stage.ifEmpty{"Подготовка проверки дубликатов"}
-                    else state.preparing?:"Проверка музыкального доступа")
-                    if(state.stage!="browser_auth")Text("Держи приложение открытым. При уходе операция остановится; готовые файлы сохранятся.",style=MaterialTheme.typography.bodySmall)
-                    TextButton(enabled=!state.stopping,onClick=model::cancel){Text("Остановить")}
-                }
-                TextButton(onClick={accessOpen=false}){Text("Вернуться в библиотеку")}
-        }}
-    }else MusicLibraryScaffold(
+    if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
+        onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
+        onManual={Diagnostics.button("native_music_access_dialog");configure=true},onConfirm={model.openAuthChrome(context)},
+        onForget=model::forget,onCancel=model::cancel)
+    else MusicLibraryScaffold(
         title=when(destination) {
             MusicDestination.SAVED->"Сохранённое"
             MusicDestination.DOWNLOADS->"Загрузки"

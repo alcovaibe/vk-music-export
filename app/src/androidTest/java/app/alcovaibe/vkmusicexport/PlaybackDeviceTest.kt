@@ -10,8 +10,14 @@ import android.app.NotificationManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
@@ -86,6 +92,22 @@ class PlaybackDeviceTest {
         for(cmd in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png"))
             ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(cmd)).use{it.readBytes()}
     }
+    private fun showPlayer(largeText: Boolean=false) {
+        ui.runOnUiThread{ui.activity.setContent {
+            val state by PlaybackRuntime.state.collectAsState()
+            val expanded by PlaybackRuntime.expanded.collectAsState()
+            val density=LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density,if(largeText)2f else density.fontScale)) {
+              MusicTheme {
+                if(expanded)PlaybackScreen(state,{PlaybackRuntime.expanded.value=false},{},false)
+                else MusicLibraryScaffold("Сохранённое",MusicDestination.SAVED,{},ExportSnapshot(),{},{},{},
+                    playback=state,onPlayerOpen={PlaybackRuntime.expanded.value=true}) {
+                    item {Text("Сохранённая музыка")}
+                }
+              }
+            }
+        }}
+    }
     @Test fun localPlaybackSurvivesStoppedActivityAndPublishesMediaNotification()=fixture {rows->
         start(rows)
         val manager=app.getSystemService(NotificationManager::class.java)
@@ -114,17 +136,8 @@ class PlaybackDeviceTest {
     }
     @Test fun fullScreenAndMiniPlayerShareStateAndLocalModeIsOffline()=fixture {rows->
         start(rows)
-        ui.runOnUiThread{PlaybackRuntime.toggle(app);ui.activity.setContent {
-            val state by PlaybackRuntime.state.collectAsState()
-            val expanded by PlaybackRuntime.expanded.collectAsState()
-            MusicTheme {
-                if(expanded)PlaybackScreen(state,{PlaybackRuntime.expanded.value=false},{},false)
-                else MusicLibraryScaffold("Сохранённое",MusicDestination.SAVED,{},ExportSnapshot(),{},{},{},
-                    playback=state,onPlayerOpen={PlaybackRuntime.expanded.value=true}) {
-                    item {Text("Сохранённая музыка")}
-                }
-            }
-        }}
+        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+        showPlayer()
         ui.onNodeWithTag("music_player").assertExists()
         ui.onNodeWithText("Офлайн").assertIsDisplayed()
         ui.onNodeWithTag("player_download").assertIsNotEnabled()
@@ -141,6 +154,58 @@ class PlaybackDeviceTest {
         ui.onNodeWithTag("playback_queue_2").performClick()
         ui.waitUntil(10000){PlaybackRuntime.state.value.index==2}
         ui.onNodeWithTag("player_title").assertTextContains("Проверка плеера 3")
+    }
+    @Test fun downwardSingleFingerSwipeCollapsesAndKeepsPlaybackWhileOtherGesturesDoNot()=fixture {rows->
+        start(rows)
+        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+        showPlayer(largeText=true)
+        ui.onNodeWithContentDescription("Меню плеера").assertDoesNotExist()
+        val shortDrag=with(ui.density){40.dp.toPx()}
+        val longDrag=with(ui.density){120.dp.toPx()}
+        ui.onNodeWithTag("player_artwork").performTouchInput {
+            swipe(center,center+Offset(0f,shortDrag),600)
+        }
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        ui.onNodeWithTag("player_artwork").performTouchInput {
+            down(center);moveBy(Offset(0f,longDrag));cancel()
+        }
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        ui.onNodeWithTag("player_artwork").performTouchInput {
+            down(0,centerLeft+Offset(20f,0f));down(1,centerRight-Offset(20f,0f))
+            moveBy(0,Offset(0f,longDrag));moveBy(1,Offset(0f,longDrag))
+            up(0);up(1)
+        }
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        ui.onNodeWithTag("player_seek").performScrollTo().performTouchInput {
+            swipe(Offset(width*.2f,centerY),Offset(width*.75f,centerY),500)
+        }
+        ui.waitUntil(10000){PlaybackRuntime.state.value.positionMs>500}
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        // Begin inside the scroll viewport, with its position explicitly away from the top.
+        ui.onNodeWithTag("player_connection").performScrollTo()
+        val axis=ui.onNodeWithTag("player_content").fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        assertTrue("Large text must provide scrollable content for this scenario",axis.value()>0f)
+        ui.onNodeWithTag("player_content").performTouchInput {
+            swipeDown(startY=height*.25f,endY=height*.7f,durationMillis=450)
+        }
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        ui.onNodeWithTag("player_header").performScrollTo()
+        ui.onNodeWithTag("player_artwork").performTouchInput {swipeUp()}
+        ui.onNodeWithTag("music_player").assertIsDisplayed()
+        ui.onNodeWithTag("player_header").performScrollTo()
+        assertEquals("Dismissal begins at the top of the scroll viewport",0f,axis.value(),0f)
+        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+        ui.waitUntil(10000){PlaybackRuntime.state.value.playing}
+        val before=PlaybackRuntime.state.value
+        ui.onNodeWithTag("player_artwork").performTouchInput {
+            swipe(center,center+Offset(0f,longDrag),450)
+        }
+        ui.waitUntil(5000){!PlaybackRuntime.expanded.value}
+        ui.onNodeWithTag("music_player").assertDoesNotExist()
+        ui.onNodeWithTag("music_mini_player").assertIsDisplayed()
+        assertTrue(PlaybackRuntime.state.value.playing)
+        assertEquals(before.index,PlaybackRuntime.state.value.index)
+        assertEquals(before.entries,PlaybackRuntime.state.value.entries)
     }
     @Test fun onlineHlsUsesTheRealDecoderAndPublicTimelineHidesTheResolvedAddress() {
         val requested=CopyOnWriteArrayList<String>()
