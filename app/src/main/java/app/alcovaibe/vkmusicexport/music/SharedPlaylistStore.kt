@@ -23,13 +23,19 @@ import java.util.Locale
 internal class SharedPlaylistStore(private val context: Context,private val store: AudioExportStore) {
     @Serializable private data class Playlist(val uri: String,val directory: String,val bytes: Int,val sha256: String)
     private val resolver=context.contentResolver
-    private val collection=MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    // On Android Q, Files accepts only Downloads/Documents. An audio MIME playlist
+    // can be created in Music through the audio collection instead.
+    private val collection=if(Build.VERSION.SDK_INT==29)
+        MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    else MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
     private val json=Json{encodeDefaults=true}
     private fun target(raw: String): Uri {
         val uri=Uri.parse(raw)
+        val files=uri.pathSegments.size==3&&uri.pathSegments.take(2)==listOf("external_primary","file")
+        val audio=uri.pathSegments.size==4&&uri.pathSegments.take(3)==listOf("external_primary","audio","media")
+        // Accept both forms to preserve Android 10 playlists after a system upgrade.
         musicCheck(uri.scheme=="content"&&uri.authority=="media"&&uri.query==null&&uri.fragment==null&&
-            uri.pathSegments.size==3&&uri.pathSegments.take(2)==listOf("external_primary","file")&&
-            (uri.lastPathSegment?.toLongOrNull()?:0)>0,MusicError.STORAGE)
+            (files||audio)&&(uri.lastPathSegment?.toLongOrNull()?:0)>0,MusicError.STORAGE)
         return uri
     }
     private fun owned(row: Playlist,pending: Boolean): Boolean=runCatching {

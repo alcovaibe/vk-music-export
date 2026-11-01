@@ -2,6 +2,8 @@ package app.alcovaibe.vkmusicexport
 
 import app.alcovaibe.vkmusicexport.diagnostics.*
 import android.os.Bundle
+import android.os.Build
+import android.view.View
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -56,9 +58,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SideEffect {
-                val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                    WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                window.insetsController?.setSystemBarsAppearance(lightBars, lightBars)
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                        WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                    window.insetsController?.setSystemBarsAppearance(lightBars, lightBars)
+                }else{
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or
+                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                }
             }
             MusicTheme { MusicApp(updates.controller,nativeMusic) }
         }
