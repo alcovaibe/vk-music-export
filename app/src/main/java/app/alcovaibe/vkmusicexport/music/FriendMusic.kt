@@ -9,7 +9,7 @@ internal data class MusicFriend(val id: Long,val firstName: String,val lastName:
     override fun toString()="MusicFriend([metadata omitted])"
 }
 internal data class FriendsPage(val items: List<MusicFriend>,val count: Int)
-internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы"),COLLECTIONS("Подборки") }
+internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы") }
 internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?=null,val httpStatus: Int?=null,val field: String?=null,val position: Int?=null) {
     val message get()=when {
         remoteCode==201->"ВК запретил доступ к аудиозаписям этого профиля."
@@ -19,6 +19,8 @@ internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?
         code==MusicError.TIMEOUT->"ВК не завершил загрузку вовремя. Уже полученные данные показаны."
         code==MusicError.NETWORK||code==MusicError.TLS||code==MusicError.HTTP->"Не удалось получить данные по сети. Повтори попытку."
         code==MusicError.ACCOUNT_CHANGED->"Подключение ВК изменилось. Обнови список друзей."
+        code==MusicError.INCOMPLETE->"ВК не вернул весь список. Уже полученные записи доступны. Повтори обновление."
+        code==MusicError.COLLECTION_TYPE->"Не удалось подтвердить тип части списков ВК. Повтори обновление, чтобы определить альбомы и плейлисты."
         else->code.label
     }
     val codeText get()=(remoteCode?.let{"Код API ВК: $it"}?:httpStatus?.let{"HTTP $it"}?:"Код приложения: ${code.name}")+
@@ -36,10 +38,10 @@ internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(
     val page get()=if(playlist!=null)playlistTracks else tracks
     val complete get()=if(playlist!=null)playlistComplete else tracksComplete
     fun collections()=catalog?.lists.orEmpty().filter{it.kind==kind(tab)}
-    private fun kind(tab: FriendMusicTab)=when(tab){FriendMusicTab.ALBUMS->PlaylistKind.ALBUM;FriendMusicTab.COLLECTIONS->PlaylistKind.UNKNOWN;else->PlaylistKind.PLAYLIST}
+    private fun kind(tab: FriendMusicTab)=if(tab==FriendMusicTab.ALBUMS)PlaylistKind.ALBUM else PlaylistKind.PLAYLIST
     fun count(tab: FriendMusicTab): Int?=when(tab) {
         FriendMusicTab.TRACKS->tracks?.count
-        else->catalog?.takeIf{it.complete}?.lists?.count{it.kind==kind(tab)}
+        else->catalog?.takeIf{it.complete&&it.lists.none{list->list.kind==PlaylistKind.UNKNOWN}}?.lists?.count{it.kind==kind(tab)}
     }
 }
 internal object FriendMusicProtocol {
@@ -78,6 +80,7 @@ internal object FriendMusicProtocol {
 internal object FriendMusicExport {
     fun tasks(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<AudioExportTask> {
         musicCheck(viewer>0&&user.id>0,MusicError.ACCOUNT_CHANGED)
+        musicCheck(list==null||list.kind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
         val source=ExportSource(viewer,if(list==null)"friend_library" else "friend_collection",
             if(list==null)user.id.toString() else "${user.id}:${list.key}")
         val folder=ExportLayout.component(user.name,120)+" [${user.id}]"

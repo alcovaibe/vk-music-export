@@ -66,7 +66,7 @@ private fun FriendProfileHeader(user: MusicFriend,available: Boolean,problem: Fr
 private fun FriendTabs(state: FriendMusicState,onTab:(FriendMusicTab)->Unit) {
     Surface(shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface) {
         Row(Modifier.fillMaxWidth().padding(3.dp),horizontalArrangement=Arrangement.spacedBy(3.dp)) {
-            FriendMusicTab.entries.filter{it!=FriendMusicTab.COLLECTIONS||state.catalog?.lists?.any{list->list.kind==PlaylistKind.UNKNOWN}==true}.forEach{tab->
+            FriendMusicTab.entries.forEach{tab->
                 val selected=state.tab==tab
                 Surface(onClick={onTab(tab)},shape=RoundedCornerShape(15.dp),modifier=Modifier.weight(1f).testTag("friend_tab_${tab.name}"),
                     color=if(selected)MaterialTheme.colorScheme.primary else Color.Transparent,
@@ -154,12 +154,10 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
         }
     }
     if(state.tab!=FriendMusicTab.TRACKS&&state.playlist==null) {
-        if(state.busy&&state.catalog==null)item("friend_catalog_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Получаем подборки…")}
+        if(state.busy&&state.catalog==null)item("friend_catalog_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Получаем плейлисты и альбомы…")}
         problem?.let{item("friend_catalog_problem"){FriendProblemCard(it,controller::refresh)}}
         val collections=state.collections()
-        if(state.catalog?.complete==true&&collections.isEmpty()&&problem==null)item("friend_collections_empty"){Text(when(state.tab){FriendMusicTab.ALBUMS->"Нет доступных альбомов";FriendMusicTab.COLLECTIONS->"Нет подборок без типа";else->"Нет доступных плейлистов"})}
-        val unknown=state.catalog?.lists?.count{it.kind==PlaylistKind.UNKNOWN}?:0
-        if(unknown>0)item("friend_unclassified"){Text(if(state.tab==FriendMusicTab.COLLECTIONS)"ВК не подтвердил тип этих подборок. Они доступны для просмотра и скачивания." else "Подборки без подтверждённого типа: $unknown. Они доступны во вкладке «Подборки».",style=MaterialTheme.typography.bodySmall)}
+        if(state.catalog?.complete==true&&collections.isEmpty()&&problem==null)item("friend_collections_empty"){Text(if(state.tab==FriendMusicTab.ALBUMS)"Нет доступных альбомов" else "Нет доступных плейлистов")}
         items(collections,key={"friend_collection_${it.key}"}){list->
             Surface(onClick={controller.playlist(list)},shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
                 enabled=!state.preparing,modifier=Modifier.fillMaxWidth().testTag("friend_collection_${list.owner}_${list.id}")) {

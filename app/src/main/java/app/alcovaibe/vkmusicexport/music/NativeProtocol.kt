@@ -68,7 +68,7 @@ internal class NativePlaylist(val owner: Long, val id: Long, val title: String, 
     override fun toString() = "NativePlaylist([metadata omitted])"
 }
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
-internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int,val complete: Boolean=lists.size==count,val nextFrom: String?=null,val cursorBased: Boolean=false) {
+internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int,val complete: Boolean=lists.size==count,val nextFrom: String?=null,val cursorBased: Boolean=false,val nextOffset: Int?=null) {
     override fun toString()="NativeCatalog([metadata omitted])"
 }
 internal data class NativeProbe(val owner: Long, val library: NativePage)
@@ -77,7 +77,7 @@ internal data class NativeProbe(val owner: Long, val library: NativePage)
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
-    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getById", "audio.delete", "audio.search",
+    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.search",
         "catalog.getAudio","catalog.getAudioArtist","catalog.getSection","catalog.getBlockItems","audio.getAudiosByArtist")
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
@@ -195,26 +195,32 @@ internal object NativeProtocol {
             val explicitKind=when((p["type"] as? JsonPrimitive)?.content) {
                 "album","1"->PlaylistKind.ALBUM;"playlist","0"->PlaylistKind.PLAYLIST;else->PlaylistKind.UNKNOWN
             }
+            // `type` classifies the VK object; release metadata must not overrule it.
             val releaseKind=when((p["album_type"] as? JsonPrimitive)?.content) {
-                "album","single","ep"->PlaylistKind.ALBUM;"collection"->PlaylistKind.PLAYLIST;else->PlaylistKind.UNKNOWN
+                "album","single","ep","compilation","remix"->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN
             }
-            val conflict=explicitKind!=PlaylistKind.UNKNOWN&&releaseKind!=PlaylistKind.UNKNOWN&&explicitKind!=releaseKind
             val kind=when {
-                conflict->PlaylistKind.UNKNOWN
                 explicitKind!=PlaylistKind.UNKNOWN->explicitKind
+                flag(p,"is_album")!=null->if(flag(p,"is_album")==true)PlaylistKind.ALBUM else PlaylistKind.PLAYLIST
                 else->releaseKind
             }
             NativePlaylist(owner,id,text(p,"title"),count(p),accessKey,
                 originalOwner.takeIf{originalId!=null}, originalId.takeIf{originalOwner!=null},
                 (p["type"] as? JsonPrimitive)?.intOrNull,kind,
-                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"]),conflict)
+                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"]))
         }
         val cursorValue=o["next_from"]
         if(cursorValue!=null&&cursorValue !is JsonNull&&(cursorValue !is JsonPrimitive||!cursorValue.isString))throw NativeDataFailure("next_from")
         val next=(cursorValue as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotEmpty()}
         if(next!=null&&(next.length>8192||next.any{it<' '||it=='\u007f'}))throw NativeDataFailure("next_from")
-        return NativeCatalog(lists,total,nextFrom=next,cursorBased="next_from" in o)
+        val offsetValue=o["next_offset"]?.takeUnless{it is JsonNull}
+        val nextOffset=offsetValue?.let{(it as? JsonPrimitive)?.intOrNull?.takeIf{n->n in 0..1_000_000}?:throw NativeDataFailure("next_offset")}?.takeIf{it>0}
+        // Some offset responses include next_from:null/"" on every page. That is not a cursor protocol.
+        return NativeCatalog(lists,total,nextFrom=next,cursorBased=next!=null,nextOffset=nextOffset)
     }
+    fun playlistDetails(response: JsonElement): NativePlaylist = catalog(buildJsonObject {
+        put("count",1);put("items",JsonArray(listOf(response)))
+    }).lists.single()
     private fun flag(o: JsonObject,key: String): Boolean? = (o[key] as? JsonPrimitive)?.let{it.booleanOrNull?:it.intOrNull?.let{n->when(n){0->false;1->true;else->null}}}
     private fun artworkMatch(o: JsonObject): ArtworkMatch {
         val t=track(o)
