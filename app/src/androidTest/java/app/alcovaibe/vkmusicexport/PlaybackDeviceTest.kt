@@ -1,6 +1,11 @@
 package app.alcovaibe.vkmusicexport
 
 import android.app.Notification
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import java.io.ByteArrayOutputStream
+import androidx.compose.material3.Text
 import android.app.NotificationManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -45,12 +50,19 @@ class PlaybackDeviceTest {
         ui.runOnUiThread{PlaybackRuntime.stop()}
         try {
             val input=File(root,"tone.mp3").apply{inst.context.assets.open("native-audio/tone.mp3").use{writeBytes(it.readBytes())}}
+            val covered=File(root,"covered.mp3")
+            val image=Bitmap.createBitmap(96,96,Bitmap.Config.ARGB_8888)
+            val paint=Paint().apply{color=0xff786859.toInt()}
+            val canvas=Canvas(image);canvas.drawColor(0xffe9dfd3.toInt());canvas.drawRect(12f,12f,84f,84f,paint)
+            paint.color=0xffb8a493.toInt();canvas.drawCircle(48f,48f,23f,paint)
+            val out=ByteArrayOutputStream();image.compress(Bitmap.CompressFormat.JPEG,90,out);image.recycle()
+            EmbeddedArtwork.write(input,covered,"mp3",CoverImage(out.toByteArray(),"image/jpeg"))
             val shared=SharedAudioStore(app)
             runBlocking(Dispatchers.IO) {
                 repeat(3){i->
                     val track=NativeTrack("12_${99871+i}","Проверка плеера ${i+1}","Тестовая запись",1)
                     val task=ExportLayout.task(track,listOf("CI player",UUID.randomUUID().toString()),i+1)
-                    rows.add(shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))) {})
+                    rows.add(shared.publish(task,TransferResult(covered,ProcessedAudio("mp3","audio/mpeg",1200),coverEmbedded=true)) {})
                 }
             }
             block(rows.map{PlaybackEntry(it.track,"Сохранённая музыка",saved=it)})
@@ -65,7 +77,7 @@ class PlaybackDeviceTest {
         ui.runOnUiThread{PlaybackRuntime.play(app,rows)}
         ui.waitUntil(20000){PlaybackRuntime.state.value.seekable&&!PlaybackRuntime.state.value.buffering}
         ui.runOnUiThread{PlaybackRuntime.repeat();PlaybackRuntime.repeat();if(!PlaybackRuntime.state.value.playing)PlaybackRuntime.toggle(app)}
-        ui.waitUntil(10000){PlaybackRuntime.state.value.playing}
+        ui.waitUntil(10000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.artwork!=null&&PlaybackRuntime.state.value.error==null}
     }
     private fun shot(name: String) {
         ui.waitForIdle();inst.waitForIdleSync()
@@ -108,7 +120,10 @@ class PlaybackDeviceTest {
             val expanded by PlaybackRuntime.expanded.collectAsState()
             MusicTheme {
                 if(expanded)PlaybackScreen(state,{PlaybackRuntime.expanded.value=false},{},false)
-                else PlaybackMiniPlayer(state){PlaybackRuntime.expanded.value=true}
+                else MusicLibraryScaffold("Сохранённое",MusicDestination.SAVED,{},ExportSnapshot(),{},{},{},
+                    playback=state,onPlayerOpen={PlaybackRuntime.expanded.value=true}) {
+                    item {Text("Сохранённая музыка")}
+                }
             }
         }}
         ui.onNodeWithTag("music_player").assertExists()
@@ -117,7 +132,11 @@ class PlaybackDeviceTest {
         ui.onNodeWithTag("player_seek").assertIsEnabled()
         shot("player-offline")
         ui.onNodeWithTag("player_collapse").performClick()
-        ui.onNodeWithTag("music_mini_player").assertExists();shot("player-mini")
+        ui.onNodeWithTag("music_mini_player").assertIsDisplayed()
+        val mini=ui.onNodeWithTag("music_mini_player").fetchSemanticsNode().boundsInRoot
+        val navigation=ui.onNodeWithTag("music_nav_SAVED").fetchSemanticsNode().boundsInRoot
+        assertTrue("Mini player belongs above the bottom navigation",mini.bottom<=navigation.top)
+        shot("player-mini")
         ui.onNodeWithTag("music_mini_player").performClick()
         ui.onNodeWithTag("player_queue").performClick()
         ui.onNodeWithTag("playback_queue_2").performClick()

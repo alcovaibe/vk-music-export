@@ -120,6 +120,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(downloadsOpen)DownloadProgressSheet(queue,state.busy||duplicates.busy||friendState.preparing,state.error,
         onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,onDismiss=model::dismissDownloads,
         onSourceRetry=model::retrySource,onExportReport={model.shareExportReport(context)})
+    if(playerExpanded) {
+        PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare)
+        return
+    }
     if(aboutOpen) {
         app.alcovaibe.vkmusicexport.AboutAppPage(onBack={aboutOpen=false})
         return
@@ -175,10 +179,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             state.selected!=null->model.section(state.catalogSection)
             else->{model.stopForWindow();onDismiss()}
         }
-    }
-    if(playerExpanded) {
-        PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare)
-        return
     }
     if(accessOpen)LazyAppPage("Доступ к музыке",onBack={accessOpen=false},tag="music_access_management") {
         item("access") {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {

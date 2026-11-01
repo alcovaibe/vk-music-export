@@ -115,7 +115,14 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                     val duration=state.durationMs.coerceAtLeast(1)
                     Slider(value=seeking?:state.positionMs.coerceIn(0,duration).toFloat(),valueRange=0f..duration.toFloat(),
                         onValueChange={seeking=it},onValueChangeFinished={seeking?.let{PlaybackRuntime.seek(it.toLong())};seeking=null},
-                        enabled=state.seekable,modifier=Modifier.fillMaxWidth().testTag("player_seek"))
+                        enabled=state.seekable,modifier=Modifier.fillMaxWidth().testTag("player_seek"),
+                        thumb={Box(Modifier.size(14.dp).background(if(state.seekable)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,CircleShape))},
+                        track={
+                            val fraction=((seeking?:state.positionMs.toFloat())/duration.toFloat()).coerceIn(0f,1f)
+                            Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant)) {
+                                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+                            }
+                        })
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         Text(playbackTime(seeking?.toLong()?:state.positionMs),color=MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(playbackTime(state.durationMs),color=MaterialTheme.colorScheme.onSurfaceVariant)
