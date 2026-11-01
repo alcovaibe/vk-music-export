@@ -66,12 +66,12 @@ class OwnerReleaseTest(unittest.TestCase):
 
     def test_main_release_needs_its_own_marker_version_and_owner_request(self):
         request = dict(authorization='owner_requested_latest', manual_acceptance='pending', repository='alcovaibe/vk-music-export',
-                       branch='main', pull_request=56, version_name='0.11.7', expires_at='2026-11-02T23:59:59Z')
+                       branch='main', pull_request=57, version_name='0.11.8', expires_at='2026-11-02T23:59:59Z')
         env = dict(GITHUB_REPOSITORY=request['repository'], GITHUB_REF='refs/heads/main', GITHUB_EVENT_NAME='push', GITHUB_SHA='c'*40)
-        event = {'head_commit': {'message': 'Release 0.11.7 [publish-main-0.11.7]'}}
+        event = {'head_commit': {'message': 'Release 0.11.8 [publish-main-0.11.8]'}}
         now = dt.datetime(2026,11,1,tzinfo=dt.timezone.utc)
         owner.validate_context(request,env,event,now)
-        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-56.json'))
+        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-57.json'))
         for key,value in [('branch','codex/artists-duplicates-about'),('version_name','0.11.2')]:
             with self.subTest(key=key), self.assertRaises(AssertionError):
                 owner.validate_context(dict(request,**{key:value}),env,event,now)
@@ -81,7 +81,7 @@ class OwnerReleaseTest(unittest.TestCase):
         with self.assertRaises(AssertionError): owner.validate_context(request,env,event,now+dt.timedelta(days=3))
 
     def test_branch_cleanup_deletes_only_exact_requested_nonmain_heads(self):
-        request = dict(repository='alcovaibe/vk-music-export',branch='main',pull_request=53,delete_other_branches=True,
+        request = dict(repository='alcovaibe/vk-music-export',branch='main',pull_request=57,delete_other_branches=True,
                        branches_to_delete={'codex/fix':'b'*40})
         refs = [{'ref':'refs/heads/main','object':{'sha':'a'*40}}, {'ref':'refs/heads/codex/fix','object':{'sha':'b'*40}}]
         with patch.object(owner,'api',side_effect=[{'default_branch':'main'},refs,None,refs[:1]]) as api:

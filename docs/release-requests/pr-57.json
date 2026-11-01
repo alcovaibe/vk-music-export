@@ -1,0 +1,33 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 57,
+  "version_name": "0.11.8",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-04T23:59:59Z",
+  "build_inputs": {
+    "app": "6d99c29f94c669a9eee67e4cb3887f5a0a90f2f5",
+    "gradle": "214e387b12bb4a6dddf0ef5ecee8f488abdbef00",
+    "config": "0b5e837d9fecfcf825e60178a576708862b20840",
+    "tools": "5f7012035be10f1bca791fd1d7ed3d535f3710a4",
+    ".github": "aba91a8d9c4be3f9cd97af440430fa62a785332b",
+    "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "625c75d0e702ba89981847fae5ddab72c04bfeb7",
+    "version.properties": "c67171490464c02beb1d6c8858137c088dcb75fa",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e",
+    "CHANGELOG.md": "0afc3f2342c359a8aece38e4364d86ac01791ecf",
+    "LICENSE": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+    "NOTICE": "7e59d121ed67eb06e2003c4bb355a02482e46e91"
+  },
+  "request": "Владелец явно запросил слияние PR #57 в main, удаление всех остальных веток и выпуск нового релиза как Latest. Ручная приёмка онлайн-плеера с реальным аккаунтом не заявляется.",
+  "delete_other_branches": true,
+  "branches_to_delete": {
+    "codex/android14-support": "3042f94e2a3ea5023d927c1f70e877b0c263e230",
+    "codex/background-player": "e788e2431eef539fa82d612d0521d534adf56cb4",
+    "codex/friends-catalog-fixes": "a6ce1d07af8399b7e5fef16bcf175a636d9040f4",
+    "codex/friends-music-profiles": "5f1a9d53ac1e5644e40d35812967237417f804fd"
+  }
+}
