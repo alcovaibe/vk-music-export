@@ -53,6 +53,11 @@ if [[ "$result" == 0 ]]; then
   python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected
   result=$?
 fi
+# Historical stable APKs cannot install on Android 10–13: use compatible debug builds.
+if [[ "$result" == 0 && "$expected_api" -le 33 ]]; then
+  bash tools/compat-upgrade-check.sh "$expected_api"
+  result=$?
+fi
 if [[ "$result" != 0 ]]; then
   free -m > interface-diagnostics/host-memory-after.txt
   timeout 15 adb logcat -d -b crash > interface-diagnostics/crash.txt || true

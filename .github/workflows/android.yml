@@ -147,6 +147,14 @@ jobs:
           df -h /home/runner
       - name: Compile interface APKs before booting the emulator
         run: ./gradlew --dependency-verification strict assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+      - name: Build API 29–33 compatible debug upgrade pair
+        if: ${{ matrix.api-level <= 33 }}
+        run: |
+          mkdir -p compatibility-apks
+          cp app/build/outputs/apk/debug/app-debug.apk compatibility-apks/baseline.apk
+          APP_VERSION_CODE=2000000000 ./gradlew --dependency-verification strict assembleDebug -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk compatibility-apks/upgrade.apk
+
       - name: Release compiler memory before booting the emulator
         run: |
           ./gradlew --stop
