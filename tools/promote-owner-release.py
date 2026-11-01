@@ -11,7 +11,7 @@ import tempfile
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
-            54: ('main', '0.11.5')}
+            55: ('main', '0.11.6')}
 
 
 def request_path(env):
