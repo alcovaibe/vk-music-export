@@ -121,11 +121,12 @@ private fun Modifier.swipeDownToCollapse(scroll: ScrollState,onDismiss:()->Unit)
                     val change=event.changes.firstOrNull{it.id==down.id}
                     if(change==null||event.changes.any{it.id!=down.id&&it.pressed})eligible=false
                     if(change!=null) {
+                        // Compose represents ACTION_CANCEL as an already-consumed up event.
+                        if(change.isConsumed)eligible=false
                         velocity.addPosition(change.uptimeMillis,change.position)
                         val distance=change.position-down.position
                         if(eligible&&!dragging) {
-                            if(change.isConsumed)eligible=false
-                            else if(abs(distance.y)>slop||abs(distance.x)>slop) {
+                            if(abs(distance.y)>slop||abs(distance.x)>slop) {
                                 if(distance.y>slop&&distance.y>abs(distance.x)) {
                                     settling?.cancel();dragging=true
                                     offset=(distance.y-slop).coerceAtLeast(0f)
