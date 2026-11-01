@@ -166,7 +166,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
             val cover=minOf(maxWidth-32.dp,maxHeight*.43f)
             Column(Modifier.fillMaxSize().verticalScroll(scroll).testTag("player_content").padding(horizontal=16.dp),
                 horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(14.dp)) {
-                Row(Modifier.fillMaxWidth().heightIn(min=48.dp),verticalAlignment=Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("player_header"),verticalAlignment=Alignment.CenterVertically) {
                     IconButton(onClick=onDismiss,modifier=Modifier.testTag("player_collapse")){Icon(PlayerCollapseIcon,"Свернуть плеер")}
                     Box(Modifier.weight(1f),contentAlignment=Alignment.Center){Text("Сейчас играет",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)}
                     Spacer(Modifier.size(48.dp))

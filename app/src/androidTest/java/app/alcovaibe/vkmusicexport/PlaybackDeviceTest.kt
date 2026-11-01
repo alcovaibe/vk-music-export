@@ -189,16 +189,18 @@ class PlaybackDeviceTest {
             swipeDown(startY=height*.25f,endY=height*.7f,durationMillis=450)
         }
         ui.onNodeWithTag("music_player").assertIsDisplayed()
-        ui.onNodeWithTag("player_collapse").performScrollTo()
+        ui.onNodeWithTag("player_header").performScrollTo()
         ui.onNodeWithTag("player_artwork").performTouchInput {swipeUp()}
         ui.onNodeWithTag("music_player").assertIsDisplayed()
-        ui.onNodeWithTag("player_collapse").performScrollTo()
+        ui.onNodeWithTag("player_header").performScrollTo()
+        assertEquals("Dismissal begins at the top of the scroll viewport",0f,axis.value(),0f)
         ui.runOnUiThread{PlaybackRuntime.toggle(app)}
         ui.waitUntil(10000){PlaybackRuntime.state.value.playing}
         val before=PlaybackRuntime.state.value
         ui.onNodeWithTag("player_artwork").performTouchInput {
             swipe(center,center+Offset(0f,longDrag),450)
         }
+        ui.waitUntil(5000){!PlaybackRuntime.expanded.value}
         ui.onNodeWithTag("music_player").assertDoesNotExist()
         ui.onNodeWithTag("music_mini_player").assertIsDisplayed()
         assertTrue(PlaybackRuntime.state.value.playing)
