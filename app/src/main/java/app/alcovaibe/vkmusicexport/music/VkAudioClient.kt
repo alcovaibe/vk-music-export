@@ -13,6 +13,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal interface MusicApi {
+    suspend fun accountOwner(access: MusicAccess): Long = library(access).owner
+    suspend fun friendsPage(access: MusicAccess,offset: Int): FriendsPage = throw MusicFailure(MusicError.METHOD)
+    suspend fun friendProfile(access: MusicAccess,id: Long): MusicFriend = throw MusicFailure(MusicError.METHOD)
     suspend fun followedArtists(access: MusicAccess,owner: Long): List<MusicArtist> = throw MusicFailure(MusicError.METHOD)
     suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> = followedArtists(access,owner).also{progress(it,1)}
     suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails = throw MusicFailure(MusicError.METHOD)
@@ -61,6 +64,16 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     private val previews=object: java.util.LinkedHashMap<String,String>(128,.75f,true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String,String>?)=size>2000
     }
+    override suspend fun accountOwner(access: MusicAccess): Long = NativeProtocol.owner(request(access,"users.get"))
+    override suspend fun friendsPage(access: MusicAccess,offset: Int): FriendsPage {
+        musicCheck(offset in 0..20000)
+        return FriendMusicProtocol.page(request(access,"friends.get",mapOf("count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString(),
+            "order" to "name","fields" to "photo_200,domain,screen_name")))
+    }
+    override suspend fun friendProfile(access: MusicAccess,id: Long): MusicFriend {
+        musicCheck(id>0)
+        return FriendMusicProtocol.profile(request(access,"users.get",mapOf("user_ids" to id.toString(),"fields" to "photo_200,domain,screen_name")),id)
+    }
     override fun previewArtwork(track: NativeTrack): String? = synchronized(previews){previews[track.id]}
     private fun rememberPreviews(value: JsonElement) {
         val o=value as? kotlinx.serialization.json.JsonObject?:return
@@ -77,7 +90,9 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         val current=sessions?.continueRead(access)?:access
         val currentUser=fields["current_user"]=="1"
         try{request(current,method,fields.filterKeys{it!="current_user"}+mapOf("lang" to "ru")+
-            (if(method=="catalog.getAudio")mapOf("need_blocks" to "1")+(if(currentUser)emptyMap()else mapOf("owner_id" to owner.toString()))else emptyMap()))}
+            (if(method=="catalog.getAudio")mapOf("need_blocks" to "1")+(if(currentUser)emptyMap()else mapOf("owner_id" to owner.toString()))else emptyMap())).also{
+            observe("artist_catalog_shape",mapOf("method" to method,"shape" to ArtistCatalogShape.describe(it)))
+        }}
         catch(e: MusicFailure){throw ArtistLoadingFailure(ArtistFailureReason.REQUEST,e.code,method,failure=e)}
     }
     override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
@@ -104,11 +119,13 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
-            // A denial of one search/record is not proof that the account token expired.
-            if(response.status==403&&method in setOf("audio.search","audio.getById")) {
+            // A private friend's section or a denied search is not proof that the account token expired.
+            val scopedRead=method=="friends.get"||method=="users.get"&&fields["user_ids"]!=null||
+                method in setOf("audio.get","audio.getPlaylists")&&fields["owner_id"]?.toLongOrNull()?.let{it!=access.accountId}==true
+            if(response.status==403&&(scopedRead||method in setOf("audio.search","audio.getById"))) {
                 val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
-                if(explicit?.code in setOf(MusicError.ACCESS,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT))throw explicit!!
-                throw MusicFailure(MusicError.DENIED)
+                if(explicit?.remoteCode!=null)throw explicit
+                throw MusicFailure(MusicError.DENIED,httpStatus=response.status)
             }
             if(response.status in setOf(401,403)) {
                 val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure

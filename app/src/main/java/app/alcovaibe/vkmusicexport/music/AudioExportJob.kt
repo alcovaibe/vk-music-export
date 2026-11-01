@@ -41,8 +41,8 @@ internal object AudioExportRuntime {
         musicCheck(owner>0,MusicError.QUEUE_ACCOUNT)
         var access=MusicSessions.get(app).current()
         if(access.accountId==null) {
-            val proof=VkAudioClient(sessions=MusicSessions.get(app)).library(access)
-            MusicAccessStore(app).replace(access,access.withSession(accountId=proof.owner))
+            val ownerProof=VkAudioClient(sessions=MusicSessions.get(app)).accountOwner(access)
+            MusicAccessStore(app).replace(access,access.withSession(accountId=ownerProof))
             access=MusicSessions.get(app).current()
         }
         musicCheck(access.accountId==owner,MusicError.ACCOUNT_CHANGED)
@@ -137,6 +137,7 @@ internal object AudioExportRuntime {
                 next.currentTask==null&&it.stage=="checking_saved")})
     }
     suspend fun run(update: suspend(ExportSnapshot)->Unit){engine.run{refresh();update(state.value)}}
+    suspend fun taskStates(context: Context): Map<String,String> {initialize(context);return database.taskStates()}
     suspend fun stopped(){withContext(NonCancellable+Dispatchers.IO){database.releaseRunning();if(database.snapshot().unfinished)database.status("PAUSED",database.snapshot().error);refresh()}}
     fun notification(context: Context,snapshot: ExportSnapshot): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)

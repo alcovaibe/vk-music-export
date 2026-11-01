@@ -53,8 +53,8 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
 }
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
-    val kind: PlaylistKind=PlaylistKind.UNKNOWN,val following: Boolean?=null,val deleted: Boolean=false) {
-    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted)
+    val kind: PlaylistKind=PlaylistKind.UNKNOWN,val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null) {
+    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo)
     val key get() = "playlist:$owner:$id"
     override fun toString() = "NativePlaylist([metadata omitted])"
 }
@@ -66,7 +66,7 @@ internal data class NativeProbe(val owner: Long, val library: NativePage)
 internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
-    val methods = setOf("users.get", "audio.get", "audio.getPlaylists", "audio.getById", "audio.delete", "audio.search",
+    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getById", "audio.delete", "audio.search",
         "catalog.getAudio","catalog.getAudioArtist","catalog.getSection","catalog.getBlockItems","audio.getAudiosByArtist")
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
@@ -161,7 +161,7 @@ internal object NativeProtocol {
                 when((p["type"] as? JsonPrimitive)?.takeIf{it.isString}?.content) {
                     "album"->PlaylistKind.ALBUM;"playlist"->PlaylistKind.PLAYLIST
                     else->if((p["album_type"] as? JsonPrimitive)?.content in setOf("album","single","ep"))PlaylistKind.ALBUM else PlaylistKind.UNKNOWN
-                },flag(p,"is_following"),flag(p,"is_deleted")==true)
+                },flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]))
         }
         return NativeCatalog(lists,total)
     }
