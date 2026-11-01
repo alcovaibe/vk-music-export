@@ -21,7 +21,7 @@ internal class NativeOperationJournal(context: Context) {
     private fun read(): JsonObject? {
         if(!file.baseFile.exists()&&!File(file.baseFile.path+".bak").exists())return null
         return runCatching {
-            val bytes=file.openRead().use{it.readNBytes(4097)}
+            val bytes=file.openRead().use{it.readAtMost(4097)}
             musicCheck(bytes.size<=4096,MusicError.STORAGE)
             Json.parseToJsonElement(strictUtf8(bytes)).jsonObject
         }.getOrNull()
