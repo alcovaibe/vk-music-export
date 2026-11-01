@@ -15,7 +15,6 @@ import org.junit.runner.RunWith
 import java.io.File
 import android.os.ParcelFileDescriptor
 
-@androidx.test.filters.SdkSuppress(minSdkVersion = 34)
 @RunWith(AndroidJUnit4::class)
 class InterfaceTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
@@ -117,11 +116,20 @@ class InterfaceTest {
         androidx.test.espresso.Espresso.pressBack()
         ui.onNodeWithTag("music_nav_LIBRARY").performClick()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
-        ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
-        ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&
-            ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0}
-        ui.onNodeWithTag("native_music_screen").assertExists()
-        capture("04-library-system-dark")
-        ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)}
+        if(android.os.Build.VERSION.SDK_INT>=31) {
+            ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}
+            ui.waitUntil(10_000){ui.activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK==android.content.res.Configuration.UI_MODE_NIGHT_YES&&
+                ui.activity.window.insetsController?.systemBarsAppearance?.and(android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0}
+            ui.onNodeWithTag("native_music_screen").assertExists()
+            capture("04-library-system-dark")
+            ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)}
+        }else{
+            ui.onNodeWithTag("native_music_screen").assertExists()
+            if(android.os.Build.VERSION.SDK_INT==29)ui.runOnUiThread {
+                @Suppress("DEPRECATION")
+                val flags=ui.activity.window.decorView.systemUiVisibility
+                assertTrue(flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR!=0)
+            }
+        }
     }
 }

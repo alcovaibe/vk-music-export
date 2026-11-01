@@ -73,13 +73,12 @@ internal object AudioExportRuntime {
         database.status("QUEUED");refresh()
         settleQueueScheduling(schedule={
             withContext(Dispatchers.Main) {
-                    context.getSystemService(JobScheduler::class.java).schedule(JobInfo.Builder(JOB_ID,ComponentName(context,AudioExportJob::class.java))
-                        .setUserInitiated(true).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setRequiresStorageNotLow(true).build())==JobScheduler.RESULT_SUCCESS
+                    BackgroundTransport.startExport(context)
             }
         },settled={accepted->
             withContext(Dispatchers.IO) {
                 if(!accepted&&database.snapshot().status=="QUEUED"){database.status("PAUSED");refresh()}
-                Diagnostics.event("audio_queue_schedule",mapOf("accepted" to accepted,"transport" to "user_initiated_job"))
+                Diagnostics.event("audio_queue_schedule",mapOf("accepted" to accepted,"transport" to if(BackgroundTransport.usesUserInitiatedJobs(android.os.Build.VERSION.SDK_INT)) "user_initiated_job" else "foreground_service"))
             }
         })
         }
@@ -104,14 +103,14 @@ internal object AudioExportRuntime {
     suspend fun pause(context: Context) {
         initialize(context);controls.withLock {
             database.status("PAUSED",database.snapshot().error);refresh()
-            context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
+            BackgroundTransport.stopExport(context)
         }
     }
     suspend fun clear(context: Context) {
         musicCheck(!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
         initialize(context);controls.withLock {
             musicCheck(!active.get()&&state.value.status!="QUEUED",MusicError.BUSY)
-            context.getSystemService(JobScheduler::class.java).cancel(JOB_ID)
+            BackgroundTransport.stopExport(context)
             database.clearQueue();refresh()
         }
     }
@@ -153,6 +152,7 @@ internal object AudioExportRuntime {
     }
 }
 
+@android.annotation.TargetApi(34)
 class AudioExportJob: JobService() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private var work: Job?=null;@Volatile private var stopped=false
@@ -180,7 +180,7 @@ class AudioExportJob: JobService() {
         return true
     }
     override fun onStopJob(params: JobParameters): Boolean {
-        stopped=true;Diagnostics.event("audio_queue_system_stop",mapOf("reason" to params.stopReason))
+        stopped=true;Diagnostics.event("audio_queue_system_stop",mapOf("reason" to if(android.os.Build.VERSION.SDK_INT>=31) params.stopReason else -1))
         work?.cancel();return false // Persisted queue remains available for an explicit resume.
     }
     override fun onDestroy(){work?.cancel();scope.cancel();super.onDestroy()}

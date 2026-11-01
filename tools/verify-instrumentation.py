@@ -4,7 +4,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-def verify(results: Path, minimum_tests: int = 136) -> int:
+def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
             raise ValueError('Android test runner returned a non-zero exit code')
@@ -56,6 +56,11 @@ def verify(results: Path, minimum_tests: int = 136) -> int:
         raise ValueError('Required file maintenance background and restoration tests did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest' for name, _ in executed) < 4:
         raise ValueError('Required background scan and user-initiated job notification tests did not execute')
+    if api_level is not None and 29 <= api_level <= 33:
+        required = ('app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest',
+                    'legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials')
+        if required not in executed:
+            raise ValueError(f'Required legacy foreground service integration test missing on API {api_level}')
     if not any(name == 'app.alcovaibe.vkmusicexport.ArtistFailureDeviceTest' for name, _ in executed):
         raise ValueError('Required artist failure diagnostics test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest' for name, _ in executed) < 6:
@@ -67,7 +72,7 @@ def verify(results: Path, minimum_tests: int = 136) -> int:
 
 if __name__ == '__main__':
     try:
-        count = verify(Path(sys.argv[1]))
+        count = verify(Path(sys.argv[1]), api_level=int(sys.argv[2]) if len(sys.argv) > 2 else None)
     except (ValueError, OSError, ET.ParseError) as error:
         raise SystemExit(f'Instrumentation verification failed: {error}')
     print(f'Instrumentation verification passed: {count} distinct tests executed, no failures or skips.')

@@ -52,13 +52,23 @@ class DiagnosticsDeviceTest {
                 Intents.getIntents().any{it.action==Intent.ACTION_CHOOSER}
             }
             val chooser=Intents.getIntents().last{it.action==Intent.ACTION_CHOOSER}
-            val send=chooser.getParcelableExtra(Intent.EXTRA_INTENT,Intent::class.java)!!
-            assertEquals(Intent.ACTION_SEND,send.action);assertEquals("application/json",send.type)
-            assertTrue(send.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
-            val uri=send.getParcelableExtra(Intent.EXTRA_STREAM,Uri::class.java)!!
-            assertEquals("${ui.activity.packageName}.diagnostics",uri.authority)
-            assertEquals(uri,send.clipData!!.getItemAt(0).uri)
-            val report=Json.parseToJsonElement(ui.activity.contentResolver.openInputStream(uri)!!.bufferedReader().use{it.readText()}).jsonObject
+            @Suppress("DEPRECATION")
+            val send=if(android.os.Build.VERSION.SDK_INT>=33)
+                chooser.getParcelableExtra(Intent.EXTRA_INTENT,Intent::class.java)
+            else chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+            assertNotNull(send)
+            val shared=send!!
+            assertEquals(Intent.ACTION_SEND,shared.action);assertEquals("application/json",shared.type)
+            assertTrue(shared.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
+            @Suppress("DEPRECATION")
+            val uri=if(android.os.Build.VERSION.SDK_INT>=33)
+                shared.getParcelableExtra(Intent.EXTRA_STREAM,Uri::class.java)
+            else shared.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            assertNotNull(uri)
+            val exportedUri=uri!!
+            assertEquals("${ui.activity.packageName}.diagnostics",exportedUri.authority)
+            assertEquals(exportedUri,shared.clipData!!.getItemAt(0).uri)
+            val report=Json.parseToJsonElement(ui.activity.contentResolver.openInputStream(exportedUri)!!.bufferedReader().use{it.readText()}).jsonObject
             assertEquals(1,report.getValue("schema").jsonPrimitive.int)
             val run=report.getValue("run_id").jsonPrimitive.content
             assertTrue(report.getValue("events").jsonArray.isNotEmpty())

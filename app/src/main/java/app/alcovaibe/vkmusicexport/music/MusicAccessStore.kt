@@ -26,7 +26,7 @@ internal class MusicAccessStore(context: Context): MusicCredentialStore {
     }
     override fun read(): MusicAccess? = synchronized(lock) {
         if(!file.baseFile.exists()&&!File(file.baseFile.path+".bak").exists())return@synchronized null
-        val bytes=file.openRead().use{it.readNBytes(65537)}
+        val bytes=file.openRead().use{it.readAtMost(65537)}
         musicCheck(bytes.size in 30..65536 && bytes[0]==1.toByte(),MusicError.STORAGE)
         val cipher=Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE,key(),GCMParameterSpec(128,bytes.copyOfRange(1,13)));cipher.updateAAD(aad)

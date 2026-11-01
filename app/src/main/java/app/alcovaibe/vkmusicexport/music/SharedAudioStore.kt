@@ -6,6 +6,8 @@ import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.os.Bundle
+import android.os.Build
+import android.database.Cursor
 import android.provider.MediaStore
 import kotlinx.coroutines.*
 import java.io.FileInputStream
@@ -23,16 +25,35 @@ internal class SharedAudioStore(internal val context: Context) {
             (u.lastPathSegment?.toLongOrNull()?:0)>0,MusicError.STORAGE)
         return u
     }
+    /** Pending media is hidden by default. Q requires a URI; R+ requires a query argument. */
+    private fun ownedQuery(raw: String,projection: Array<String>,includePending: Boolean=false): Cursor? {
+        val target=uri(raw)
+        if(!includePending)return resolver.query(target,projection,null,null,null)
+        return if(Build.VERSION.SDK_INT==29)
+            resolver.query(MediaStore.setIncludePending(target),projection,null,null,null)
+        else resolver.query(target,projection,Bundle().apply{
+            putInt(MediaStore.QUERY_ARG_MATCH_PENDING,MediaStore.MATCH_INCLUDE)
+        },null)
+    }
+    private fun collectionPending(projection: Array<String>,selection: String,args: Array<String>): Cursor? {
+        return if(Build.VERSION.SDK_INT==29)
+            resolver.query(MediaStore.setIncludePending(collection),projection,selection,args,null)
+        else resolver.query(collection,projection,Bundle().apply{
+            putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,selection)
+            putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,args)
+            putInt(MediaStore.QUERY_ARG_MATCH_PENDING,MediaStore.MATCH_INCLUDE)
+        },null)
+    }
     private fun own(raw: String,pending: Boolean): Boolean = runCatching {
-        resolver.query(uri(raw),arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),null,null,null)?.use{c->
+        ownedQuery(raw,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),pending)?.use{c->
             c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1).startsWith(ExportLayout.ROOT)&&
                 c.getInt(2)==(if(pending)1 else 0)
         }?:false
     }.getOrDefault(false)
     private fun ownRecord(record: PublishedAudio,pending: Boolean=false): Boolean {
         if(!record.recoveredLocation)return own(record.uri,pending)
-        return runCatching{resolver.query(uri(record.uri),arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
-            MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),null,null,null)?.use{c->
+        return runCatching{ownedQuery(record.uri,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),pending)?.use{c->
             c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1).startsWith("Music/")&&c.getInt(2)==(if(pending)1 else 0)
         }?:false}.getOrDefault(false)
     }
@@ -50,13 +71,9 @@ internal class SharedAudioStore(internal val context: Context) {
     suspend fun inspect(record: PublishedAudio,pending: Boolean=false): SavedFileCheck {
         try {
             val target=uri(record.uri)
-            val meta=resolver.query(collection,arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,
+            val meta=collectionPending(arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,MediaStore.MediaColumns.RELATIVE_PATH,
                 MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.DISPLAY_NAME),
-                Bundle().apply {
-                    putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,"${MediaStore.MediaColumns._ID}=?")
-                    putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,arrayOf(target.lastPathSegment))
-                    putInt(MediaStore.QUERY_ARG_MATCH_PENDING,MediaStore.MATCH_INCLUDE)
-                },null)?.use{c->
+                "${MediaStore.MediaColumns._ID}=?",arrayOf(target.lastPathSegment!!))?.use{c->
                 if(!c.moveToFirst())null else listOf(c.getString(0),c.getString(1),c.getInt(2).toString(),c.getString(3))
             }?:return SavedFileCheck(SavedFileReason.MISSING)
             if(meta[0]!=context.packageName)return SavedFileCheck(SavedFileReason.OWNER_CHANGED)
@@ -118,9 +135,9 @@ internal class SharedAudioStore(internal val context: Context) {
     }
     fun removePending(raw: String){if(own(raw,true))resolver.delete(uri(raw),null,null)}
     fun removeAbandonedPending() {
-        val rows=resolver.query(collection,arrayOf(MediaStore.MediaColumns._ID),
+        val rows=collectionPending(arrayOf(MediaStore.MediaColumns._ID),
             "${MediaStore.MediaColumns.IS_PENDING}=1 AND ${MediaStore.MediaColumns.OWNER_PACKAGE_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
-            arrayOf(context.packageName,ExportLayout.ROOT+"%"),null)?.use{c->buildList{while(c.moveToNext())add(ContentUris.withAppendedId(collection,c.getLong(0)).toString())}}?:emptyList()
+            arrayOf(context.packageName,ExportLayout.ROOT+"%"))?.use{c->buildList{while(c.moveToNext())add(ContentUris.withAppendedId(collection,c.getLong(0)).toString())}}?:emptyList()
         rows.forEach(::removePending)
     }
     suspend fun publish(task: AudioExportTask,result: TransferResult,relative: String=ExportLayout.relative(task),catalogueVerified: Boolean=true,prepared:(PublishedAudio)->Unit): PublishedAudio =

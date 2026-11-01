@@ -34,6 +34,14 @@ adb shell wm density 294
 # AVD's launcher can time out while Gradle competes for CPU during the first build.
 # Stop that unrelated background launcher before starting the app under test.
 adb shell am force-stop com.android.launcher3
+# Run the debug->debug data-preservation upgrade while the disposable emulator
+# is healthy. API 29 has previously lost its adb connection after instrumentation,
+# causing a post-test "adb install -r" to wait until the GitHub job was cancelled.
+# The upgrade script uninstalls its test APK after verifying private data.
+# Historical stable APKs have minSdk 34 and cannot install on Android 10–13.
+if [[ "$expected_api" -le 33 ]]; then
+  bash tools/compat-upgrade-check.sh "$expected_api" || exit $?
+fi
 # Do not let an old report satisfy this run if instrumentation never starts.
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
 ./gradlew --dependency-verification strict connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
@@ -50,7 +58,7 @@ for report in Path('app/build/outputs/androidTest-results/connected').rglob('TES
                 print((error.text or error.get('message', ''))[:12000])
 PYFAILURES
 if [[ "$result" == 0 ]]; then
-  python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected
+  python3 tools/verify-instrumentation.py app/build/outputs/androidTest-results/connected "$expected_api"
   result=$?
 fi
 if [[ "$result" != 0 ]]; then
@@ -59,8 +67,8 @@ if [[ "$result" != 0 ]]; then
   timeout 15 adb shell dumpsys meminfo > interface-diagnostics/device-memory.txt || true
   # A fresh disposable AVD can show a framework ANR above the app. Keep the
   # process/window evidence instead of treating missing focus as an app result.
-  adb shell dumpsys window windows | python3 -c 'import sys; print("".join(x for x in sys.stdin if "mCurrentFocus" in x or "mFocusedApp" in x))' || true
-  adb logcat -d -b events | python3 -c 'import sys; print("".join(x for x in sys.stdin if "am_anr" in x or "am_crash" in x)[-12000:])' || true
+  timeout 15 adb shell dumpsys window windows | python3 -c 'import sys; print("".join(x for x in sys.stdin if "mCurrentFocus" in x or "mFocusedApp" in x))' || true
+  timeout 15 adb logcat -d -b events | python3 -c 'import sys; print("".join(x for x in sys.stdin if "am_anr" in x or "am_crash" in x)[-12000:])' || true
 fi
-adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
+timeout 15 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
 exit "$result"
