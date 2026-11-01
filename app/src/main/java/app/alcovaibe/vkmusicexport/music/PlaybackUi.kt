@@ -2,6 +2,11 @@ package app.alcovaibe.vkmusicexport.music
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,8 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,13 +27,24 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private fun playerIcon(name: String,path: String,filled: Boolean=false)=ImageVector.Builder(name,24.dp,24.dp,24f,24f).apply {
     addPath(addPathNodes(path),fill=if(filled)SolidColor(Color.Black)else null,
@@ -80,29 +94,81 @@ internal fun PlaybackMiniPlayer(state: PlaybackState,onOpen:()->Unit) {
     }
 }
 
+// Observe before children, but consume only an intentional downward, single-finger drag.
+// Ordinary scrolling, taps and horizontal seeking keep their normal event handling.
+@Composable
+private fun Modifier.swipeDownToCollapse(scroll: ScrollState,onDismiss:()->Unit): Modifier {
+    val dismiss by rememberUpdatedState(onDismiss)
+    val scope=rememberCoroutineScope()
+    val density=LocalDensity.current
+    val slop=LocalViewConfiguration.current.touchSlop
+    val threshold=with(density){80.dp.toPx()}
+    val flickDistance=with(density){24.dp.toPx()}
+    val flickVelocity=with(density){900.dp.toPx()}
+    var offset by remember{mutableFloatStateOf(0f)}
+    var settling by remember{mutableStateOf<Job?>(null)}
+    var dismissing by remember{mutableStateOf(false)}
+    return pointerInput(scroll,slop,threshold) {
+        awaitEachGesture {
+            val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
+            var eligible=!dismissing&&scroll.value==0&&down.type==PointerType.Touch
+            var dragging=false
+            var released=false
+            val velocity=VelocityTracker().apply{addPosition(down.uptimeMillis,down.position)}
+            try {
+                do {
+                    val event=awaitPointerEvent(PointerEventPass.Initial)
+                    val change=event.changes.firstOrNull{it.id==down.id}
+                    if(change==null||event.changes.any{it.id!=down.id&&it.pressed})eligible=false
+                    if(change!=null) {
+                        velocity.addPosition(change.uptimeMillis,change.position)
+                        val distance=change.position-down.position
+                        if(eligible&&!dragging) {
+                            if(change.isConsumed)eligible=false
+                            else if(abs(distance.y)>slop||abs(distance.x)>slop) {
+                                if(distance.y>slop&&distance.y>abs(distance.x)) {
+                                    settling?.cancel();dragging=true
+                                    offset=(distance.y-slop).coerceAtLeast(0f)
+                                }else eligible=false
+                            }
+                        }else if(eligible&&dragging)offset=(offset+change.positionChange().y).coerceIn(0f,size.height.toFloat())
+                        if(dragging)change.consume()
+                    }
+                }while(event.changes.any{it.pressed})
+                released=true
+                if(dragging) {
+                    val collapse=eligible&&(offset>=threshold||(offset>=flickDistance&&velocity.calculateVelocity().y>=flickVelocity))
+                    dismissing=collapse
+                    settling=scope.launch {
+                        animate(offset,if(collapse)size.height.toFloat()else 0f,animationSpec=tween(if(collapse)160 else 200)) {value,_->offset=value}
+                        if(collapse)dismiss()
+                    }
+                }
+            }finally {
+                if(!released){settling?.cancel();offset=0f;dismissing=false}
+            }
+        }
+    }.graphicsLayer{translationY=offset}
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: (PlaybackEntry)->Unit,canDownload: Boolean) {
     BackHandler(onBack=onDismiss)
     val context=LocalContext.current
     var queue by remember{mutableStateOf(false)}
-    var menu by remember{mutableStateOf(false)}
     var seeking by remember(state.index){mutableStateOf<Float?>(null)}
     val current=state.current
-    Surface(color=MaterialTheme.colorScheme.background,modifier=Modifier.fillMaxSize().testTag("music_player")) {
+    val scroll=rememberScrollState()
+    Surface(color=MaterialTheme.colorScheme.background,modifier=Modifier.fillMaxSize().testTag("music_player").swipeDownToCollapse(scroll,onDismiss)) {
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             val cover=minOf(maxWidth-32.dp,maxHeight*.43f)
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=16.dp),
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal=16.dp),
                 horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(14.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min=48.dp),verticalAlignment=Alignment.CenterVertically) {
                     IconButton(onClick=onDismiss,modifier=Modifier.testTag("player_collapse")){Icon(PlayerCollapseIcon,"Свернуть плеер")}
                     Box(Modifier.weight(1f),contentAlignment=Alignment.Center){Text("Сейчас играет",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)}
-                    Box {
-                        IconButton(onClick={menu=true}){Icon(Icons.Default.MoreVert,"Меню плеера")}
-                        DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                            DropdownMenuItem(text={Text("Остановить воспроизведение")},onClick={menu=false;PlaybackRuntime.stop();onDismiss()})
-                        }
-                    }
+                    Spacer(Modifier.size(48.dp))
                 }
                 PlayerArtwork(state,Modifier.size(cover).testTag("player_artwork"))
                 Column(Modifier.fillMaxWidth().padding(horizontal=3.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
