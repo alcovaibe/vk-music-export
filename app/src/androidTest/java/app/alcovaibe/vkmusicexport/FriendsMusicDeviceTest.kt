@@ -11,6 +11,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
+import okhttp3.*
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -62,7 +64,8 @@ class FriendsMusicDeviceTest {
         }finally{ui.runOnUiThread{holder.clear()};vault.delete()}
     }
     private fun shot(name: String) {
-        ui.waitForIdle();val bitmap=inst.uiAutomation.takeScreenshot()
+        ui.waitForIdle();inst.waitForIdleSync();inst.uiAutomation.waitForIdle(200,5_000)
+        val bitmap=inst.uiAutomation.takeScreenshot()
         val file=File(inst.targetContext.getExternalFilesDir(null),"screenshots/$name.png").apply{parentFile!!.mkdirs()}
         file.outputStream().use{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
         for(cmd in listOf("mkdir -p /data/local/tmp/vk-music-export-screenshots","cp ${file.absolutePath} /data/local/tmp/vk-music-export-screenshots/$name.png"))
@@ -93,7 +96,7 @@ class FriendsMusicDeviceTest {
         ui.waitUntil(15000){model.friends.state.value.playlistComplete&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_playlist_header").assertExists();shot("friend-playlist")
         ui.onNodeWithTag("open_music_downloads").performClick();ui.onNodeWithTag("downloads_status").assertExists()
-        ui.onNodeWithContentDescription("Назад").performClick();ui.onNodeWithTag("friend_playlist_header").assertExists()
+        androidx.test.espresso.Espresso.pressBack();ui.onNodeWithTag("friend_playlist_header").assertExists()
     }
     @Test fun selectionPersistsViewerAccountOriginalFriendPositionsAndFullFriendPagination()=fixture {_,api->
         val app=ui.activity.application;val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
@@ -135,4 +138,30 @@ class FriendsMusicDeviceTest {
             assertNull(model.friends.state.value.user);assertTrue(model.friends.state.value.friends.isEmpty())
         }finally{release.complete(Unit)}
     }
+    @Test fun scopedHttpDenialDoesNotInvalidateTheAccountButExplicitTokenRejectionIsPreserved()=runBlocking {
+        val access=MusicAccess("a".repeat(64),"CI/1",accountId=12)
+        for(index in 0..3) {
+            val body=if(index==3)"""{"error":{"error_code":5,"error_msg":"PRIVATE"}}"""else "PRIVATE HTTP PAGE"
+            val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(403).message("Synthetic").body(body.toResponseBody()).build()
+            }.build()
+            val api=VkAudioClient(client,observe={_,_->})
+            try {
+                when(index){0->api.friendsPage(access,0);1->api.friendProfile(access,34);else->api.libraryPage(access,34,0)}
+                fail("A precise scoped failure is required")
+            }catch(e: MusicFailure) {
+                assertEquals(if(index==3)MusicError.ACCESS else MusicError.DENIED,e.code)
+                if(index==3)assertEquals(5,e.remoteCode)else assertEquals(403,e.httpStatus)
+                assertFalse(e.message.orEmpty().contains("PRIVATE"))
+            }
+        }
+        val identity=NetworkClients.api().newBuilder().addInterceptor{chain->
+            val body=chain.request().body as FormBody
+            assertFalse((0 until body.size).any{body.name(it)=="user_ids"})
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
+                .body("""{"response":[{"id":12}]}""".toResponseBody()).build()
+        }.build()
+        assertEquals(12L,VkAudioClient(identity,observe={_,_->}).accountOwner(access))
+    }
+
 }

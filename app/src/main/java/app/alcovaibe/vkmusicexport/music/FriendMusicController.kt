@@ -41,7 +41,8 @@ internal class FriendMusicController(private val application: Application,privat
             try {
                 val initial=lease?:withContext(Dispatchers.IO){sessions?.current()?:vault.read()?:throw MusicFailure(MusicError.ACCESS)}.also{lease=it}
                 val guard: suspend()->MusicAccess={checked(initial).also{if(g!=generation)throw CancellationException()}}
-                withTimeout(60_000){body(guard(),guard);guard()}
+                mutable.update{it.copy(viewerAccount=initial.accountId)}
+                withTimeout(5*60_000L){body(guard(),guard);guard()}
             }catch(e: TimeoutCancellationException){if(g==generation)problem(FriendMusicProblem(MusicError.TIMEOUT))}
              catch(e: CancellationException){throw e}
              catch(e: MusicReadChanged){if(g==generation){lease=null;mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))}}
@@ -111,7 +112,9 @@ internal class FriendMusicController(private val application: Application,privat
         run(preparing=true){_,guard->withContext(Dispatchers.IO){
             val queue=AudioExportRuntime.state.value
             musicCheck(!blocked()&&!queue.unfinished&&queue.status !in setOf("RUNNING","QUEUED"),MusicError.BUSY)
-            val viewer=api.library(guard()).owner;guard()
+            val proofAccess=guard();val viewer=api.accountOwner(proofAccess);guard()
+            musicCheck(proofAccess.accountId==null||proofAccess.accountId==viewer,MusicError.ACCOUNT_CHANGED)
+            mutable.update{it.copy(viewerAccount=viewer)}
             val list=before.playlist?.let{old->
                 val current=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false)
                 musicCheck(current.complete,MusicError.INCOMPLETE)

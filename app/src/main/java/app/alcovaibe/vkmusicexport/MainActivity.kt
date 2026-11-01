@@ -79,19 +79,12 @@ internal fun MusicTheme(content: @Composable () -> Unit) {
 private fun MusicApp(updates: app.alcovaibe.vkmusicexport.updates.UpdateController,nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel) {
     var updatesRequested by rememberSaveable{mutableStateOf(false)}
     val downloadsOpen by nativeMusic.downloadsOpen.collectAsState()
-    val queue by app.alcovaibe.vkmusicexport.music.AudioExportRuntime.state.collectAsState()
-    val musicState by nativeMusic.state.collectAsState()
-    val duplicates by nativeMusic.duplicates.collectAsState()
     val queueAccount by nativeMusic.queueAccount.collectAsState()
     val context=LocalContext.current
     app.alcovaibe.vkmusicexport.updates.HomeUpdateLifecycle(updates,!downloadsOpen)
     app.alcovaibe.vkmusicexport.music.NativeMusicPanel(nativeMusic,true,
         onDismiss={(context as? android.app.Activity)?.finish()},onUpdates={updatesRequested=true})
     app.alcovaibe.vkmusicexport.updates.UpdatePanel(updates,showSheet=!downloadsOpen,showButton=false,requested=updatesRequested,onDismiss={updatesRequested=false})
-    if(downloadsOpen)app.alcovaibe.vkmusicexport.music.DownloadProgressSheet(queue,musicState.busy||duplicates.busy,musicState.error,
-        onPause=nativeMusic::pauseQueue,onResume={nativeMusic.resumeQueue()},onRetry={nativeMusic.resumeQueue(true)},
-        onClear=nativeMusic::clearQueue,onDismiss=nativeMusic::dismissDownloads,
-        onSourceRetry=nativeMusic::retrySource,onExportReport={nativeMusic.shareExportReport(context)})
     queueAccount?.let{owner->AlertDialog(onDismissRequest=nativeMusic::dismissQueueAccount,
         title={Text("Привязать старую очередь?")},
         text={Text("В старой версии аккаунт очереди не сохранялся. Сейчас проверен аккаунт ВК $owner. Подтверди, что эта очередь принадлежит ему. Готовые файлы сохранятся.")},

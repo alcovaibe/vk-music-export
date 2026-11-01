@@ -41,8 +41,8 @@ internal object AudioExportRuntime {
         musicCheck(owner>0,MusicError.QUEUE_ACCOUNT)
         var access=MusicSessions.get(app).current()
         if(access.accountId==null) {
-            val proof=VkAudioClient(sessions=MusicSessions.get(app)).library(access)
-            MusicAccessStore(app).replace(access,access.withSession(accountId=proof.owner))
+            val ownerProof=VkAudioClient(sessions=MusicSessions.get(app)).accountOwner(access)
+            MusicAccessStore(app).replace(access,access.withSession(accountId=ownerProof))
             access=MusicSessions.get(app).current()
         }
         musicCheck(access.accountId==owner,MusicError.ACCOUNT_CHANGED)

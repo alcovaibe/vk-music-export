@@ -114,6 +114,7 @@ class InterfaceTest {
         ui.onNodeWithTag("open_music_downloads").performClick()
         ui.onNodeWithTag("downloads_status").assertIsDisplayed()
         capture("07-downloads")
+        androidx.test.espresso.Espresso.pressBack()
         ui.onNodeWithTag("music_nav_LIBRARY").performClick()
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         ui.runOnUiThread{(context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager).setApplicationNightMode(UiModeManager.MODE_NIGHT_YES)}

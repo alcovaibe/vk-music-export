@@ -6,6 +6,7 @@ internal data class MusicFriend(val id: Long,val firstName: String,val lastName:
     val photo: String?=null,val closed: Boolean=false,val accessible: Boolean=true) {
     val name get()=listOf(firstName,lastName).filter{it.isNotBlank()}.joinToString(" ")
     val vkUrl get()="https://vk.com/id$id"
+    override fun toString()="MusicFriend([metadata omitted])"
 }
 internal data class FriendsPage(val items: List<MusicFriend>,val count: Int)
 internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы") }
@@ -27,7 +28,7 @@ internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(
     val user: MusicFriend?=null,val tab: FriendMusicTab=FriendMusicTab.TRACKS,val tracks: NativePage?=null,val tracksComplete: Boolean=false,
     val catalog: NativeCatalog?=null,val playlist: NativePlaylist?=null,val playlistTracks: NativePage?=null,val playlistComplete: Boolean=false,
     val problems: Map<FriendMusicTab,FriendMusicProblem> = emptyMap(),val listProblem: FriendMusicProblem?=null,val playlistProblem: FriendMusicProblem?=null,
-    val selecting: Boolean=false,val selection: Set<Int> = emptySet(),val message: String?=null) {
+    val selecting: Boolean=false,val selection: Set<Int> = emptySet(),val message: String?=null,val viewerAccount: Long?=null) {
     val page get()=if(playlist!=null)playlistTracks else tracks
     val complete get()=if(playlist!=null)playlistComplete else tracksComplete
     fun collections()=catalog?.lists.orEmpty().filter{it.kind==if(tab==FriendMusicTab.ALBUMS)PlaylistKind.ALBUM else PlaylistKind.PLAYLIST}

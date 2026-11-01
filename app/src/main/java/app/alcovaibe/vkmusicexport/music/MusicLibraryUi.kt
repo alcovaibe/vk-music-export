@@ -68,7 +68,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
         }}) {padding->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=24.dp),
-            verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
+            verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)
     }
 }
 
