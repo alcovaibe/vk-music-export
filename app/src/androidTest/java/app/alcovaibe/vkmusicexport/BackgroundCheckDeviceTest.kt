@@ -175,4 +175,49 @@ class BackgroundCheckDeviceTest {
             assertEquals(listOf(tasks[1].track),store.unavailableTracks())
         }}finally{saved?.let{context.contentResolver.delete(Uri.parse(it.uri),null,null)};dir.deleteRecursively()}
     }
+
+    @Test fun legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials()=runBlocking<Unit> {
+        if(android.os.Build.VERSION.SDK_INT>=34)return@runBlocking
+        // Test on disposable emulators only. Use a deliberately unmatched credential ID;
+        // the service must reach Android foreground execution and pause without VK access.
+        val manager=app.getSystemService(NotificationManager::class.java)
+        val id=UUID.randomUUID().toString()
+        val intentFile=android.util.AtomicFile(File(app.noBackupFilesDir,"duplicate-job.json"))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                if(android.os.Build.VERSION.SDK_INT>=33) {
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                        "pm grant ${app.packageName} android.permission.POST_NOTIFICATIONS")).use{it.readBytes()}
+                }
+                scenario.onActivity { }
+                val bytes="""{"id":"$id","credential":"synthetic-no-login","phase":"QUEUED"}""".toByteArray(Charsets.UTF_8)
+                val out=intentFile.startWrite()
+                try{out.write(bytes);intentFile.finishWrite(out)}
+                catch(e:Exception){intentFile.failWrite(out);throw e}
+                DuplicateCheckRuntime.mutable.value=DuplicatesState(visible=true,phase=DuplicatePhase.QUEUED,scanId=id)
+                manager.cancel(DuplicateCheckRuntime.NOTIFICATION_ID)
+                assertTrue(withContext(Dispatchers.Main){BackgroundTransport.startDuplicates(app,id)})
+                withTimeout(20000){
+                    while(DuplicateCheckRuntime.state.value.phase!=DuplicatePhase.BLOCKED)delay(50)
+                }
+                assertEquals(id,DuplicateCheckRuntime.state.value.scanId)
+                assertNull(DuplicateCheckRuntime.state.value.consent)
+                withTimeout(15000) {
+                    while(DuplicateCheckRuntime.active.get())delay(50)
+                }
+                withTimeout(15000){
+                    while(manager.activeNotifications.none{it.id==DuplicateCheckRuntime.NOTIFICATION_ID})delay(50)
+                }
+                val status=manager.activeNotifications.first{it.id==DuplicateCheckRuntime.NOTIFICATION_ID}
+                assertEquals(Notification.VISIBILITY_PRIVATE,status.notification.visibility)
+                assertFalse(status.notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
+            }finally{
+                BackgroundTransport.stopDuplicates(app)
+                withTimeout(15000){while(DuplicateCheckRuntime.active.get())delay(50)}
+                DuplicateCheckRuntime.forget(app)
+                intentFile.delete()
+                manager.cancel(DuplicateCheckRuntime.NOTIFICATION_ID)
+            }
+        }
+    }
 }
