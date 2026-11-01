@@ -5,14 +5,23 @@ body:
     id: version
     attributes:
       label: Версия и номер сборки
+      description: Версия — меню трёх точек → «О приложении»; номер сборки — поле version_code в JSON-отчёте. Укажите оба значения.
     validations:
       required: true
   - type: input
     id: device
     attributes:
       label: Устройство и версия Android
+      description: Поддерживаются Android 14 и новее. Укажите модель телефона и точную версию Android.
     validations:
       required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Код ошибки и диагностика
+      description: Для музыки друга укажите вкладку и этап сбоя; для исполнителей — текст ошибки и метод/код ВК. JSON текущего или предыдущего запуска доступен в меню трёх точек. Просмотрите файл и снимки перед отправкой; не публикуйте account ID, имена друзей, токены, cookie и подписанные ссылки. Отчёт выгрузки содержит личные данные.
+    validations:
+      required: false
   - type: textarea
     id: steps
     attributes:
