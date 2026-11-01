@@ -18,7 +18,7 @@ android {
     compileSdk = 37
     defaultConfig {
         applicationId = "app.alcovaibe.vkmusicexport"
-        minSdk = 34
+        minSdk = 29
         targetSdk = 36
         versionCode = buildVersionCode
         versionName = appVersion.getProperty("versionName")

@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -31,8 +33,17 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
         return uri
     }
     private fun owned(row: Playlist,pending: Boolean): Boolean=runCatching {
-        resolver.query(target(row.uri),arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
-            MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING),null,null,null)?.use{c->
+        val uri=target(row.uri)
+        val columns=arrayOf(MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING)
+        val cursor=when {
+            !pending -> resolver.query(uri,columns,null,null,null)
+            Build.VERSION.SDK_INT==29 -> resolver.query(MediaStore.setIncludePending(uri),columns,null,null,null)
+            else -> resolver.query(uri,columns,Bundle().apply{
+                putInt(MediaStore.QUERY_ARG_MATCH_PENDING,MediaStore.MATCH_INCLUDE)
+            },null)
+        }
+        cursor?.use{c->
             c.moveToFirst()&&c.getString(0)==context.packageName&&c.getString(1)==row.directory&&
                 row.directory.startsWith(ExportLayout.ROOT)&&c.getInt(2)==(if(pending)1 else 0)
         }?:false

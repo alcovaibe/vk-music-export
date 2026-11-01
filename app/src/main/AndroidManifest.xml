@@ -24,6 +24,8 @@
             <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>
         <service android:name=".music.MaintenanceService" android:foregroundServiceType="dataSync" android:exported="false" />
+        <service android:name=".music.LegacyAudioExportService" android:foregroundServiceType="dataSync" android:exported="false" />
+        <service android:name=".music.LegacyDuplicateCheckService" android:foregroundServiceType="dataSync" android:exported="false" />
         <receiver android:name=".music.MaintenancePauseReceiver" android:exported="false" />
         <service android:name=".music.AudioExportJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
         <service android:name=".music.DuplicateCheckJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
