@@ -12,8 +12,8 @@ internal class FriendMusicController(private val application: Application,privat
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application)else null
     private val mutable=MutableStateFlow(FriendMusicState());val state=mutable.asStateFlow()
-    private var work: Job?=null;private var generation=0;private var lease: MusicAccess?=null
-    fun reset(){generation++;work?.cancel();work=null;lease=null;mutable.value=FriendMusicState()}
+    private var work: Job?=null;private var previewWork: Job?=null;private var generation=0;private var lease: MusicAccess?=null
+    fun reset(){generation++;work?.cancel();previewWork?.cancel();previewWork=null;work=null;lease=null;mutable.value=FriendMusicState()}
     fun pauseRead(){generation++;work?.cancel();work=null;mutable.update{it.copy(busy=false,preparing=false,selecting=false,selection=emptySet())}}
     fun back() {
         if(state.value.selecting){mutable.update{it.copy(selecting=false,selection=emptySet())};return}
@@ -46,7 +46,11 @@ internal class FriendMusicController(private val application: Application,privat
             }catch(e: TimeoutCancellationException){if(g==generation)problem(FriendMusicProblem(MusicError.TIMEOUT))}
              catch(e: CancellationException){throw e}
              catch(e: MusicReadChanged){if(g==generation){lease=null;mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))}}
-             catch(e: Exception){if(g==generation)problem(FriendMusicProblem.from(e))}
+             catch(e: Exception){if(g==generation) {
+                  val error=FriendMusicProblem.from(e)
+                  Diagnostics.event("music_friend_load_failure",mapOf("reason" to error.code.name,"vk_code" to error.remoteCode))
+                  problem(error)
+              }}
             finally{if(g==generation){mutable.update{it.copy(busy=false,preparing=false)};work=null}}
         }
     }
@@ -57,7 +61,8 @@ internal class FriendMusicController(private val application: Application,privat
         else->it.copy(problems=it.problems+(it.tab to value))
     }}}
     fun loadFriends() {
-        mutable.update{it.copy(user=null,friends=emptyList(),friendsComplete=false,friendsTotal=null,listProblem=null)}
+        previewWork?.cancel();previewWork=null
+        mutable.update{it.copy(user=null,friends=emptyList(),friendAccess=emptyMap(),friendsComplete=false,friendsTotal=null,listProblem=null)}
         run {_,guard->
             val rows=mutableListOf<MusicFriend>();val seen=mutableSetOf<Long>();var total: Int?=null
             do {
@@ -70,6 +75,34 @@ internal class FriendMusicController(private val application: Application,privat
             }while(rows.size<total!!)
             mutable.update{it.copy(friendsComplete=true)}
             Diagnostics.event("music_friends_loaded",mapOf("count" to rows.size))
+            previewFriends(rows.toList())
+        }
+    }
+    /** Fetch only a minimal remote page; a transient API failure must not be shown as a privacy denial. */
+    private fun previewFriends(friends: List<MusicFriend>) {
+        previewWork?.cancel()
+        val initial=lease?:return
+        previewWork=scope.launch {
+            for(friend in friends) {
+                currentCoroutineContext().ensureActive()
+                // Keep the foreground friend profile responsive.
+                while(mutable.value.user!=null)delay(300)
+                try {
+                    val access=checked(initial)
+                    api.libraryPage(access,friend.id,0)
+                    checked(initial)
+                    mutable.update{it.copy(friendAccess=it.friendAccess+(friend.id to FriendAudioAccess.AVAILABLE))}
+                }catch(e: CancellationException){throw e}
+                 catch(_: MusicReadChanged){break}
+                 catch(e: Exception) {
+                    val issue=FriendMusicProblem.from(e)
+                    Diagnostics.event("music_friend_access_preview",mapOf("reason" to issue.code.name,"vk_code" to issue.remoteCode))
+                    if(issue.remoteCode==201||issue.code==MusicError.DENIED)
+                        mutable.update{it.copy(friendAccess=it.friendAccess+(friend.id to FriendAudioAccess.DENIED))}
+                    if(issue.code in setOf(MusicError.RATE_LIMIT,MusicError.ACCESS,MusicError.INVALID_ACCESS))break
+                }
+                delay(250)
+            }
         }
     }
     private suspend fun tracks(fetch:suspend(Int)->NativePage,guard:suspend()->MusicAccess,playlist: Boolean): NativePage {
@@ -87,8 +120,12 @@ internal class FriendMusicController(private val application: Application,privat
             val fresh=api.friendProfile(guard(),user.id);guard();mutable.update{it.copy(user=fresh)}
             try {
                 val page=tracks({offset->api.libraryPage(guard(),user.id,offset)},guard,false)
-                guard();mutable.update{it.copy(tracks=page,tracksComplete=true)}
-            }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){mutable.update{it.copy(problems=it.problems+(FriendMusicTab.TRACKS to FriendMusicProblem.from(e)))}}
+                guard();mutable.update{it.copy(tracks=page,tracksComplete=true,friendAccess=it.friendAccess+(user.id to FriendAudioAccess.AVAILABLE))}
+            }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){
+                val issue=FriendMusicProblem.from(e)
+                mutable.update{it.copy(problems=it.problems+(FriendMusicTab.TRACKS to issue),
+                    friendAccess=if(issue.remoteCode==201||issue.code==MusicError.DENIED)it.friendAccess+(user.id to FriendAudioAccess.DENIED)else it.friendAccess)}
+            }
             try {
                 val catalog=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false,partial={part->mutable.update{it.copy(catalog=part)}})
                 guard();mutable.update{it.copy(catalog=catalog)}
