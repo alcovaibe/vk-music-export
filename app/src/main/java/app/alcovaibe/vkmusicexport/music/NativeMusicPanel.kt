@@ -91,7 +91,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val queue by AudioExportRuntime.state.collectAsState()
     val queueWorking=queue.status in setOf("RUNNING","QUEUED")
     val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
-    var notifications by remember{mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
+    var notifications by remember{mutableStateOf(android.os.Build.VERSION.SDK_INT<33||ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
     fun startMaintenance(action: ()->Unit) {
         if(!notifications)notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)

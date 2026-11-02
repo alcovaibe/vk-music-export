@@ -12,7 +12,7 @@ internal class LegacyAudioCleanup(context: Context) {
     private val marker=AtomicFile(File(context.noBackupFilesDir,"legacy-transfer-cleanup-v2"))
     private val retired=listOf(File(context.cacheDir,"native-audio-transfer"))
     fun run(): Int = synchronized(lock) {
-        if(runCatching{marker.openRead().use{it.readNBytes(3).contentEquals(byteArrayOf(49,10))}}.getOrDefault(false))return@synchronized 0
+        if(runCatching{marker.openRead().use{it.readAtMost(3).contentEquals(byteArrayOf(49,10))}}.getOrDefault(false))return@synchronized 0
         var removed=0
         for(root in retired) {
             if(!Files.exists(root.toPath(),LinkOption.NOFOLLOW_LINKS))continue

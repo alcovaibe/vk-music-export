@@ -83,10 +83,14 @@ class NativeAudioDeviceTest {
             assertThrows(Exception::class.java){vault.read()}
             vault.save(MusicAccess(token,"Synthetic Client/1"));assertFalse(Diagnostics.export().contains(token))
         }finally{vault.delete()}
-        val flags=android.content.pm.PackageManager.ComponentInfoFlags.of(0)
-        assertNull(context.packageManager.resolveContentProvider("${context.packageName}.audio",flags))
-        assertNotNull(context.packageManager.resolveContentProvider("${context.packageName}.diagnostics",flags))
-        assertNotNull(context.packageManager.resolveContentProvider("${context.packageName}.updates",flags))
+        // The typed overload appeared in API 33; verify the same providers on Q–S.
+        fun provider(authority: String): android.content.pm.ProviderInfo? =
+            if(android.os.Build.VERSION.SDK_INT>=33)
+                context.packageManager.resolveContentProvider(authority,android.content.pm.PackageManager.ComponentInfoFlags.of(0))
+            else context.packageManager.resolveContentProvider(authority,0)
+        assertNull(provider("${context.packageName}.audio"))
+        assertNotNull(provider("${context.packageName}.diagnostics"))
+        assertNotNull(provider("${context.packageName}.updates"))
     }
 }
 

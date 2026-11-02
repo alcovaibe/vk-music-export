@@ -100,7 +100,7 @@ internal class AudioTransfer(private val client: OkHttpClient = NetworkClients.m
                         }
                     }.also{out.fd.sync()}
                 }}
-                val prefix=storage{raw.inputStream().use{it.readNBytes(16)}}.toString(Charsets.UTF_8).removePrefix("\uFEFF")
+                val prefix=storage{raw.inputStream().use{it.readAtMost(16)}}.toString(Charsets.UTF_8).removePrefix("\uFEFF")
                 manifest=manifest||prefix.trimStart().startsWith("#EXTM3U")
                 var hlsSeconds: Double?=null
                 if(manifest) {
