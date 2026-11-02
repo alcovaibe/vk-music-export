@@ -151,7 +151,8 @@ internal fun MusicAccessManagementScreen(
                     }
                 }
             }
-            if(state.message!=null||state.error!=null||state.busy)item("result") {
+            // Keep errors and Chrome login feedback, but not the redundant catalogue/probe card.
+            if(state.error!=null||(state.busy&&state.stage=="browser_auth"))item("result") {
                 AccessCard("music_access_result") {
                     state.message?.let{Text(it)}
                     state.error?.let{Text("${it.label} Код: ${it.name}",color=MaterialTheme.colorScheme.error)}
