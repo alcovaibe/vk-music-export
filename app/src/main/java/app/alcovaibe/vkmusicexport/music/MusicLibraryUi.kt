@@ -192,11 +192,10 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
                     Icon(Icons.Default.CheckCircle,"Есть копия на устройстве",tint=MaterialTheme.colorScheme.tertiary)}
                 onDownload!=null->IconButton(enabled=enabled,onClick=onDownload){Icon(DownloadIcon,"Скачать этот трек")}
             }
-            if(onDownload!=null||onRemove!=null||onOpen!=null)Box {
+            if(onRemove!=null||onOpen!=null)Box {
                 IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком")}
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                     onOpen?.let{DropdownMenuItem(text={Text("Воспроизвести файл")},onClick={menu=false;it()})}
-                    onDownload?.let{DropdownMenuItem(enabled=enabled,text={Text("Скачать этот трек")},onClick={menu=false;it()})}
                     onRemove?.let{DropdownMenuItem(enabled=enabled,text={Text("Удалить из музыки ВК…")},modifier=Modifier.testTag("remove_from_vk"),onClick={menu=false;it()})}
                 }
             }

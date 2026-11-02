@@ -58,9 +58,9 @@ private fun AccessDetail(icon: ImageVector,text: String,modifier: Modifier=Modif
 @Composable
 internal fun MusicAccessManagementScreen(
     state: NativeMusicState,session: MusicSessionState,now: Long,backgroundCheck: Boolean,queueWorking: Boolean,scanStage: String,
-    onBack:()->Unit,onCheck:()->Unit,onConnect:()->Unit,onManual:()->Unit,onConfirm:()->Unit,onForget:()->Unit,onCancel:()->Unit
+    onBack:()->Unit,onCheck:()->Unit,onConnect:()->Unit,onConfirm:()->Unit,onForget:()->Unit,onCancel:()->Unit
 ) {
-    var details by rememberSaveable{mutableStateOf(true)}
+    var details by rememberSaveable{mutableStateOf(false)}
     val enabled=state.initialized&&!state.busy&&!backgroundCheck
     val expiry=session.expiresAtMs
     val expired=expiry!=null&&expiry<=now
@@ -109,9 +109,6 @@ internal fun MusicAccessManagementScreen(
                     }else {
                         Text(if(state.accessDamaged)"Сохрани новый доступ через Chrome или удали повреждённые данные. Музыка и очередь останутся."
                             else "Войди через Chrome, чтобы открыть свою музыку и музыкальные профили друзей.",style=MaterialTheme.typography.bodyLarge)
-                        OutlinedButton(onClick=onManual,enabled=enabled,shape=RoundedCornerShape(14.dp),
-                            colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),
-                            border=BorderStroke(1.dp,if(enabled)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Настроить доступ ВК")}
                     }
                 }
             }
@@ -121,7 +118,9 @@ internal fun MusicAccessManagementScreen(
                         Icon(AccessChromeIcon,null,Modifier.size(26.dp))
                         Text("Вход через Chrome",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)
                     }
-                    Text("Открой вход в Chrome. Если ВК покажет шестизначный код, вернись в приложение и введи его. Если код не потребуется, подключение проверится автоматически.",style=MaterialTheme.typography.bodyLarge)
+                    Text("1. Нажми «Войти через Chrome». Если в браузере уже выполнен вход в ВК, запомни показанный шестизначный код и закрой окно с кодом.",style=MaterialTheme.typography.bodyLarge)
+                    Text("2. Вернись в приложение и введи этот код в поле подтверждения. Если код не появился, дождись автоматической проверки входа.",style=MaterialTheme.typography.bodyLarge)
+                    Text("3. Если в браузере входа в ВК ещё не было, сначала войди в свой аккаунт, затем вернись в приложение и начни авторизацию заново.",style=MaterialTheme.typography.bodyLarge)
                     if(state.stage!="browser_auth")OutlinedButton(onClick=onConnect,enabled=enabled,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(12.dp),
                         colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),
                         border=BorderStroke(1.dp,if(enabled)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
@@ -146,7 +145,7 @@ internal fun MusicAccessManagementScreen(
                         Icon(if(details)AccessCollapseIcon else AccessExpandIcon,if(details)"Свернуть сведения" else "Развернуть сведения")
                     }
                     if(details) {
-                        Text("Используется внутренний протокол ВК. Сессия может предоставлять права шире доступа к музыке. Музыкальный раздел может быть недоступен для этой сессии.",style=MaterialTheme.typography.bodyMedium)
+                        Text("Используется внутренний протокол ВК.",style=MaterialTheme.typography.bodyMedium)
                         Text("Новый доступ сохраняется после успешной проверки музыкального раздела.",style=MaterialTheme.typography.bodyMedium)
                         Text("Удаление данных завершит вход только на этом устройстве. Отозвать сессию можно в настройках аккаунта ВК. Музыка и очередь сохранятся.",style=MaterialTheme.typography.bodyMedium)
                     }

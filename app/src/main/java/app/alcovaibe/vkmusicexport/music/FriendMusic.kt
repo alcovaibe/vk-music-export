@@ -12,7 +12,7 @@ internal data class FriendsPage(val items: List<MusicFriend>,val count: Int)
 internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы") }
 internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?=null,val httpStatus: Int?=null,val field: String?=null,val position: Int?=null) {
     val message get()=when {
-        remoteCode==201->"ВК запретил доступ к аудиозаписям этого профиля."
+        remoteCode==201->"Пользовательские настройки приватности не разрешают вам доступ к аудиозаписям этого друга."
         code==MusicError.DENIED->"ВК не разрешил этому подключению получить данный музыкальный раздел."
         code==MusicError.METHOD->"Этот метод недоступен текущему подключению ВК."
         code==MusicError.ACCESS||code==MusicError.INVALID_ACCESS->"Нужно подключить ВК заново."
@@ -25,11 +25,13 @@ internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?
     }
     val codeText get()=(remoteCode?.let{"Код API ВК: $it"}?:httpStatus?.let{"HTTP $it"}?:"Код приложения: ${code.name}")+
         (field?.let{" · поле: $it"}.orEmpty())+(position?.let{" · позиция: $it"}.orEmpty())
-    val description get()="$message $codeText."
+    val description get()=message
     companion object {fun from(e: Exception)=(e as? MusicFailure)?.let{FriendMusicProblem(it.code,it.remoteCode,it.httpStatus,
         (it as? NativeDataFailure)?.field,(it as? NativeDataFailure)?.position)}?:FriendMusicProblem(MusicError.RESPONSE)}
 }
+internal enum class FriendAudioAccess { AVAILABLE, DENIED }
 internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(),val friendsTotal: Int?=null,val friendsComplete: Boolean=false,
+    val friendAccess: Map<Long,FriendAudioAccess> = emptyMap(),
     val busy: Boolean=false,val preparing: Boolean=false,val friendsQuery: String="",val musicQuery: String="",
     val user: MusicFriend?=null,val tab: FriendMusicTab=FriendMusicTab.TRACKS,val tracks: NativePage?=null,val tracksComplete: Boolean=false,
     val catalog: NativeCatalog?=null,val playlist: NativePlaylist?=null,val playlistTracks: NativePage?=null,val playlistComplete: Boolean=false,

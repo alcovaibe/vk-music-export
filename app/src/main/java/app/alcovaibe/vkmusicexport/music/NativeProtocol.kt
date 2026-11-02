@@ -49,7 +49,8 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
 
 @Serializable internal data class MusicAlbum(val id: String, val title: String)
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
-    val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null) {
+    val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null,
+    val releaseYear: Int?=null) {
     val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
         if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
     }?:title
@@ -159,7 +160,12 @@ internal object NativeProtocol {
             if(p.content.length>500||p.content.any{c->c<' '||c=='\u007f'})throw NativeDataFailure("subtitle")
             if(p.content.isBlank())null else text(o,"subtitle")
         }
-        return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(), restricted, album,subtitle)
+        // Year is optional. VK may omit it; an upload timestamp is not the release year.
+        val releaseDate=(albumValue as? JsonObject)?.get("release_date")?.let{(it as? JsonPrimitive)?.contentOrNull}
+        val year=listOf("release_year","year").firstNotNullOfOrNull{field->
+            (o[field] as? JsonPrimitive)?.intOrNull?.takeIf{it in 1800..2100}
+        }?:releaseDate?.take(4)?.toIntOrNull()?.takeIf{it in 1800..2100}
+        return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(), restricted, album,subtitle,releaseYear=year)
     }
     fun page(response: JsonElement,warning:(String,Int)->Unit={_,_->}): NativePage = parse {
         val o = response as? JsonObject ?: throw MusicFailure(MusicError.RESPONSE)
