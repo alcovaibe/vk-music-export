@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -348,9 +346,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                             shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceVariant,
                             modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
                             Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Icon(Icons.Default.FactCheck,null,Modifier.size(22.dp));Spacer(Modifier.width(10.dp))
+                                Icon(Icons.Default.CheckCircle,null,Modifier.size(22.dp));Spacer(Modifier.width(10.dp))
                                 Text("Дубликаты: проверка и результаты",modifier=Modifier.weight(1f))
-                                Icon(Icons.Default.ChevronRight,null)
+                                Icon(MusicChevronIcon,null)
                             }
                         }
                     }
