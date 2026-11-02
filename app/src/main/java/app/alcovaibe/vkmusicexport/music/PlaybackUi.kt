@@ -4,6 +4,8 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -89,7 +91,11 @@ internal fun PlaybackMiniPlayer(state: PlaybackState,onOpen:()->Unit) {
             IconButton(onClick={PlaybackRuntime.toggle(context)},modifier=Modifier.testTag("mini_player_toggle")) {
                 Icon(if(state.playWhenReady&&state.error==null)FriendPauseIcon else PlayerPlayIcon,if(state.playWhenReady&&state.error==null)"Пауза" else "Продолжить")
             }
-            IconButton(onClick=PlaybackRuntime::next,enabled=state.next){Icon(PlayerNextIcon,"Следующий трек")}
+            IconButton(onClick=if(state.playWhenReady)PlaybackRuntime::next else PlaybackRuntime::stop,
+                enabled=!state.playWhenReady||state.next,modifier=Modifier.testTag("mini_player_next_or_close")) {
+                Icon(if(state.playWhenReady)PlayerNextIcon else Icons.Default.Close,
+                    if(state.playWhenReady)"Следующий трек" else "Закрыть мини-плеер")
+            }
         }
     }
 }
@@ -141,7 +147,7 @@ private fun Modifier.swipeDownToCollapse(scroll: ScrollState,onDismiss:()->Unit)
                     val collapse=eligible&&(offset>=threshold||(offset>=flickDistance&&velocity.calculateVelocity().y>=flickVelocity))
                     dismissing=collapse
                     settling=scope.launch {
-                        animate(offset,if(collapse)size.height.toFloat()else 0f,animationSpec=tween(if(collapse)160 else 200)) {value,_->offset=value}
+                        animate(offset,if(collapse)size.height*.55f else 0f,animationSpec=tween(if(collapse)310 else 230)) {value,_->offset=value}
                         if(collapse)dismiss()
                     }
                 }
@@ -149,7 +155,20 @@ private fun Modifier.swipeDownToCollapse(scroll: ScrollState,onDismiss:()->Unit)
                 if(!released){settling?.cancel();offset=0f;dismissing=false}
             }
         }
-    }.graphicsLayer{translationY=offset}
+    }.graphicsLayer{
+        // The library and its mini-player stay composed beneath this overlay.
+        // Until 20% of the screen the sheet follows the finger; then it shrinks
+        // toward the mini-player positioned above bottom navigation.
+        val h=size.height.coerceAtLeast(1f)
+        val progress=(offset/h).coerceIn(0f,1f)
+        val morph=((progress-.20f)/.35f).coerceIn(0f,1f)
+        translationY=offset.coerceAtMost(h*.39f)
+        scaleX=1f-.72f*morph
+        scaleY=1f-.87f*morph
+        alpha=1f-((morph-.84f)/.16f).coerceIn(0f,1f)
+        clip=morph>0f
+        shape=RoundedCornerShape(22.dp)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
