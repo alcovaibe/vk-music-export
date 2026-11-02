@@ -97,15 +97,16 @@ class NativeAudioDeviceTest {
 @RunWith(AndroidJUnit4::class)
 class NativeMusicUiDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
-    @Test fun nativePanelRetainsProtectedAccessAndRejectsWrongServiceCredentialWithoutWritingIt() {
+    @Test fun accessScreenRemovesManualCredentialsAndKeepsSavedLibraryUntouched() {
         val collection=ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes()
         ui.onNodeWithTag("music_connection").performClick()
-        ui.onNodeWithText("Настроить доступ ВК").performScrollTo().performClick()
-        ui.onNodeWithTag("native_vk_token").performTextInput("github_pat_"+"WRONG_SERVICE_".repeat(8))
-        ui.onNodeWithText("Сохранить и проверить ВК").performScrollTo().performClick()
-        ui.onNodeWithText(MusicError.INVALID_ACCESS.label).assertExists()
+        ui.onNodeWithText("Настроить доступ ВК").assertDoesNotExist()
+        ui.onNodeWithTag("native_vk_token").assertDoesNotExist()
+        ui.onNodeWithTag("music_access_connect").assertExists()
+        assertFalse(NativeProtocol.validAccess("github_pat_"+"WRONG_SERVICE_".repeat(8),"CI/1"))
         assertFalse(File(ui.activity.noBackupFilesDir,"native-music-access.bin").exists())
-        ui.onNodeWithText("Отмена").performScrollTo().performClick();ui.onNodeWithContentDescription("Назад").performClick();ui.onNodeWithTag("native_music_screen").assertExists()
+        ui.onNodeWithContentDescription("Назад").performClick()
+        ui.onNodeWithTag("native_music_screen").assertExists()
         assertArrayEquals(collection,ui.activity.getFileStreamPath("collection.json").takeIf{it.exists()}?.readBytes())
     }
 }

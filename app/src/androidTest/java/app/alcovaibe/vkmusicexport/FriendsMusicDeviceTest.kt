@@ -135,10 +135,10 @@ class FriendsMusicDeviceTest {
         ui.onNodeWithTag("friend_35").performClick();ui.waitUntil(15000){!model.friends.state.value.busy&&model.friends.state.value.problems.isNotEmpty()}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_music_problem"))
         ui.onNodeWithText("Доступ к музыке запрещён").assertIsDisplayed()
-        ui.onNodeWithTag("friend_problem_message").assertTextEquals("ВК запретил доступ к аудиозаписям этого профиля.")
-        ui.onNodeWithTag("friend_problem_code").assertTextEquals("Код API ВК: 201")
+        ui.onNodeWithTag("friend_problem_message").assertTextEquals("Пользовательские настройки приватности не разрешают вам доступ к аудиозаписям этого друга.")
+        ui.onNodeWithTag("friend_problem_code").assertDoesNotExist()
         ui.onAllNodes(hasText("Открыть в ВК") and hasAnyAncestor(hasTestTag("friend_music_problem"))).assertCountEquals(0)
-        for(tag in listOf("friend_problem_message","friend_problem_code")) {
+        for(tag in listOf("friend_problem_message")) {
             val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
             ui.onNodeWithTag(tag).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult){it(layouts)}
             val layout=layouts.single()
