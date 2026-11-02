@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.*
@@ -98,9 +99,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         action()
     }
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
-    LaunchedEffect(destination,state.initialized,state.configured,state.busy) {
-        if(destination==MusicDestination.FRIENDS&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.user==null&&friendState.listProblem==null)model.friends.loadFriends()
+    // Warm the friends list after a successful VK connection; keep the manual refresh available.
+    LaunchedEffect(state.probe?.owner,state.initialized,state.configured,state.busy,friendState.friendsComplete,friendState.busy,friendState.listProblem) {
+        if(state.probe!=null&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.listProblem==null)model.friends.loadFriends()
     }
+    val friendsRootScroll=rememberLazyListState()
     val friendQueueItems by produceState<Map<String,String>>(emptyMap(),destination,queue.total,queue.done,queue.failed,queue.pending,queue.status) {
         if(destination==MusicDestination.FRIENDS)value=withContext(Dispatchers.IO){runCatching{AudioExportRuntime.taskStates(context)}.getOrDefault(emptyMap())}
     }
@@ -109,27 +112,19 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var aboutOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
-    var ascending by rememberSaveable {mutableStateOf(false)}
-    var configure by rememberSaveable {mutableStateOf(false)}
+    var sort by rememberSaveable {mutableStateOf(MusicLibrarySort.DEFAULT)}
+    var sortOpen by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
     val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
     LaunchedEffect(maintenanceNavigation) {
-        if(maintenanceNavigation>0){aboutOpen=false;accessOpen=false;configure=false;toolsOpen=false;destination=MusicDestination.SAVED}
+        if(maintenanceNavigation>0){aboutOpen=false;accessOpen=false;toolsOpen=false;destination=MusicDestination.SAVED}
     }
     val downloadsOpen by model.downloadsOpen.collectAsState()
     if(downloadsOpen)DownloadProgressSheet(queue,state.busy||duplicates.busy||friendState.preparing,state.error,
         onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,onDismiss=model::dismissDownloads,
         onSourceRetry=model::retrySource,onExportReport={model.shareExportReport(context)})
-    if(playerExpanded) {
-        PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare)
-        return
-    }
     if(aboutOpen) {
         app.alcovaibe.vkmusicexport.AboutAppPage(onBack={aboutOpen=false})
-        return
-    }
-    if(configure) {
-        NativeAccessScreen(onBack={configure=false},onSave={token,agent->model.configure(token,agent);configure=false})
         return
     }
     if(!state.stopping && state.authPhase in setOf(DeviceAuthPhase.ENTER_CODE,DeviceAuthPhase.VALIDATING_CODE)) {
@@ -160,7 +155,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     fun choose(value: LibraryCategory) {
         if(state.busy||backgroundCheck)return
-        category=value;ascending=false
+        category=value;sort=MusicLibrarySort.DEFAULT
         when(value) {
             LibraryCategory.TRACKS->model.section(CatalogSection.LIBRARY)
             LibraryCategory.PLAYLISTS->model.section(CatalogSection.PLAYLISTS)
@@ -180,10 +175,18 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->{model.stopForWindow();onDismiss()}
         }
     }
+    val libraryPlayback=remember(state.page,state.probe?.owner,state.selected) {
+        val owner=state.probe?.owner
+        val page=state.page?.takeIf{it.tracks.size==it.count}
+        if(owner==null||page==null)emptyList()else page.tracks.map{track->
+            PlaybackEntry(track,state.selected?.title?:"Моя музыка",account=owner)
+        }
+    }
+    val canPlayLibrary=libraryPlayback.any{it.track.duration>0&&!it.track.restricted&&it.track.metadataError==null}
+    Box(Modifier.fillMaxSize()) {
     if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
         onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
-        onManual={Diagnostics.button("native_music_access_dialog");configure=true},onConfirm={model.openAuthChrome(context)},
-        onForget=model::forget,onCancel=model::cancel)
+        onConfirm={model.openAuthChrome(context)},onForget=model::forget,onCancel=model::cancel)
     else MusicLibraryScaffold(
         title=when(destination) {
             MusicDestination.SAVED->"Сохранённое"
@@ -194,6 +197,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         prominentTitle=destination==MusicDestination.FRIENDS&&friendState.user==null,
         playback=playback,onPlayerOpen={PlaybackRuntime.expanded.value=true},
         listIdentity=if(destination==MusicDestination.FRIENDS)"friends:${friendState.user?.id}:${friendState.playlist?.key}" else null,
+        listState=if(destination==MusicDestination.FRIENDS&&friendState.user==null)friendsRootScroll else null,
         onBack=::back,showBack=destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
         menuItems={closeMenu->
             DropdownMenuItem(text={Text(if(destination==MusicDestination.FRIENDS)"Обновить" else "Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck&&!friendState.busy,onClick={closeMenu();if(destination==MusicDestination.FRIENDS)model.friends.refresh()else model.checkAccess()})
@@ -301,16 +305,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 if(state.probe!=null)item("library_actions") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                         Text(state.selected?.title?:if(category==LibraryCategory.TRACKS)"${state.probe?.library?.count?:0} треков" else category.label,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
-                        TextButton(enabled=!state.busy,onClick={ascending=!ascending}){Text(if(ascending)"А–Я ↓" else "Порядок ВК ↕")}
+                        TextButton(enabled=!state.busy,onClick={sortOpen=true},modifier=Modifier.testTag("library_sort")) {
+                            Text("Сортировка");Icon(Icons.Default.KeyboardArrowDown,"Выбрать порядок",Modifier.size(18.dp))
+                        }
                         if(category==LibraryCategory.TRACKS)IconButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("library_tools")){Icon(Icons.Default.MoreVert,"Инструменты библиотеки")}
                     }
                     if(category==LibraryCategory.TRACKS) {
                         if(toolsOpen) {
                             Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
-                            OutlinedButton(enabled=canPrepare,onClick=model::showDuplicates,modifier=Modifier.fillMaxWidth().testTag("clean_duplicates")){Text("Очистить дубликаты")}
                             OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
                             OutlinedButton(enabled=canPrepare,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
-                            Text("Группы по альбомам содержат только песни из «Моей музыки».",style=MaterialTheme.typography.bodySmall)
                         }
                     }else {
                         if(state.selected!=null) {
@@ -328,10 +332,26 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::refreshCatalog){Text("Обновить каталог")}
                     }
-                    if(duplicates.scanId.isNotEmpty()&&!duplicates.visible)TextButton(onClick=model::showDuplicates,modifier=Modifier.testTag("reopen_duplicates")){Text("Дубликаты: процесс и результат")}
+                    if(category==LibraryCategory.TRACKS||state.selected!=null) {
+                        FilledTonalButton(onClick={PlaybackRuntime.play(context,libraryPlayback)},enabled=canPlayLibrary&&!state.busy,
+                            shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=54.dp).testTag("library_play")) {
+                            Icon(PlayerPlayIcon,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Воспроизвести")
+                        }
+                    }
+                    if(category==LibraryCategory.TRACKS) {
+                        Surface(onClick=model::showDuplicates,enabled=!state.busy&&!backgroundCheck,
+                            shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceVariant,
+                            modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
+                            Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Icon(Icons.Default.FactCheck,null,Modifier.size(22.dp));Spacer(Modifier.width(10.dp))
+                                Text("Дубликаты: проверка и результаты",modifier=Modifier.weight(1f))
+                                Icon(Icons.Default.ChevronRight,null)
+                            }
+                        }
+                    }
                 }}
                 if(category!=LibraryCategory.TRACKS&&state.selected==null) {
-                    val lists=MusicCatalog.visible(state).let{if(ascending)it.sortedBy{l->l.title.lowercase()}else it}
+                    val lists=MusicLibrarySorting.collections(MusicCatalog.visible(state),sort)
                     itemsIndexed(lists,key={_,list->"catalog_${list.key}"}){_,list->MusicCollectionRow(list.title,"${list.count} треков",!state.busy,
                         tag="catalog_list_${list.owner}_${list.id}"){model.select(list)}}
                     if(state.catalogSection==CatalogSection.UNKNOWN)item("unknown_note"){Text("ВК не сообщил тип этих подборок; ручной выбор не нужен.")}
@@ -340,7 +360,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }
                 state.page?.let{page->
-                    val rows=page.tracks.withIndex().let{if(ascending)it.sortedBy{r->r.value.displayTitle.lowercase()}else it.toList()}
+                    val rows=MusicLibrarySorting.tracks(page.tracks,sort)
                     if(page.tracks.size!=page.count)item("tracks_count"){Text("Показано ${page.tracks.size} из ${page.count}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
                     itemsIndexed(rows,key={_,entry->"track_${entry.index}_${entry.value.id}"}){_,entry->
                         val track=entry.value;val position=entry.index+1;val saved=savedById[track.id]?.file
@@ -352,7 +372,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }
             }
-            if(!state.configured)item("empty_library") {Text("Подключи ВК через карточку сверху. Сохранённые файлы доступны без входа.",style=MaterialTheme.typography.bodyMedium)}
+            if(!state.configured)item("empty_library") {Text("Сохранённые файлы доступны без входа.",style=MaterialTheme.typography.bodyMedium)}
         }
     }
     if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
@@ -369,7 +389,20 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         model::confirmMetadataReplacement,model::backMetadataReplacement,model::cancel,model::dismissMetadataLookup)
     if(lookup.visible)ArtworkLookupSheet(lookup,model::artworkLookupQuery,model::findArtworkReplacement,model::previewArtworkReplacement,
         model::confirmArtworkReplacement,model::backArtworkReplacement,model::cancel,model::dismissArtworkLookup)
+    if(sortOpen)ModalBottomSheet(onDismissRequest={sortOpen=false},modifier=Modifier.testTag("library_sort_sheet")) {
+        Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp)) {
+            Text("Сортировка",style=MaterialTheme.typography.titleLarge)
+            MusicLibrarySort.entries.forEach{choice->
+                TextButton(onClick={sort=choice;sortOpen=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("sort_${choice.name}")) {
+                    Text(choice.title,modifier=Modifier.weight(1f))
+                    if(sort==choice)Icon(Icons.Default.Check,null)
+                }
+            }
+        }
+    }
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
+    if(playerExpanded)PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare)
+    }
 }
 
 @Composable
@@ -415,29 +448,3 @@ internal fun DeviceConfirmationScreen(state: NativeMusicState,onSubmit: (String)
     }
 }
 
-@Composable
-private fun NativeAccessScreen(onBack: ()->Unit,onSave: (String,String)->Unit) {
-    var token by remember {mutableStateOf("")}
-    var agent by remember {mutableStateOf(NativeProtocol.DEFAULT_AGENT)}
-    var invalid by remember {mutableStateOf(false)}
-    fun close(){token="";agent="";onBack()}
-    SecureCredentialContent {
-        AppPage("Музыкальный доступ ВК",onBack=::close,tag="native_access_screen") {
-            Text("Введи уже выданный токен ВК. Если он выдан определённому клиенту, укажи исходный User-Agent. Эти значения не попадают в диагностический лог.")
-            OutlinedTextField(value=token,onValueChange={if(it.length<=4096){token=it;invalid=false}},label={Text("Токен ВК")},
-                modifier=Modifier.fillMaxWidth().testTag("native_vk_token"),singleLine=true,visualTransformation=PasswordVisualTransformation(),
-                keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false))
-            OutlinedTextField(value=agent,onValueChange={if(it.length<=512)agent=it},label={Text("User-Agent доступа")},
-                modifier=Modifier.fillMaxWidth().testTag("native_vk_agent"),singleLine=true,
-                keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password,autoCorrectEnabled=false))
-            if(invalid)Text(MusicError.INVALID_ACCESS.label,color=MaterialTheme.colorScheme.error)
-            Button(onClick={
-                Diagnostics.button("native_music_submit_access")
-                if(!NativeProtocol.validAccess(token,agent))invalid=true else {
-                    onSave(token,agent);token="";agent=""
-                }
-            }){Text("Сохранить и проверить ВК")}
-            TextButton(onClick={Diagnostics.button("native_music_access_cancel");close()}){Text("Отмена")}
-        }
-    }
-}
