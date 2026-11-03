@@ -140,8 +140,8 @@ class MusicExportDeviceTest {
             assertEquals(task.source,after.source)
             assertTrue(shared.valid(after))
             val checkpoint=store.checkpoint("m3u:"+task.source!!.key)!!
-            assertTrue(checkpoint.contains(desiredPath))
-            assertFalse(checkpoint.contains(legacyPath))
+            assertEquals(desiredPath,org.json.JSONObject(checkpoint).getString("directory"))
+            assertNotEquals(legacyPath,org.json.JSONObject(checkpoint).getString("directory"))
             val playlist=org.json.JSONObject(checkpoint)
             val playlistUri=Uri.parse(playlist.getString("uri"))
             val playlistText=context.contentResolver.openInputStream(playlistUri)!!.use{it.readBytes().toString(Charsets.UTF_8)}
