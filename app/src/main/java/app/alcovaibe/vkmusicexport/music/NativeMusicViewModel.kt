@@ -1035,7 +1035,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
             sessions?.reload()
             acceptProbe(g,access,first)
-            lastLibraryRefreshMs=android.os.SystemClock.elapsedRealtime()
         }finally {
             if(g==generation)_state.update{it.copy(libraryRefreshing=false,catalogRefreshing=false)}
         }
@@ -1075,7 +1074,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
              catch(e: Exception) {
                 active(g)
                 _state.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,
-                    libraryRefreshing=false,libraryStale=it.page?.tracks?.size==it.page?.count)}
+                    libraryRefreshing=false,libraryStale=it.page?.let{part->part.tracks.size==part.count}==true)}
             }
             catalogue.await()
         }
@@ -1097,6 +1096,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         })
         active(g)
+        lastLibraryRefreshMs=android.os.SystemClock.elapsedRealtime()
         Diagnostics.event("native_music_sample",mapOf("stage" to "library","entries" to page.tracks.size,
             "expected_count" to page.count,"complete" to true))
         return proof.copy(library=page)
