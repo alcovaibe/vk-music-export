@@ -318,6 +318,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         if(toolsOpen) {
                             Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
                             OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
+                            OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showDuplicates,
+                                modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
+                                Text("Дубликаты: проверка и результаты")
+                            }
                             OutlinedButton(enabled=canPrepare,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
                         }
                     }else {
@@ -340,17 +344,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         FilledTonalButton(onClick={PlaybackRuntime.play(context,libraryPlayback)},enabled=canPlayLibrary&&!state.busy,
                             shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=54.dp).testTag("library_play")) {
                             Icon(PlayerPlayIcon,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Воспроизвести")
-                        }
-                    }
-                    if(category==LibraryCategory.TRACKS) {
-                        Surface(onClick=model::showDuplicates,enabled=!state.busy&&!backgroundCheck,
-                            shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceVariant,
-                            modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
-                            Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Icon(Icons.Default.CheckCircle,null,Modifier.size(22.dp));Spacer(Modifier.width(10.dp))
-                                Text("Дубликаты: проверка и результаты",modifier=Modifier.weight(1f))
-                                Icon(MusicChevronIcon,null)
-                            }
                         }
                     }
                 }}
