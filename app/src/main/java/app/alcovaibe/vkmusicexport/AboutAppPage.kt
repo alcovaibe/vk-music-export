@@ -16,13 +16,15 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun AboutAppPage(onBack: ()->Unit) {
     var legalPage by rememberSaveable {mutableStateOf<String?>(null)}
+    var selectedComponent by rememberSaveable {mutableStateOf<String?>(null)}
     when(legalPage) {
         "licenses" -> LicenseMenuPage(onBack={legalPage=null},
             onApplication={legalPage="app_license"},onComponents={legalPage="components"})
         "app_license" -> LegalInformationPage("Лицензия приложения","app_license","license_app_screen",
             onBack={legalPage="licenses"})
-        "components" -> LegalInformationPage("Сторонние компоненты","components","license_components_screen",
-            onBack={legalPage="licenses"})
+        "components" -> ThirdPartyComponentsPage(onBack={legalPage="licenses"},
+            onComponent={selectedComponent=it;legalPage="component_detail"})
+        "component_detail" -> ThirdPartyComponentDetailPage(selectedComponent,onBack={legalPage="components"})
         else -> {
             AppPage("О приложении",onBack,tag="about_app_screen") {
                 Column(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalAlignment=Alignment.CenterHorizontally,
