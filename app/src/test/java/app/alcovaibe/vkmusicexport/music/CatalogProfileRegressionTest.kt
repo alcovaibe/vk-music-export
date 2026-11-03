@@ -50,6 +50,7 @@ class CatalogProfileRegressionTest {
         var n=0
         val stuck=MusicPagination.catalogCursor({_,_->n++;NativeCatalog(listOf(item(n,0)),3,nextFrom="same",cursorBased=true)})
         assertFalse(stuck.complete);assertEquals(2,stuck.lists.size)
+        assertEquals(CatalogStopReason.REPEATED_CURSOR,stuck.pagination?.reason)
     }
     @Test fun validPartialCatalogIsPublishedBeforeALaterPageFailure()=runTest {
         val partial=mutableListOf<NativeCatalog>()
@@ -59,6 +60,25 @@ class CatalogProfileRegressionTest {
         }catch(e: MusicFailure){assertEquals(MusicError.NETWORK,e.code)}
         assertEquals(1,partial.single().lists.size);assertFalse(partial.single().complete)
     }
+    @Test fun firstOptionalAlbumPageAlsoRetriesTemporaryNetworkErrors()=runTest {
+        val album=item(1,1);var requests=0
+        val source=object: MusicApi {
+            override suspend fun library(access: MusicAccess)=error("unused")
+            override suspend fun catalog(access: MusicAccess,owner: Long)=NativeCatalog(listOf(album),1)
+            override suspend fun albumCatalogPage(access: MusicAccess,owner: Long,offset: Int): NativeCatalog {
+                requests++
+                if(requests<3)throw MusicFailure(MusicError.NETWORK)
+                return NativeCatalog(listOf(album),1)
+            }
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=error("unused")
+            override suspend fun media(access: MusicAccess,track: NativeTrack)=error("unused")
+        }
+        val result=MusicCatalog.load(source,MusicAccess("synthetic","CI"),12)
+        assertEquals(3,requests)
+        assertTrue(result.complete)
+        assertEquals(2,result.albumsPagination?.retries)
+    }
+
     @Test fun incompleteAlbumFilterCoveredByMainCatalogDoesNotInvalidatePlaylists()=runTest {
         val playlist=item(1,0);val album=item(2,1)
         val all=NativeCatalog(listOf(playlist,album),2)
