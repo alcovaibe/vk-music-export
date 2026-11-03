@@ -1110,8 +1110,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             sourceReady={source,tasks,files->active(g);playlists.matches(source,tasks,files)})
         }
     }
-    private suspend fun currentCatalog(g: Int,access: MusicAccess,owner: Long)=MusicCatalog.load(
+    private suspend fun currentCatalog(g: Int,access: MusicAccess,owner: Long,
+        publishPartial: Boolean=false)=MusicCatalog.load(
         api,access,owner,guard={active(g)},
+        partial={part->
+            if(publishPartial&&g==generation)_state.update{it.copy(catalog=part,
+                hiddenCatalog=emptySet(),catalogStale=false)}
+        },
         onPagination={source,part->
             val scan=part.pagination
             Diagnostics.event("native_catalog_pagination",mapOf(
@@ -1123,17 +1128,49 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         progress={n,total->_state.update{it.copy(preparing="Получено подборок: $n/$total")}}
     )
     private suspend fun loadCatalog(g: Int,access: MusicAccess,owner: Long) {
-        // Never retain a selected/deleted source when a fresh catalog is requested or fails.
-        _state.update{it.copy(catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),selected=null,
-            page=if(it.catalogSection==CatalogSection.LIBRARY)it.probe?.library?.takeIf{p->p.tracks.size==p.count} else null)}
-        val catalog=currentCatalog(g,access,owner)
-        val hidden=downloadedCatalog(g,access,owner,catalog)
-        active(g)
-        _state.update{it.copy(catalog=catalog,hiddenCatalog=hidden,catalogError=null)}
-        Diagnostics.event("native_music_sample",mapOf("stage" to "catalog","entries" to catalog.lists.size,
-            "expected_count" to catalog.count,"complete" to catalog.complete,
-            "base_complete" to catalog.baseComplete,
-            "optional_albums_incomplete" to catalog.optionalAlbumsIncomplete))
+        val previousCatalog=_state.value.catalog
+        val previousHidden=_state.value.hiddenCatalog
+        _state.update{it.copy(catalogRefreshing=true,catalogStale=it.catalog!=null,catalogError=null)}
+        try {
+            val catalog=currentCatalog(g,access,owner,publishPartial=true)
+            active(g)
+            _state.update{old->
+                val selected=old.selected?.let{prior->catalog.lists.firstOrNull{it.key==prior.key}}
+                old.copy(catalog=catalog,hiddenCatalog=emptySet(),catalogError=null,catalogStale=false,
+                    selected=selected,page=if(old.selected!=null&&selected==null)null else old.page,
+                    catalogRefreshing=false,catalogVerifying=true)
+            }
+            Diagnostics.event("native_music_sample",mapOf("stage" to "catalog","entries" to catalog.lists.size,
+                "expected_count" to catalog.count,"complete" to catalog.complete,
+                "base_complete" to catalog.baseComplete,
+                "optional_albums_incomplete" to catalog.optionalAlbumsIncomplete))
+            // The catalogue is now usable. Verification of locally downloaded collections
+            // can require extra VK pages and disk reads; it must not block music browsing.
+            catalogVerificationWork?.cancel()
+            catalogVerificationWork=viewModelScope.launch {
+                try {
+                    while(isActive&&_state.value.busy)delay(100L)
+                    currentCoroutineContext().ensureActive()
+                    val hidden=downloadedCatalog(g,access,owner,catalog)
+                    if(g==generation&&_state.value.probe?.owner==owner&&_state.value.catalog===catalog)
+                        _state.update{it.copy(hiddenCatalog=hidden)}
+                }catch(e: CancellationException){throw e}
+                 catch(e: Exception){
+                    Diagnostics.event("native_catalog_download_verification_failed",
+                        mapOf("reason" to ((e as? MusicFailure)?.code?.name?:"STORAGE")))
+                 }finally {
+                    if(_state.value.catalog===catalog)_state.update{it.copy(catalogVerifying=false)}
+                }
+            }
+        }catch(e: CancellationException){throw e}
+         catch(e: Exception){
+            if(g==generation)_state.update{it.copy(catalog=previousCatalog?:it.catalog,
+                hiddenCatalog=if(previousCatalog!=null)previousHidden else emptySet(),
+                catalogStale=true,catalogError=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}
+            throw e
+        }finally {
+            if(g==generation)_state.update{it.copy(catalogRefreshing=false)}
+        }
     }
     fun refreshCatalog() {
         val owner=_state.value.probe?.owner?:return
