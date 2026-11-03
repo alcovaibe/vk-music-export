@@ -18,6 +18,7 @@ internal object AudioExportRuntime {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private var readiness: RetryableReadiness?=null
     private val controls=Mutex()
+    private var friendMigration: Job?=null
     private lateinit var app: Context
     private lateinit var database: AudioExportStore
     private lateinit var engine: AudioExportEngine
@@ -32,6 +33,33 @@ internal object AudioExportRuntime {
                 engine=AudioExportEngine(database,SharedAudioStore(app),File(app.cacheDir,"audio-export-transfer"),
                     api=VkAudioClient(sessions=MusicSessions.get(app)),credential={queueAccess()},accountGuard={queueAccess();Unit})
                 engine.recover();refresh()
+                // A background, bounded migration runs only while no music job owns
+                // the queue. New operations take the same mutex between batches.
+                if(friendMigration==null)friendMigration=scope.launch {
+                    delay(500)
+                    try {
+                        while(isActive) {
+                            var completed=false;var retry=false
+                            controls.withLock {
+                                if(!active.get()&&state.value.status!="QUEUED"&&
+                                    !DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy) {
+                                    val result=FriendFolderMigration(app,database).run()
+                                    Diagnostics.event("friend_folder_migration",mapOf(
+                                        "moved" to result.moved,"skipped" to result.skipped,
+                                        "failures" to result.failures,"playlists" to result.playlists,
+                                        "remaining" to result.more))
+                                    completed=!result.more
+                                    retry=result.more
+                                }else retry=true
+                            }
+                            if(completed)break
+                            if(retry)delay(1200L)else break
+                        }
+                    }catch(e: CancellationException){throw e}
+                     catch(_: Exception) {
+                        Diagnostics.event("friend_folder_migration",mapOf("status" to "retry_on_restart"))
+                    }
+                }
             }
         }
         return readiness!!.deferred()
