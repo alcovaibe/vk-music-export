@@ -14,8 +14,12 @@ import kotlinx.coroutines.flow.collect
 class LegacyAudioExportService : Service() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var work: Job?=null
+    // All start requests are handled on the main thread; the worker finishes on Main.
+    // A repeated start must be included in the eventual stopSelfResult acknowledgement.
+    private var latestStartId=0
     override fun onBind(intent: Intent?): IBinder?=null
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
+        latestStartId=startId
         if(Build.VERSION.SDK_INT>=34){stopSelfResult(startId);return START_NOT_STICKY}
         // Every startForegroundService request must be acknowledged with foreground
         // promotion, including reentrant starts while the previous worker is alive
@@ -60,11 +64,13 @@ class LegacyAudioExportService : Service() {
                     }finally{AudioExportRuntime.active.set(false)}
                     withContext(Dispatchers.Main) {
                         val notification=AudioExportRuntime.notification(this@LegacyAudioExportService,AudioExportRuntime.state.value)
-                        // A foreground notification retains FLAG_ONGOING_EVENT on API 30–33.
-                        // Remove it first, then publish an ordinary completion/pause notice.
-                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        // Detach rather than remove the foreground notification: removing it
+                        // can race with the terminal notify() on Android 10 and erase the result.
+                        // DETACH also lets Android 11–13 clear the old foreground/ongoing flags.
+                        stopForeground(STOP_FOREGROUND_DETACH)
                         getSystemService(NotificationManager::class.java).notify(AudioExportRuntime.NOTIFICATION_ID,notification)
-                        stopSelfResult(startId)
+                        // Stop the last acknowledged start, not the first worker's startId.
+                        stopSelfResult(latestStartId)
                     }
                 }
             }
