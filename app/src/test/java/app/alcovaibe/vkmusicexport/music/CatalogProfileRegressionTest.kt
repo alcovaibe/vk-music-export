@@ -59,6 +59,63 @@ class CatalogProfileRegressionTest {
         }catch(e: MusicFailure){assertEquals(MusicError.NETWORK,e.code)}
         assertEquals(1,partial.single().lists.size);assertFalse(partial.single().complete)
     }
+    @Test fun incompleteAlbumFilterCoveredByMainCatalogDoesNotInvalidatePlaylists()=runTest {
+        val playlist=item(1,0);val album=item(2,1)
+        val all=NativeCatalog(listOf(playlist,album),2)
+        // The optional filter claims two results but repeatedly returns the same album.
+        val responses=mutableListOf<NativeCatalog>()
+        val result=MusicCatalog.load(api(all,NativeCatalog(listOf(album),2)),
+            MusicAccess("synthetic","CI"),12,
+            onPagination={source,page->if(source=="albums")responses.add(page)})
+        assertTrue(result.baseComplete)
+        assertTrue(result.complete)
+        assertFalse(result.optionalAlbumsIncomplete)
+        assertTrue(result.completeFor(PlaylistKind.ALBUM))
+        assertEquals(listOf(playlist.key,album.key),result.lists.map{it.key})
+        assertEquals(CatalogStopReason.REPEATED_PAGE,responses.single().pagination?.reason)
+    }
+
+    @Test fun optionalAlbumFilterWithUnseenItemsRemainsIncompleteOnlyForAlbums()=runTest {
+        val playlist=item(1,0);val album=item(2,1)
+        val result=MusicCatalog.load(api(NativeCatalog(listOf(playlist),1),
+            NativeCatalog(listOf(album),2)),MusicAccess("synthetic","CI"),12)
+        assertTrue(result.baseComplete)
+        assertTrue(result.optionalAlbumsIncomplete)
+        assertFalse(result.complete)
+        assertTrue(result.completeFor(PlaylistKind.PLAYLIST))
+        assertFalse(result.completeFor(PlaylistKind.ALBUM))
+        assertEquals(listOf(playlist.key,album.key),result.lists.map{it.key})
+        assertEquals(2,result.albumsPagination?.pages)
+        assertEquals(2,result.albumsPagination?.received)
+    }
+
+    @Test fun catalogCursorRetriesOnlyTransientFailuresAndReportsGaps()=runTest {
+        var fetches=0
+        val recovered=MusicPagination.catalogCursor({_,_->
+            fetches++
+            if(fetches<3)throw MusicFailure(MusicError.NETWORK)
+            NativeCatalog(listOf(item(1,0)),1)
+        })
+        assertTrue(recovered.complete);assertEquals(3,fetches)
+        assertEquals(2,recovered.pagination?.retries)
+        assertEquals(CatalogStopReason.COMPLETE,recovered.pagination?.reason)
+        var rejected=0
+        try {
+            MusicPagination.catalogCursor({_,_->
+                rejected++;throw MusicFailure(MusicError.RATE_LIMIT)
+            })
+            fail("Rate limit must not be retried")
+        }catch(e: MusicFailure){assertEquals(MusicError.RATE_LIMIT,e.code)}
+        assertEquals(1,rejected)
+        val gap=MusicPagination.catalogCursor({_,_->
+            NativeCatalog(listOf(item(1,0)),3,nextOffset=3)
+        })
+        assertFalse(gap.complete)
+        assertEquals(CatalogStopReason.SKIPPED_POSITIONS,gap.pagination?.reason)
+        assertEquals(3,gap.pagination?.positions)
+        assertEquals(1,gap.pagination?.received)
+    }
+
     @Test fun incompleteOptionalAlbumDoesNotDiscardAudioAndRequiredFailureReportsExactPosition() {
         val warnings=mutableListOf<Pair<String,Int>>()
         val rows=NativeProtocol.page(json("""{"count":2,"items":[{"owner_id":12,"id":1,"title":"One","artist":"Artist","duration":1,"album":{"id":0}},{"owner_id":12,"id":2,"title":"Two\nLive","artist":"Artist","duration":2,"album":{"thumb":{}}}]}""")){f,i->warnings.add(f to i)}
