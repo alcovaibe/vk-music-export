@@ -40,6 +40,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -107,6 +108,17 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(state.probe!=null&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.listProblem==null)model.friends.loadFriends()
     }
     val friendsRootScroll=rememberLazyListState()
+    LaunchedEffect(destination,friendState.user?.id,friendsRootScroll) {
+        if(destination==MusicDestination.FRIENDS&&friendState.user==null) {
+            snapshotFlow {
+                friendsRootScroll.layoutInfo.visibleItemsInfo.mapNotNull{item->
+                    (item.key as? String)?.removePrefix("friend_")
+                        ?.takeIf{it!=(item.key as? String)}
+                        ?.toLongOrNull()
+                }
+            }.distinctUntilChanged().collect{model.friends.prioritizeVisible(it)}
+        }else model.friends.prioritizeVisible(emptyList())
+    }
     val friendQueueItems by produceState<Map<String,String>>(emptyMap(),destination,queue.total,queue.done,queue.failed,queue.pending,queue.status) {
         if(destination==MusicDestination.FRIENDS)value=withContext(Dispatchers.IO){runCatching{AudioExportRuntime.taskStates(context)}.getOrDefault(emptyMap())}
     }
