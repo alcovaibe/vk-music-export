@@ -12,7 +12,7 @@ from apk_manifest import configured_min_sdk
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
-            58: ('main', '0.11.9')}
+            61: ('main', '0.12.0')}
 
 
 def request_path(env):

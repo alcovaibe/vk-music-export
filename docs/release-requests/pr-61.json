@@ -1,0 +1,27 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 61,
+  "version_name": "0.12.0",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-05T23:59:59Z",
+  "build_inputs": {
+    "app": "a94c9d9b08e6bee620b546a4d8790cdfe3adf8da",
+    "gradle": "214e387b12bb4a6dddf0ef5ecee8f488abdbef00",
+    "config": "0b5e837d9fecfcf825e60178a576708862b20840",
+    "tools": "ebda34f0944e43837fcc958f545b6a67d4e8cc4c",
+    ".github": "29483fe14b28eca613664ba623a9c0b2965317b2",
+    "build.gradle.kts": "86acfea458fb2bd897564c6a1c8181abe2b54544",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "625c75d0e702ba89981847fae5ddab72c04bfeb7",
+    "version.properties": "5f23c62e58c43caae66a9da5ba99138547f2afc0",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e",
+    "CHANGELOG.md": "3e8a382eaf9b6f0942ae690f41721cb064fb5ece",
+    "LICENSE": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+    "NOTICE": "7e59d121ed67eb06e2003c4bb355a02482e46e91"
+  },
+  "request": "Владелец после слияния PR #61 явно запросил выпуск VK Music Export 0.12.0 как стабильного GitHub Latest. Ручная приёмка на физическом устройстве и реальном аккаунте ВК не выполнялась и не утверждается.",
+  "delete_other_branches": false
+}
