@@ -1182,12 +1182,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun section(section: CatalogSection) {
         if(_state.value.busy)return
         _state.update{it.copy(catalogSection=section,selected=null,
-            page=if(section==CatalogSection.LIBRARY)it.probe?.library?.takeIf{p->p.tracks.size==p.count} else null)}
+            page=if(section==CatalogSection.LIBRARY)it.probe?.library else null)}
     }
     fun select(list: NativePlaylist?) {
         Diagnostics.button(if(list==null)"native_music_library" else "native_music_playlist")
         val probe=_state.value.probe?:return
-        if(list==null){if(!_state.value.busy)_state.update{it.copy(page=probe.library.takeIf{p->p.tracks.size==p.count},selected=null,catalogSection=CatalogSection.LIBRARY)};return}
+        if(list==null){if(!_state.value.busy)_state.update{it.copy(page=probe.library,selected=null,catalogSection=CatalogSection.LIBRARY)};return}
         if(_state.value.catalog?.lists?.none{it.key==list.key}!=false)return
         run("playlist") {g->
             _state.update{it.copy(page=null,selected=null)}
@@ -1196,9 +1196,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             active(g);_state.update{it.copy(catalog=current,selected=selected)}
             musicCheck(selected!=null,MusicError.UNAVAILABLE)
             val actual=selected!!
-            val page=MusicPagination.tracks({offset->active(g);api.playlistPage(a,actual,offset)}){n,total->
-                _state.update{it.copy(preparing="Получено треков: $n/$total")}
-            };active(g);_state.update{it.copy(page=page,selected=actual,catalogSection=CatalogSection.forKind(actual.kind))}
+            _state.update{it.copy(selected=actual,catalogSection=CatalogSection.forKind(actual.kind))}
+            val page=MusicPagination.tracks({offset->active(g);api.playlistPage(a,actual,offset)},
+                progress={n,total->_state.update{it.copy(preparing="Получено треков: $n/$total")}},
+                partial={part->
+                    if(g==generation)_state.update{old->if(old.selected?.key==actual.key)old.copy(page=part)else old}
+                })
+            active(g);_state.update{it.copy(page=page,selected=actual,catalogSection=CatalogSection.forKind(actual.kind))}
             Diagnostics.event("native_music_sample",mapOf("stage" to "playlist","entries" to page.tracks.size,"expected_count" to page.count,"complete" to true))
         }
     }
