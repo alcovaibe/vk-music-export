@@ -57,7 +57,7 @@ class FriendAvailabilityTest {
                 .code(200).message("Synthetic")
                 .body("""{"response":{"count":0,"items":[]}}""".toResponseBody()).build()
         }.build()
-        VkAudioClient(client).probeFriendAudio(MusicAccess("a".repeat(64),"CI",accountId=12),34)
+        VkAudioClient(client,observe={_,_->}).probeFriendAudio(MusicAccess("a".repeat(64),"CI",accountId=12),34)
         assertEquals(1,requests.size)
         assertEquals("34",requests.single()["owner_id"])
         assertEquals("1",requests.single()["count"])
