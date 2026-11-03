@@ -6,7 +6,7 @@ import kotlinx.coroutines.ensureActive
 
 /** Fixed categories only: cursor strings and playlist identities must never enter diagnostics. */
 internal enum class CatalogStopReason {
-    COMPLETE, EARLY_END, EMPTY_PAGE, REPEATED_PAGE, REPEATED_CURSOR, SKIPPED_POSITIONS, PAGE_LIMIT
+    COMPLETE, EARLY_END, EMPTY_PAGE, REPEATED_PAGE, REPEATED_CURSOR, PAGE_LIMIT
 }
 internal data class CatalogPaginationStats(
     val pages: Int, val positions: Int, val received: Int, val unique: Int,
@@ -57,7 +57,7 @@ internal object MusicPagination {
         val lists=linkedMapOf<String,NativePlaylist>();var offset=0;var expected: Int?=null
         val pages=hashSetOf<List<String>>();val cursors=hashSetOf<String>()
         var cursor: String?=null;var complete=false;var requests=0;var received=0;var retries=0
-        var skippedPositions=false;var reason=CatalogStopReason.EARLY_END
+        var reason=CatalogStopReason.EARLY_END
 
         do {
             currentCoroutineContext().ensureActive()
@@ -79,9 +79,9 @@ internal object MusicPagination {
                 }
                 if(page.nextOffset!=null) {
                     musicCheck(page.nextOffset>offset&&page.nextOffset<=page.count,MusicError.LIBRARY_CHANGED)
-                    // An empty page that advances an offset cannot prove the missing positions were loaded.
-                    skippedPositions=true;offset=page.nextOffset
-                    if(offset==page.count){reason=CatalogStopReason.SKIPPED_POSITIONS;break}
+                    // VK may skip inaccessible positions; an explicit next_offset is authoritative.
+                    offset=page.nextOffset
+                    if(offset==page.count){complete=true;reason=CatalogStopReason.COMPLETE;break}
                     continue
                 }
                 complete=offset==page.count
@@ -97,7 +97,6 @@ internal object MusicPagination {
             page.lists.forEach{lists[it.key]=lists[it.key]?.reconciled(it)?:it}
             val advanced=page.nextOffset?:offset+page.lists.size
             musicCheck(advanced>offset&&advanced<=page.count,MusicError.LIBRARY_CHANGED)
-            if(advanced>offset+page.lists.size)skippedPositions=true
             offset=advanced
             progress(lists.size,page.count);partial(NativeCatalog(lists.values.toList(),page.count,false))
             val next=page.nextFrom
@@ -112,10 +111,6 @@ internal object MusicPagination {
                 complete=true;reason=CatalogStopReason.COMPLETE;break
             }
         }while(true)
-        if(skippedPositions) {
-            complete=false
-            if(reason==CatalogStopReason.COMPLETE)reason=CatalogStopReason.SKIPPED_POSITIONS
-        }
         val stats=CatalogPaginationStats(requests,offset,received,lists.size,expected?:0,reason,retries)
         return NativeCatalog(lists.values.toList(),expected?:0,complete,pagination=stats)
     }
