@@ -32,6 +32,22 @@ internal object MusicPagination {
     suspend fun catalog(fetch: suspend(Int)->NativeCatalog,progress:(Int,Int)->Unit={_,_->})=
         catalogCursor({offset,_->fetch(offset)},progress)
 
+    /** Retry only bounded transient failures; never retry authentication, rate limits or invalid payloads. */
+    suspend fun <T> retryTransientPage(onRetry: ()->Unit={},fetch:suspend()->T): T {
+        var attempt=0
+        while(true) {
+            currentCoroutineContext().ensureActive()
+            try {return fetch()}
+            catch(e: MusicFailure) {
+                val transient=e.code in setOf(MusicError.NETWORK,MusicError.TIMEOUT) ||
+                    (e.code==MusicError.HTTP && e.httpStatus in setOf(500,502,503,504))
+                if(!transient||attempt>=2)throw e
+                attempt++;onRetry()
+                delay(attempt*500L)
+            }
+        }
+    }
+
     suspend fun catalogCursor(fetch: suspend(Int,String?)->NativeCatalog,
         progress:(Int,Int)->Unit={_,_->},partial:(NativeCatalog)->Unit={}): NativeCatalog {
         val lists=linkedMapOf<String,NativePlaylist>();var offset=0;var expected: Int?=null
@@ -39,27 +55,11 @@ internal object MusicPagination {
         var cursor: String?=null;var complete=false;var requests=0;var received=0;var retries=0
         var skippedPositions=false;var reason=CatalogStopReason.EARLY_END
 
-        suspend fun fetchWithRetry(position: Int,startFrom: String?): NativeCatalog {
-            var attempt=0
-            while(true) {
-                currentCoroutineContext().ensureActive()
-                try {return fetch(position,startFrom)}
-                catch(e: MusicFailure) {
-                    // Never retry authorization, rate limits, invalid data or a changed catalog.
-                    val transient=e.code in setOf(MusicError.NETWORK,MusicError.TIMEOUT) ||
-                        (e.code==MusicError.HTTP && e.httpStatus in setOf(500,502,503,504))
-                    if(!transient||attempt>=2)throw e
-                    attempt++;retries++
-                    delay(attempt*500L)
-                }
-            }
-        }
-
         do {
             currentCoroutineContext().ensureActive()
             if(requests>=10000){reason=CatalogStopReason.PAGE_LIMIT;break}
             requests++
-            val page=fetchWithRetry(offset,cursor)
+            val page=retryTransientPage(onRetry={retries++}){fetch(offset,cursor)}
             musicCheck(expected==null||page.count==expected,MusicError.LIBRARY_CHANGED);expected=page.count
             received+=page.lists.size
             if(page.lists.isEmpty()) {
