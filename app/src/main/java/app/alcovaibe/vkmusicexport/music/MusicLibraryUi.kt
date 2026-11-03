@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,11 +66,24 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
             })},
         bottomBar={Column {
             PlaybackMiniPlayer(playback,onPlayerOpen)
-            NavigationBar(containerColor=MaterialTheme.colorScheme.background,tonalElevation=0.dp) {
-            listOf(MusicDestination.LIBRARY,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
-                icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},modifier=Modifier.testTag("music_nav_${item.name}"),
-                colors=NavigationBarItemDefaults.colors(indicatorColor=MaterialTheme.colorScheme.secondaryContainer))}
-        }}}) {padding->
+            // Warm contrast palette: page #F7F4EE, navigation #E5DED3.
+            HorizontalDivider(color=Color(0xFFD4CABB),thickness=1.dp)
+            NavigationBar(containerColor=Color(0xFFE5DED3),tonalElevation=0.dp,
+                modifier=Modifier.testTag("music_bottom_navigation")) {
+                listOf(MusicDestination.LIBRARY,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->
+                    NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
+                        icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},
+                        modifier=Modifier.testTag("music_nav_${item.name}"),
+                        colors=NavigationBarItemDefaults.colors(
+                            selectedIconColor=Color(0xFF554739),
+                            selectedTextColor=Color(0xFF554739),
+                            unselectedIconColor=Color(0xFF72685F),
+                            unselectedTextColor=Color(0xFF72685F),
+                            indicatorColor=Color(0xFFD3C3B0)
+                        ))
+                }
+            }
+        }}) {padding->
         key(listIdentity) {LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),state=listState?:rememberLazyListState(),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=24.dp),
             verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)}
