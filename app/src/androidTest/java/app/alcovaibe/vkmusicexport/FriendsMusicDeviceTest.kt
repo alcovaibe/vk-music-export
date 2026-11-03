@@ -107,16 +107,18 @@ class FriendsMusicDeviceTest {
         ui.onNodeWithTag("open_music_downloads").performClick();ui.onNodeWithTag("downloads_status").assertExists()
         androidx.test.espresso.Espresso.pressBack();ui.onNodeWithTag("friend_playlist_header").assertExists()
     }
-    @Test fun selectionPersistsViewerAccountOriginalFriendPositionsAndFullFriendPagination()=fixture {_,api->
+    @Test fun selectionPersistsViewerAccountOriginalFriendPositionsAndFullFriendPagination()=fixture {_,_->
         val app=ui.activity.application;val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
-        var starts=0;val controller=FriendMusicController(app,api,scope,queueStart={starts++})
+        // The panel now preloads friends independently. Use a dedicated API fixture so
+        // its requests cannot be mistaken for this controller's pagination calls.
+        val friendApi=Api().apply {rows=(34L..134L).map{MusicFriend(it,"Друг","$it")}}
+        var starts=0;val controller=FriendMusicController(app,friendApi,scope,queueStart={starts++})
         try {
             runBlocking(Dispatchers.IO){AudioExportRuntime.initialize(app);AudioExportRuntime.clear(app)}
-            api.rows=(34L..134L).map{MusicFriend(it,"Друг","$it")}
             ui.runOnUiThread{controller.loadFriends()}
             ui.waitUntil(15000){controller.state.value.friendsComplete}
-            assertEquals(listOf(0,100),api.offsets);assertEquals(101,controller.state.value.friends.size)
-            ui.runOnUiThread{controller.open(api.rows.first())}
+            assertEquals(listOf(0,100),friendApi.offsets);assertEquals(101,controller.state.value.friends.size)
+            ui.runOnUiThread{controller.open(friendApi.rows.first())}
             ui.waitUntil(15000){controller.state.value.tracksComplete&&!controller.state.value.busy}
             ui.runOnUiThread{controller.musicQuery("Север");controller.download(setOf(3))}
             ui.waitUntil(15000){!controller.state.value.busy}
@@ -135,10 +137,10 @@ class FriendsMusicDeviceTest {
         ui.onNodeWithTag("friend_35").performClick();ui.waitUntil(15000){!model.friends.state.value.busy&&model.friends.state.value.problems.isNotEmpty()}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_music_problem"))
         ui.onNodeWithText("Доступ к музыке запрещён").assertIsDisplayed()
-        ui.onNodeWithTag("friend_problem_message").assertTextEquals("ВК запретил доступ к аудиозаписям этого профиля.")
-        ui.onNodeWithTag("friend_problem_code").assertTextEquals("Код API ВК: 201")
+        ui.onNodeWithTag("friend_problem_message").assertTextEquals("Пользовательские настройки приватности не разрешают вам доступ к аудиозаписям этого друга.")
+        ui.onNodeWithTag("friend_problem_code").assertDoesNotExist()
         ui.onAllNodes(hasText("Открыть в ВК") and hasAnyAncestor(hasTestTag("friend_music_problem"))).assertCountEquals(0)
-        for(tag in listOf("friend_problem_message","friend_problem_code")) {
+        for(tag in listOf("friend_problem_message")) {
             val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
             ui.onNodeWithTag(tag).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult){it(layouts)}
             val layout=layouts.single()

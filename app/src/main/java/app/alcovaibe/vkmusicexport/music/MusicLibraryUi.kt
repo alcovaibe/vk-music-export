@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,7 +51,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 @Composable
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
-    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,content: LazyListScope.()->Unit) {
+    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,content: LazyListScope.()->Unit) {
     BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
@@ -68,7 +70,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
                 icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},modifier=Modifier.testTag("music_nav_${item.name}"),
                 colors=NavigationBarItemDefaults.colors(indicatorColor=MaterialTheme.colorScheme.secondaryContainer))}
         }}}) {padding->
-        key(listIdentity) {LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),
+        key(listIdentity) {LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),state=listState?:rememberLazyListState(),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=24.dp),
             verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)}
     }
@@ -192,11 +194,10 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
                     Icon(Icons.Default.CheckCircle,"Есть копия на устройстве",tint=MaterialTheme.colorScheme.tertiary)}
                 onDownload!=null->IconButton(enabled=enabled,onClick=onDownload){Icon(DownloadIcon,"Скачать этот трек")}
             }
-            if(onDownload!=null||onRemove!=null||onOpen!=null)Box {
+            if(onRemove!=null||onOpen!=null)Box {
                 IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком")}
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                     onOpen?.let{DropdownMenuItem(text={Text("Воспроизвести файл")},onClick={menu=false;it()})}
-                    onDownload?.let{DropdownMenuItem(enabled=enabled,text={Text("Скачать этот трек")},onClick={menu=false;it()})}
                     onRemove?.let{DropdownMenuItem(enabled=enabled,text={Text("Удалить из музыки ВК…")},modifier=Modifier.testTag("remove_from_vk"),onClick={menu=false;it()})}
                 }
             }

@@ -3,6 +3,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -89,7 +90,6 @@ private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit) {
             Text(when(problem.code){MusicError.DENIED->"Доступ к музыке запрещён";MusicError.METHOD->"Раздел недоступен подключению";else->"Не удалось загрузить раздел"},
                 style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth())
             Text(problem.message,style=MaterialTheme.typography.bodyMedium,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().testTag("friend_problem_message"))
-            Text(problem.codeText,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=TextAlign.Center,modifier=Modifier.fillMaxWidth().testTag("friend_problem_code"))
             TextButton(onClick=onRetry,modifier=Modifier.testTag("friend_retry")){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(6.dp));Text("Повторить")}
         }
     }
@@ -116,13 +116,22 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
         if(state.busy)item("friends_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Загружаем список друзей…",style=MaterialTheme.typography.bodySmall)}
         state.listProblem?.let{problem->item("friends_problem"){FriendProblemCard(problem,controller::loadFriends)}}
         items(matches,key={"friend_${it.id}"}){friend->
+            val musicAccess=state.friendAccess[friend.id]
             Surface(onClick={controller.open(friend)},enabled=!state.preparing,shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
-                modifier=Modifier.fillMaxWidth().testTag("friend_${friend.id}")) {
+                border=BorderStroke(1.dp,when(musicAccess) {
+                    FriendAudioAccess.AVAILABLE->MaterialTheme.colorScheme.tertiary
+                    FriendAudioAccess.DENIED->MaterialTheme.colorScheme.error
+                    null->MaterialTheme.colorScheme.outlineVariant
+                }),modifier=Modifier.fillMaxWidth().testTag("friend_${friend.id}")) {
                 Row(Modifier.padding(horizontal=10.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     MusicThumbnail(url=friend.photo,identity="friend:${friend.id}",artist=true,size=48.dp)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Text(friend.name,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,maxLines=2,overflow=TextOverflow.Ellipsis)
-                        Text("Открыть музыкальный профиль",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        when(musicAccess) {
+                            FriendAudioAccess.AVAILABLE->FriendBadge("Музыка доступна")
+                            FriendAudioAccess.DENIED->FriendBadge("Музыка недоступна",error=true)
+                            null->Text("Проверяем доступ…",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                     Icon(MusicChevronIcon,null)
                 }
@@ -133,7 +142,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Icon(Icons.Default.Search,null,Modifier.size(40.dp));Text(if(query.isEmpty())"Список друзей пуст" else "Друзья по этому запросу не найдены")
             }
         }
-        if(!state.busy&&!state.friendsComplete&&state.listProblem==null)item("friends_refresh"){TextButton(onClick=controller::loadFriends){Text("Загрузить друзей")}}
+        if(!state.busy)item("friends_refresh"){TextButton(onClick=controller::loadFriends,modifier=Modifier.testTag("friends_reload")){Text("Загрузить друзей")}}
         return
     }
     val problem=if(state.playlist!=null)state.playlistProblem else state.problems[state.tab]
