@@ -15,8 +15,9 @@ internal data class CatalogPaginationStats(
 
 /** Offset advances by returned positions, including duplicate tracks; never guess a complete list. */
 internal object MusicPagination {
-    suspend fun tracks(fetch: suspend(Int)->NativePage,progress:(Int,Int)->Unit={_,_->},
-        partial:(NativePage)->Unit={}): NativePage {
+    // Keep progress last: existing trailing-lambda call sites use (received,total).
+    suspend fun tracks(fetch: suspend(Int)->NativePage,partial:(NativePage)->Unit={},
+        progress:(Int,Int)->Unit={_,_->}): NativePage {
         val tracks=mutableListOf<NativeTrack>();val pages=hashSetOf<List<String>>()
         var expected: Int?=null
         do {
