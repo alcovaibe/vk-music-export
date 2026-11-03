@@ -15,17 +15,20 @@ internal data class CatalogPaginationStats(
 
 /** Offset advances by returned positions, including duplicate tracks; never guess a complete list. */
 internal object MusicPagination {
-    suspend fun tracks(fetch: suspend(Int)->NativePage,progress:(Int,Int)->Unit={_,_->}): NativePage {
+    suspend fun tracks(fetch: suspend(Int)->NativePage,progress:(Int,Int)->Unit={_,_->},
+        partial:(NativePage)->Unit={}): NativePage {
         val tracks=mutableListOf<NativeTrack>();val pages=hashSetOf<List<String>>()
         var expected: Int?=null
         do {
             currentCoroutineContext().ensureActive()
-            val page=fetch(tracks.size)
+            // Only retry transport errors. A changing library or malformed reply needs a new scan.
+            val page=retryTransientPage{fetch(tracks.size)}
             musicCheck(expected==null||page.count==expected,MusicError.LIBRARY_CHANGED);expected=page.count
             musicCheck(tracks.size+page.tracks.size<=page.count,MusicError.LIBRARY_CHANGED)
             if(page.tracks.isEmpty()){musicCheck(tracks.size==page.count,MusicError.INCOMPLETE);break}
             musicCheck(pages.add(page.tracks.map{it.id}),MusicError.INCOMPLETE)
             tracks.addAll(page.tracks);progress(tracks.size,page.count)
+            partial(NativePage(tracks.toList(),page.count))
         }while(tracks.size<expected!!)
         return NativePage(tracks,expected?:0)
     }
