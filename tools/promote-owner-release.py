@@ -12,12 +12,24 @@ from apk_manifest import configured_min_sdk
 
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
-            61: ('main', '0.12.0')}
+            61: ('main', '0.12.0'),
+            64: ('main', '0.12.1')}
 
 
-def request_path(env):
-    matches = [number for number, (branch, _) in REQUESTS.items() if env['GITHUB_REF'] == 'refs/heads/' + branch]
-    assert len(matches) == 1, 'No explicit owner release request for this branch'
+def configured_version(path=Path('version.properties')):
+    rows = [line.split('=', 1)[1] for line in path.read_text().splitlines()
+            if line.startswith('versionName=')]
+    assert len(rows) == 1 and re.fullmatch(r'[0-9]+(?:\.[0-9]+){2}', rows[0]), 'Invalid release version'
+    return rows[0]
+
+
+def request_path(env, version_name=None):
+    # Multiple releases can originate from main. Select the authorization for
+    # the exact checked-out version, never an arbitrary first matching request.
+    version_name = version_name if version_name is not None else configured_version()
+    matches = [number for number, (branch, version) in REQUESTS.items()
+               if env['GITHUB_REF'] == 'refs/heads/' + branch and version == version_name]
+    assert len(matches) == 1, 'No explicit owner release request for this branch/version'
     return Path(f'docs/release-requests/pr-{matches[0]}.json')
 
 
