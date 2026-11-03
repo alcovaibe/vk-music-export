@@ -75,6 +75,15 @@ class FriendsMusicDeviceTest {
             ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(cmd)).use{it.readBytes()}
     }
     private fun top(){ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(0)}
+    @Test fun friendAccessPreviewDistinguishesAvailableAndDenied()=fixture {model,_->
+        ui.onNodeWithTag("music_nav_FRIENDS").performClick()
+        ui.waitUntil(15000){model.friends.state.value.friendsComplete}
+        ui.waitUntil(15000){model.friends.state.value.friendAccess[34L]==FriendAudioAccess.AVAILABLE}
+        ui.waitUntil(15000){model.friends.state.value.friendAccess[35L]==FriendAudioAccess.DENIED}
+        ui.onNodeWithTag("friend_34").assertExists()
+        ui.onNodeWithTag("friend_35").assertExists()
+    }
+
     @Test fun searchProfilesSelectionAndPlaylistTabsFollowTheConceptAndKeepAlbumsSeparate()=fixture {model,_->
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
         ui.waitUntil(15000){model.friends.state.value.friendsComplete&&!model.friends.state.value.busy}
