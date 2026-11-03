@@ -94,7 +94,7 @@ class OwnerReleaseTest(unittest.TestCase):
                          Path('docs/release-requests/pr-64.json'))
         with tempfile.TemporaryDirectory() as tmp:
             version = Path(tmp)/'version.properties'
-            version.write_text('versionName=0.12.1\\nversionCode=1305\\n')
+            version.write_text('versionName=0.12.1\nversionCode=1305\n')
             self.assertEqual(owner.configured_version(version), '0.12.1')
         owner.validate_context(request, env, event, now)
         for wrong_message in ('[publish-main-0.12.0]', 'Merge PR #64', '[publish-pr-64]'):
