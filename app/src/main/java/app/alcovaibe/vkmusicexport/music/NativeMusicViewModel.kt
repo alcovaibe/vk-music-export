@@ -844,7 +844,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(DuplicateCheckRuntime.transferring&&stage!="duplicates_delete"){
             _state.update{it.copy(error=MusicError.BUSY)};return
         }
-        if(!_state.value.initialized||_state.value.busy){
+        // A user-initiated queue must take precedence over an automatic catalog refresh.
+        // Cancel the old reader, then wait for its cleanup under NativeMusicGate below.
+        val preemptBackground=stage=="prepare"&&_state.value.busy&&
+            _state.value.stage in setOf("catalog_refresh","resume_refresh")
+        if(preemptBackground)work?.cancel()
+        if(!_state.value.initialized||(_state.value.busy&&!preemptBackground)){
             Diagnostics.event("native_music_operation_ignored",mapOf("stage" to stage,"reason" to if(_state.value.busy)"busy" else "initializing"))
             return
         }
