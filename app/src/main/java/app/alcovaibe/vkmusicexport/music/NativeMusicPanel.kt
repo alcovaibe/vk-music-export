@@ -331,7 +331,22 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                             Text(if(category==LibraryCategory.ALBUMS)"Скачать все альбомы" else "Скачать все плейлисты")
                         }
                         if(state.catalog==null)Text("Каталог ещё не загружен.",style=MaterialTheme.typography.bodySmall)
-                        else if(state.catalog?.complete==false)Text("Каталог получен не полностью. Обнови список перед скачиванием.",color=MaterialTheme.colorScheme.error)
+                        else state.catalog?.let{catalog->
+                            val kind=when(category) {
+                                LibraryCategory.ALBUMS->PlaylistKind.ALBUM
+                                LibraryCategory.PLAYLISTS->PlaylistKind.PLAYLIST
+                                else->null
+                            }
+                            if(kind!=null&&!catalog.completeFor(kind)) {
+                                val albumOnly=catalog.baseComplete&&catalog.optionalAlbumsIncomplete
+                                val scan=if(albumOnly)catalog.albumsPagination else catalog.pagination
+                                val counts=scan?.let{" Получено позиций: ${it.positions}/${it.expected}."}.orEmpty()
+                                Text((if(albumOnly)"Не все альбомы подтверждены ответом ВК."
+                                    else "Каталог подборок получен не полностью.")+
+                                    "$counts Обнови каталог перед массовым скачиванием.",
+                                    color=MaterialTheme.colorScheme.error,modifier=Modifier.testTag("catalog_incomplete_warning"))
+                            }
+                        }
                         if(state.hiddenCatalog.isNotEmpty())Text("Полностью скачанные подборки скрыты: ${state.hiddenCatalog.size}",style=MaterialTheme.typography.bodySmall)
                         state.catalogError?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
                     }
