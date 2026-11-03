@@ -20,7 +20,10 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
     val authCodeIssue: DeviceCodeIssue?=null,val authCodePending: Boolean=false,
     val stopping: Boolean=false,val waitingForSlot: Boolean=false,
     val preparing: String?=null,val catalogSection: CatalogSection=CatalogSection.LIBRARY,
-    val catalogKinds: Map<String,PlaylistKind> = emptyMap(),val hiddenCatalog: Set<String> = emptySet(),val accessDamaged: Boolean=false)
+    val catalogKinds: Map<String,PlaylistKind> = emptyMap(),val hiddenCatalog: Set<String> = emptySet(),val accessDamaged: Boolean=false,
+    val libraryRefreshing: Boolean=false,val libraryStale: Boolean=false,
+    val catalogRefreshing: Boolean=false,val catalogStale: Boolean=false,
+    val catalogVerifying: Boolean=false)
 
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
@@ -798,6 +801,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private var authSession: DeviceSession?=null
     private var authCodes: Channel<DeviceConfirmationCode>?=null
     private var operationOwner: Int?=null
+    private var catalogVerificationWork: Job?=null
+    private var lastLibraryRefreshMs=0L
     @Volatile private var generation=0
     init {
         stateScope.launch {
@@ -844,6 +849,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             return
         }
         if(stage!="availability")_availability.value=AvailabilityState()
+        // Verification of downloaded collections never delays a foreground music action.
+        catalogVerificationWork?.cancel();catalogVerificationWork=null
+        _state.update{if(it.catalogVerifying)it.copy(catalogVerifying=false)else it}
         if(stage in setOf("browser_auth","configure","forget")){_duplicates.value=DuplicatesState();friends.reset()}
         if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
         if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
@@ -1005,6 +1013,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     fun openMusic(){if(_state.value.initialized&&_state.value.configured&&!_state.value.busy)checkAccess()}
     fun checkAccess(){Diagnostics.button("native_music_probe");run("probe"){probe(it)}}
+    fun refreshOnResume() {
+        if(_state.value.probe==null||_state.value.busy)return
+        val now=android.os.SystemClock.elapsedRealtime()
+        if(now-lastLibraryRefreshMs<20_000L)return
+        run("resume_refresh"){probe(it)}
+    }
     private suspend fun probe(g: Int) {
         _state.update{it.copy(probe=null,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY)}
         val access=access();val probe=api.library(access);active(g)
