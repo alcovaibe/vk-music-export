@@ -9,7 +9,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Serializable internal data class FriendFolderMove(val before: String,val after: String)
-internal data class FriendFolderMigrationResult(val moved: Int,val skipped: Int,val failures: Int,val playlists: Int)
+internal data class FriendFolderMigrationResult(val moved: Int,val skipped: Int,val failures: Int,
+    val playlists: Int,val more: Boolean)
 
 /**
  * Idempotent migration of owned VK friend exports. VK IDs remain in ExportSource
@@ -42,8 +43,9 @@ internal class FriendFolderMigration(private val context: Context,private val st
         if(existing==null)store.checkpoint(marker,json.encodeToString(move))
         else musicCheck(json.decodeFromString<FriendFolderMove>(existing)==move,MusicError.STORAGE)
     }
-    suspend fun run(): FriendFolderMigrationResult {
-        var moved=0;var skipped=0;var failed=0
+    suspend fun run(limit: Int=12): FriendFolderMigrationResult {
+        musicCheck(limit in 1..100,MusicError.STORAGE)
+        var moved=0;var skipped=0;var failed=0;var more=false
         // Existing task metadata covers even empty playlists (no saved audio files).
         for((task,_) in store.taskRows()) {
             currentCoroutineContext().ensureActive()
@@ -59,6 +61,7 @@ internal class FriendFolderMigration(private val context: Context,private val st
             val friend=ExportLayout.friendId(source)
             val parts=legacyFolders(row.relativePath,source)
             if(parts==null)continue
+            if(moved>=limit){more=true;continue}
             // A physical file reused by an unrelated source must not silently move.
             if(aliases.any{ExportLayout.friendId(it.source)!=friend||
                     it.source?.account!=source?.account||it.relativePath!=row.relativePath}) {
@@ -82,13 +85,13 @@ internal class FriendFolderMigration(private val context: Context,private val st
             if(mappings.putIfAbsent(entry.before,entry.after)?.let{it!=entry.after}==true)failed++
         }
         var playlists=0
-        if(failed==0&&mappings.isNotEmpty()) {
+        if(!more&&failed==0&&mappings.isNotEmpty()) {
             try {
                 playlists=SharedPlaylistStore(context,store).migrateFriendDirectories(mappings)
                 checkpoints.forEach{store.removeCheckpoint(it.first)}
             }catch(e: CancellationException){throw e}
              catch(_: Exception){failed++} // Durable checkpoints remain for the next launch.
         }
-        return FriendFolderMigrationResult(moved,skipped,failed,playlists)
+        return FriendFolderMigrationResult(moved,skipped,failed,playlists,more)
     }
 }
