@@ -104,6 +104,34 @@ internal class SharedAudioStore(internal val context: Context) {
         val check=inspect(record)
         if(check.reason!=SavedFileReason.OK)throw SavedFileFailure(check.reason)
     }
+    /**
+     * Rename an app-owned media directory via MediaStore, keeping the content URI.
+     * Verify SHA-256 before and after the move; never overwrite or adopt a
+     * user-owned file. If interrupted after MediaStore.update(), the stale
+     * SQLite row can be reconciled by inspect() on the next migration pass.
+     */
+    suspend fun moveVerified(record: PublishedAudio,newDirectory: String): PublishedAudio {
+        musicCheck(newDirectory.startsWith(ExportLayout.ROOT)&&newDirectory.endsWith("/")&&
+            newDirectory.removePrefix(ExportLayout.ROOT).dropLast(1).split('/').let{parts->
+                parts.size in 2..3&&parts.all{it==ExportLayout.component(it,180)}
+            },MusicError.STORAGE)
+        val before=inspect(record)
+        musicCheck(before.reason in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED),MusicError.INCOMPLETE)
+        val current=before.actual?:throw MusicFailure(MusicError.STORAGE)
+        if(current.relativePath==newDirectory)return current
+        // Do not move audio which the user has relocated since the checkpoint.
+        musicCheck(current.relativePath==record.relativePath,MusicError.STORAGE)
+        currentCoroutineContext().ensureActive()
+        musicCheck(resolver.update(uri(current.uri),ContentValues().apply {
+            put(MediaStore.MediaColumns.RELATIVE_PATH,newDirectory)
+        },null,null)==1,MusicError.STORAGE)
+        val check=inspect(record)
+        val after=check.actual
+        musicCheck(check.reason in setOf(SavedFileReason.OK,SavedFileReason.LOCATION_CHANGED)&&
+            after?.relativePath==newDirectory,MusicError.STORAGE)
+        return after!!
+    }
+
     /** Query only audio owned by this package. No broad media permission or filename matching. */
     fun recoveryCandidates(record: PublishedAudio): List<PublishedAudio> = resolver.query(collection,
         arrayOf(MediaStore.MediaColumns._ID,MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.RELATIVE_PATH),

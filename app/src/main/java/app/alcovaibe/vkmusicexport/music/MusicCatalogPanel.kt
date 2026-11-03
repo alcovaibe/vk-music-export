@@ -35,10 +35,21 @@ internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSec
     }else {
         val lists=MusicCatalog.visible(state)
         Text("${state.catalogSection.title}: ${lists.size}",style=MaterialTheme.typography.titleMedium)
+        if(state.catalogRefreshing)Text("Загружаем плейлисты и альбомы…",style=MaterialTheme.typography.bodySmall)
+        if(state.catalogStale)Text("Показан предыдущий каталог; обновление не завершено.",style=MaterialTheme.typography.bodySmall)
+        if(state.catalogVerifying)Text("Проверяем скачанные подборки в фоне…",style=MaterialTheme.typography.bodySmall)
         if(catalog==null)Text("Каталог ещё не загружен.")
         else {
-            if(!catalog.complete)Text("Каталог получен не полностью: ${catalog.lists.size} из ${catalog.count}. Счётчики относятся только к загруженным подборкам.",color=MaterialTheme.colorScheme.error)
-            if(lists.isEmpty())Text(if(catalog.complete)"В этой категории нет подборок." else "Среди загруженных подборок эта категория не найдена.")
+            val complete=catalog.completeFor(state.catalogSection.kind)
+            if(!complete&&!state.catalogRefreshing) {
+                val albumOnly=catalog.baseComplete&&catalog.optionalAlbumsIncomplete
+                val scan=if(albumOnly)catalog.albumsPagination else catalog.pagination
+                val counts=scan?.let{" Получено позиций: ${it.positions}/${it.expected}."}.orEmpty()
+                Text((if(albumOnly)"Каталог альбомов получен не полностью." else "Каталог подборок получен не полностью.")+
+                    "$counts Обнови каталог перед массовым скачиванием.",
+                    color=MaterialTheme.colorScheme.error)
+            }
+            if(lists.isEmpty())Text(if(complete)"В этой категории нет подборок." else "Среди загруженных подборок эта категория не найдена.")
             if(lists.isNotEmpty())Button(enabled=canPrepare,
                 onClick={onCategory(state.catalogSection.kind!!)},modifier=Modifier.fillMaxWidth().testTag("catalog_download_category")) {
                 Text(when(state.catalogSection){CatalogSection.ALBUMS->"Скачать все альбомы";CatalogSection.PLAYLISTS->"Скачать все плейлисты";else->"Скачать все подборки"})

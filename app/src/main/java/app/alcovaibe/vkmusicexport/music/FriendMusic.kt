@@ -29,7 +29,7 @@ internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?
     companion object {fun from(e: Exception)=(e as? MusicFailure)?.let{FriendMusicProblem(it.code,it.remoteCode,it.httpStatus,
         (it as? NativeDataFailure)?.field,(it as? NativeDataFailure)?.position)}?:FriendMusicProblem(MusicError.RESPONSE)}
 }
-internal enum class FriendAudioAccess { AVAILABLE, DENIED }
+internal enum class FriendAudioAccess { AVAILABLE, DENIED, CHECK_FAILED }
 internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(),val friendsTotal: Int?=null,val friendsComplete: Boolean=false,
     val friendAccess: Map<Long,FriendAudioAccess> = emptyMap(),
     val busy: Boolean=false,val preparing: Boolean=false,val friendsQuery: String="",val musicQuery: String="",

@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,6 +40,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -52,12 +53,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val lifecycle=LocalLifecycleOwner.current
     DisposableEffect(lifecycle,model) {
         // Adding an observer to a resumed owner immediately replays ON_RESUME.
-        // The home entry already refreshed the catalog; refresh again only on a later return.
+        // The initial entry already loads the library; revalidate tracks and collections on later returns.
         var skipInitialResume=lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         val observer=LifecycleEventObserver{_,event->
             if(event==Lifecycle.Event.ON_RESUME) {
                 if(skipInitialResume)skipInitialResume=false
-                else if(model.state.value.probe!=null&&!model.state.value.busy)model.refreshCatalog()
+                else if(model.state.value.probe!=null&&!model.state.value.busy)model.refreshOnResume()
             }
         }
         lifecycle.lifecycle.addObserver(observer)
@@ -108,6 +109,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(state.probe!=null&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.listProblem==null)model.friends.loadFriends()
     }
     val friendsRootScroll=rememberLazyListState()
+    LaunchedEffect(destination,friendState.user?.id,friendsRootScroll) {
+        if(destination==MusicDestination.FRIENDS&&friendState.user==null) {
+            snapshotFlow {
+                friendsRootScroll.layoutInfo.visibleItemsInfo.mapNotNull{item->
+                    (item.key as? String)?.takeIf{it.startsWith("friend_")}
+                        ?.removePrefix("friend_")?.toLongOrNull()
+                }
+            }.distinctUntilChanged().collect{model.friends.prioritizeVisible(it)}
+        }else model.friends.prioritizeVisible(emptyList())
+    }
     val friendQueueItems by produceState<Map<String,String>>(emptyMap(),destination,queue.total,queue.done,queue.failed,queue.pending,queue.status) {
         if(destination==MusicDestination.FRIENDS)value=withContext(Dispatchers.IO){runCatching{AudioExportRuntime.taskStates(context)}.getOrDefault(emptyMap())}
     }
@@ -179,9 +190,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->{model.stopForWindow();onDismiss()}
         }
     }
-    val libraryPlayback=remember(state.page,state.probe?.owner,state.selected) {
+    val libraryPlayback=remember(state.page,state.probe?.owner,state.selected,state.libraryStale) {
         val owner=state.probe?.owner
-        val page=state.page?.takeIf{it.tracks.size==it.count}
+        val page=state.page?.takeIf{it.tracks.size==it.count&&(!state.libraryStale||state.selected!=null)}
         if(owner==null||page==null)emptyList()else page.tracks.map{track->
             PlaybackEntry(track,state.selected?.title?:"Моя музыка",account=owner)
         }
@@ -315,9 +326,20 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         if(category==LibraryCategory.TRACKS)IconButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("library_tools")){Icon(Icons.Default.MoreVert,"Инструменты библиотеки")}
                     }
                     if(category==LibraryCategory.TRACKS) {
+                        if(state.selected==null&&state.libraryRefreshing)
+                            Text("Проверяем обновления треков…",style=MaterialTheme.typography.bodySmall,
+                                modifier=Modifier.testTag("library_refreshing"))
+                        if(state.selected==null&&state.libraryStale)
+                            Text("Показан предыдущий список. Новая проверка ещё не завершилась.",
+                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier=Modifier.testTag("library_stale"))
                         if(toolsOpen) {
                             Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
                             OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
+                            OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showDuplicates,
+                                modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
+                                Text("Дубликаты: проверка и результаты")
+                            }
                             OutlinedButton(enabled=canPrepare,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
                         }
                     }else {
@@ -328,7 +350,29 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                             Text(if(category==LibraryCategory.ALBUMS)"Скачать все альбомы" else "Скачать все плейлисты")
                         }
                         if(state.catalog==null)Text("Каталог ещё не загружен.",style=MaterialTheme.typography.bodySmall)
-                        else if(state.catalog?.complete==false)Text("Каталог получен не полностью. Обнови список перед скачиванием.",color=MaterialTheme.colorScheme.error)
+                        if(state.catalogRefreshing)Text("Обновляем плейлисты и альбомы…",
+                            style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("catalog_refreshing"))
+                        if(state.catalogStale)Text("Показан предыдущий каталог. Проверка не завершена.",
+                            style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier=Modifier.testTag("catalog_stale"))
+                        if(state.catalogVerifying)Text("Проверяем скачанные подборки в фоне…",
+                            style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("catalog_verifying"))
+                        state.catalog?.let{catalog->
+                            val kind=when(category) {
+                                LibraryCategory.ALBUMS->PlaylistKind.ALBUM
+                                LibraryCategory.PLAYLISTS->PlaylistKind.PLAYLIST
+                                else->null
+                            }
+                            if(kind!=null&&!catalog.completeFor(kind)&&!state.catalogRefreshing) {
+                                val albumOnly=catalog.baseComplete&&catalog.optionalAlbumsIncomplete
+                                val scan=if(albumOnly)catalog.albumsPagination else catalog.pagination
+                                val counts=scan?.let{" Получено позиций: ${it.positions}/${it.expected}."}.orEmpty()
+                                Text((if(albumOnly)"Не все альбомы подтверждены ответом ВК."
+                                    else "Каталог подборок получен не полностью.")+
+                                    "$counts Обнови каталог перед массовым скачиванием.",
+                                    color=MaterialTheme.colorScheme.error,modifier=Modifier.testTag("catalog_incomplete_warning"))
+                            }
+                        }
                         if(state.hiddenCatalog.isNotEmpty())Text("Полностью скачанные подборки скрыты: ${state.hiddenCatalog.size}",style=MaterialTheme.typography.bodySmall)
                         state.catalogError?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
                     }
@@ -340,17 +384,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         FilledTonalButton(onClick={PlaybackRuntime.play(context,libraryPlayback)},enabled=canPlayLibrary&&!state.busy,
                             shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=54.dp).testTag("library_play")) {
                             Icon(PlayerPlayIcon,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Воспроизвести")
-                        }
-                    }
-                    if(category==LibraryCategory.TRACKS) {
-                        Surface(onClick=model::showDuplicates,enabled=!state.busy&&!backgroundCheck,
-                            shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceVariant,
-                            modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
-                            Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Icon(Icons.Default.CheckCircle,null,Modifier.size(22.dp));Spacer(Modifier.width(10.dp))
-                                Text("Дубликаты: проверка и результаты",modifier=Modifier.weight(1f))
-                                Icon(MusicChevronIcon,null)
-                            }
                         }
                     }
                 }}

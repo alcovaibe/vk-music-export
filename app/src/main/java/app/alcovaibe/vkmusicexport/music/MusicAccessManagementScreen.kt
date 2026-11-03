@@ -119,7 +119,7 @@ internal fun MusicAccessManagementScreen(
                         Text("Вход через Chrome",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)
                     }
                     Text("1. Нажми «Войти через Chrome». Если в браузере уже выполнен вход в ВК, запомни показанный шестизначный код и закрой окно с кодом.",style=MaterialTheme.typography.bodyLarge)
-                    Text("2. Вернись в приложение и введи этот код в поле подтверждения. Если код не появился, дождись автоматической проверки входа.",style=MaterialTheme.typography.bodyLarge)
+                    Text("2. Вернись в приложение и введи этот код в поле подтверждения.",style=MaterialTheme.typography.bodyLarge)
                     Text("3. Если в браузере входа в ВК ещё не было, сначала войди в свой аккаунт, затем вернись в приложение и начни авторизацию заново.",style=MaterialTheme.typography.bodyLarge)
                     if(state.stage!="browser_auth")OutlinedButton(onClick=onConnect,enabled=enabled,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(12.dp),
                         colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),

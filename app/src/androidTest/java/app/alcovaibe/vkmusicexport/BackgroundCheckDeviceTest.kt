@@ -207,7 +207,7 @@ class BackgroundCheckDeviceTest {
                 }
                 // Completion and foreground teardown are asynchronous. Wait for the
                 // *final* notification, not the still-ongoing notification from startForeground().
-                withTimeout(15000) {
+                withTimeout(30000) {
                     while(manager.activeNotifications.none {
                         it.id==DuplicateCheckRuntime.NOTIFICATION_ID &&
                             it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0

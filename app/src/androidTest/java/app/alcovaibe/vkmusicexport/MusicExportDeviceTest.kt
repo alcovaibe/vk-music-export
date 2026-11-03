@@ -39,6 +39,127 @@ class MusicExportDeviceTest {
     }
     private fun cleanup(rows: List<PublishedAudio>){rows.forEach{runCatching{target.contentResolver.delete(Uri.parse(it.uri),null,null)}}}
 
+    @Test fun friendFoldersUsePrivateIdentityAndNeverMixIdenticalNamesOrCollections()=runBlocking(Dispatchers.IO) {
+        val (context,base)=isolated("friend-directory-identity")
+        val first=MusicFriend(34,"Алина","Смирнова")
+        val second=MusicFriend(35,"Алина","Смирнова")
+        val song=track(1);val page=NativePage(listOf(song),1)
+        val album=app.alcovaibe.vkmusicexport.music.NativePlaylist(-90,3,"Лето",1,null,null,null,null,PlaylistKind.ALBUM)
+        val album2=NativePlaylist(-90,4,"Лето",1,null,null,null,null,PlaylistKind.ALBUM)
+        val taskA=FriendMusicExport.tasks(page,first,12).single()
+        val taskB=FriendMusicExport.tasks(page,second,12).single()
+        val taskAlbum=FriendMusicExport.tasks(page,first,12,album).single()
+        val taskAlbum2=FriendMusicExport.tasks(page,first,12,album2).single()
+        val taskOtherAlbum=FriendMusicExport.tasks(page,second,12,album).single()
+        try {
+            val store=AudioExportStore(context)
+            val firstRoot=store.directory(taskA)
+            val otherRoot=store.directory(taskB)
+            val firstAlbum=store.directory(taskAlbum)
+            val secondAlbum=store.directory(taskAlbum2)
+            val otherAlbum=store.directory(taskOtherAlbum)
+            assertEquals(ExportLayout.ROOT+"Друзья/Алина Смирнова/",firstRoot)
+            assertEquals(ExportLayout.ROOT+"Друзья/Алина Смирнова (2)/",otherRoot)
+            assertEquals(firstRoot+"Альбом — Лето/",firstAlbum)
+            assertEquals(firstRoot+"Альбом — Лето (2)/",secondAlbum)
+            assertEquals(otherRoot+"Альбом — Лето/",otherAlbum)
+            assertFalse(firstRoot.contains("[34]"));assertFalse(otherRoot.contains("[35]"))
+            assertEquals("34",taskA.source?.id);assertEquals("35",taskB.source?.id)
+            store.close()
+            val reopened=AudioExportStore(context)
+            try {
+                assertEquals(firstRoot,reopened.directory(taskA))
+                assertEquals(otherRoot,reopened.directory(taskB))
+                assertEquals(firstAlbum,reopened.directory(taskAlbum))
+                assertEquals(otherAlbum,reopened.directory(taskOtherAlbum))
+                // The same VK ID keeps its existing directory even after a profile rename.
+                val renamed=FriendMusicExport.tasks(page,first.copy(firstName="Новое имя"),12).single()
+                assertEquals(firstRoot,reopened.directory(renamed))
+            }finally{reopened.close()}
+        }finally{base.deleteRecursively()}
+    }
+
+    @Test fun legacyFriendAudioAndM3u8AreMigratedWithoutChangingTrackUriOrVkSource()=runBlocking(Dispatchers.IO) {
+        val (context,base)=isolated("friend-folder-migration")
+        val store=AudioExportStore(context)
+        val shared=SharedAudioStore(context)
+        val friend=MusicFriend(34,"Тестовый","Друг")
+        val album=NativePlaylist(-99,7,"Сборник",1,null,null,null,null,PlaylistKind.ALBUM)
+        val task=FriendMusicExport.tasks(NativePage(listOf(track(48)),1),friend,12,album).single()
+        val legacyPath=ExportLayout.ROOT+task.folders.joinToString("/")+"/"
+        val desiredPath=ExportLayout.ROOT+"Друзья/Тестовый Друг/Альбом — Сборник/"
+        var row: PublishedAudio?=null
+        try {
+            store.replace(listOf(task),account=12)
+            val file=File(base,"tone.mp3").apply {
+                InstrumentationRegistry.getInstrumentation().context.assets.open("native-audio/tone.mp3").use {
+                    writeBytes(it.readBytes())
+                }
+            }
+            row=shared.publish(task,TransferResult(file,ProcessedAudio("mp3","audio/mpeg",1200)),
+                legacyPath){store.prepared(task,it)}
+            store.done(task,row!!)
+            // Reconstruct a genuine older-version M3U8 physically stored under
+            // the historical folder, not a new playlist produced by current code.
+            val sourceBytes=M3uPlaylist.render(legacyPath,listOf(task),mapOf(task.key to row!!))
+                .toByteArray(Charsets.UTF_8)
+            val m3uCollection=if(android.os.Build.VERSION.SDK_INT==29)
+                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            else MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val oldPlaylistUri=context.contentResolver.insert(m3uCollection,ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME,"_Порядок.m3u8")
+                put(MediaStore.MediaColumns.MIME_TYPE,"audio/x-mpegurl")
+                put(MediaStore.MediaColumns.RELATIVE_PATH,legacyPath)
+                put(MediaStore.MediaColumns.IS_PENDING,1)
+            })!!
+            context.contentResolver.openOutputStream(oldPlaylistUri,"w")!!.use{it.write(sourceBytes)}
+            assertEquals(1,context.contentResolver.update(oldPlaylistUri,ContentValues().apply{
+                put(MediaStore.MediaColumns.IS_PENDING,0)
+            },null,null))
+            val sha=java.security.MessageDigest.getInstance("SHA-256").digest(sourceBytes)
+                .joinToString(""){"%02x".format(it.toInt() and 255)}
+            val beforePlaylist=org.json.JSONObject().put("uri",oldPlaylistUri.toString())
+                .put("directory",legacyPath).put("bytes",sourceBytes.size).put("sha256",sha).toString()
+            store.checkpoint("m3u:"+task.source!!.key,beforePlaylist)
+            assertEquals(legacyPath,org.json.JSONObject(beforePlaylist).getString("directory"))
+
+            // Simulate a process kill after MediaStore moved the audio but before
+            // SQLite relink: run() must discover and repair the new physical path.
+            val moved=shared.moveVerified(row!!,desiredPath)
+            assertEquals(row!!.uri,moved.uri)
+            assertEquals(legacyPath,store.existing(task.key)?.relativePath)
+            val result=FriendFolderMigration(context,store,shared).run(limit=1)
+            assertEquals(0,result.failures)
+            assertFalse(result.more)
+            assertEquals(1,result.moved)
+            assertEquals(1,result.playlists)
+
+            val after=store.existing(task.key)!!
+            assertEquals(desiredPath,after.relativePath)
+            assertEquals(row!!.uri,after.uri)
+            assertEquals(task.source,after.source)
+            assertTrue(shared.valid(after))
+            val checkpoint=store.checkpoint("m3u:"+task.source!!.key)!!
+            assertEquals(desiredPath,org.json.JSONObject(checkpoint).getString("directory"))
+            assertNotEquals(legacyPath,org.json.JSONObject(checkpoint).getString("directory"))
+            val playlist=org.json.JSONObject(checkpoint)
+            val playlistUri=Uri.parse(playlist.getString("uri"))
+            val playlistText=context.contentResolver.openInputStream(playlistUri)!!.use{it.readBytes().toString(Charsets.UTF_8)}
+            assertTrue(playlistText.contains(M3uPlaylist.reference(desiredPath,after.relativePath+after.displayName)))
+            assertTrue(store.checkpoints("friend-folder-migration:").isEmpty())
+            val repeated=FriendFolderMigration(context,store,shared).run()
+            assertEquals(0,repeated.moved)
+            assertEquals(0,repeated.failures)
+        }finally {
+            row?.let{runCatching{context.contentResolver.delete(Uri.parse(it.uri),null,null)}}
+            val updated=store.checkpoint("m3u:"+task.source!!.key)
+            if(updated!=null)runCatching{
+                context.contentResolver.delete(Uri.parse(org.json.JSONObject(updated).getString("uri")),null,null)
+            }
+            store.close();base.deleteRecursively()
+        }
+    }
+
     @Test fun publishedMusicRetainsMoreThanFiveFilesAndCrashCheckpointIsAdoptedWithoutRedownload()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("public-audio-checkpoints");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val tasks=(0 until 12).map{ExportLayout.task(track(it),listOf("Моя музыка","CI checkpoints"),it+1)}

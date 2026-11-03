@@ -46,7 +46,7 @@ class OwnerReleaseTest(unittest.TestCase):
         event = {'head_commit': {'message': 'Release 0.11.2 [publish-pr-50]'}}
         now = dt.datetime(2026,10,31,tzinfo=dt.timezone.utc)
         owner.validate_context(request,env,event,now)
-        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-50.json'))
+        self.assertEqual(owner.request_path(env,'0.11.2'),Path('docs/release-requests/pr-50.json'))
         for key,value in [('branch','codex/music-library-redesign'),('version_name','0.11.0'),('pull_request',51)]:
             with self.subTest(key=key), self.assertRaises(AssertionError):
                 owner.validate_context(dict(request,**{key:value}),env,event,now)
@@ -71,7 +71,7 @@ class OwnerReleaseTest(unittest.TestCase):
         event = {'head_commit': {'message': 'Release 0.12.0 [publish-main-0.12.0]'}}
         now = dt.datetime(2026,11,1,tzinfo=dt.timezone.utc)
         owner.validate_context(request,env,event,now)
-        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-61.json'))
+        self.assertEqual(owner.request_path(env,'0.12.0'),Path('docs/release-requests/pr-61.json'))
         for key,value in [('branch','codex/artists-duplicates-about'),('version_name','0.11.2')]:
             with self.subTest(key=key), self.assertRaises(AssertionError):
                 owner.validate_context(dict(request,**{key:value}),env,event,now)
@@ -79,6 +79,34 @@ class OwnerReleaseTest(unittest.TestCase):
         with self.assertRaises(AssertionError): owner.validate_context(request,env,{'head_commit':{'message':'[publish-main-0.11.9]'}},now)
         with self.assertRaises(AssertionError): owner.validate_context(dict(request,pull_request=52),env,event,now)
         with self.assertRaises(AssertionError): owner.validate_context(request,env,event,now+dt.timedelta(days=3))
+
+    def test_0121_release_uses_its_own_main_authorization_and_marker(self):
+        request = dict(authorization='owner_requested_latest', manual_acceptance='pending',
+                       repository='alcovaibe/vk-music-export',
+                       branch='main', pull_request=64, version_name='0.12.1',
+                       expires_at='2026-11-20T23:59:59Z')
+        env = dict(GITHUB_REPOSITORY=request['repository'],
+                   GITHUB_REF='refs/heads/main', GITHUB_EVENT_NAME='push',
+                   GITHUB_SHA='d' * 40)
+        event = {'head_commit': {'message': 'Publish [publish-main-0.12.1]'}}
+        now = dt.datetime(2026, 11, 3, tzinfo=dt.timezone.utc)
+        self.assertEqual(owner.request_path(env, '0.12.1'),
+                         Path('docs/release-requests/pr-64.json'))
+        with tempfile.TemporaryDirectory() as tmp:
+            version = Path(tmp)/'version.properties'
+            version.write_text('versionName=0.12.1\nversionCode=1305\n')
+            self.assertEqual(owner.configured_version(version), '0.12.1')
+        owner.validate_context(request, env, event, now)
+        for wrong_message in ('[publish-main-0.12.0]', 'Merge PR #64', '[publish-pr-64]'):
+            with self.subTest(message=wrong_message), self.assertRaises(AssertionError):
+                owner.validate_context(request, env,
+                                       {'head_commit': {'message': wrong_message}}, now)
+        for wrong_version in ('0.12.0', '0.12.2'):
+            with self.subTest(version=wrong_version), self.assertRaises(AssertionError):
+                owner.validate_context(dict(request, version_name=wrong_version),
+                                       env, event, now)
+        with self.assertRaises(AssertionError):
+            owner.request_path(env, '0.12.2')
 
     def test_branch_cleanup_deletes_only_exact_requested_nonmain_heads(self):
         request = dict(repository='alcovaibe/vk-music-export',branch='main',pull_request=58,delete_other_branches=True,

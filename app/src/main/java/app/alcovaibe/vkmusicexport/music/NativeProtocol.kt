@@ -69,7 +69,19 @@ internal class NativePlaylist(val owner: Long, val id: Long, val title: String, 
     override fun toString() = "NativePlaylist([metadata omitted])"
 }
 internal data class NativePage(val tracks: List<NativeTrack>, val count: Int)
-internal data class NativeCatalog(val lists: List<NativePlaylist>, val count: Int,val complete: Boolean=lists.size==count,val nextFrom: String?=null,val cursorBased: Boolean=false,val nextOffset: Int?=null) {
+internal data class NativeCatalog(
+    val lists: List<NativePlaylist>, val count: Int,
+    val complete: Boolean=lists.size==count,
+    val nextFrom: String?=null, val cursorBased: Boolean=false, val nextOffset: Int?=null,
+    /** Completeness of the unfiltered getPlaylists response (the authoritative list). */
+    val baseComplete: Boolean=complete,
+    /** Unfiltered pages did not account for items seen in an incomplete album-only response. */
+    val optionalAlbumsIncomplete: Boolean=false,
+    val pagination: CatalogPaginationStats?=null,
+    val albumsPagination: CatalogPaginationStats?=null
+) {
+    fun completeFor(kind: PlaylistKind?): Boolean =
+        baseComplete && (kind!=PlaylistKind.ALBUM || !optionalAlbumsIncomplete)
     override fun toString()="NativeCatalog([metadata omitted])"
 }
 internal data class NativeProbe(val owner: Long, val library: NativePage)

@@ -121,7 +121,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 border=BorderStroke(1.dp,when(musicAccess) {
                     FriendAudioAccess.AVAILABLE->MaterialTheme.colorScheme.tertiary
                     FriendAudioAccess.DENIED->MaterialTheme.colorScheme.error
-                    null->MaterialTheme.colorScheme.outlineVariant
+                    FriendAudioAccess.CHECK_FAILED,null->MaterialTheme.colorScheme.outlineVariant
                 }),modifier=Modifier.fillMaxWidth().testTag("friend_${friend.id}")) {
                 Row(Modifier.padding(horizontal=10.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     MusicThumbnail(url=friend.photo,identity="friend:${friend.id}",artist=true,size=48.dp)
@@ -130,6 +130,8 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                         when(musicAccess) {
                             FriendAudioAccess.AVAILABLE->FriendBadge("Музыка доступна")
                             FriendAudioAccess.DENIED->FriendBadge("Музыка недоступна",error=true)
+                            FriendAudioAccess.CHECK_FAILED->Text("Не удалось проверить",style=MaterialTheme.typography.bodySmall,
+                                color=MaterialTheme.colorScheme.onSurfaceVariant)
                             null->Text("Проверяем доступ…",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

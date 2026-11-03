@@ -119,6 +119,54 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
         }
         musicCheck(!failed,MusicError.PLAYLIST_CHANGED)
     }
+    /**
+     * A user-edited, missing, or otherwise unverifiable legacy M3U8 must not be
+     * left pointing at moved tracks. Bail out before touching its audio files.
+     */
+    suspend fun verifyFriendMigrationSources(legacyDirectories: Set<String>): Boolean {
+        if(legacyDirectories.isEmpty())return true
+        for((key,_) in store.checkpoints("m3u:")) {
+            currentCoroutineContext().ensureActive()
+            val playlist=row(key)?:continue
+            if(playlist.directory in legacyDirectories&&read(playlist)==null)return false
+        }
+        return true
+    }
+
+    /**
+     * Rebase existing M3U8 references before changing the playlist directory.
+     * repairLocations() applies durable audio relocations first. publish() then
+     * writes and verifies a new playlist before removing the original URI,
+     * retaining the pending checkpoint if Android terminates the process.
+     */
+    suspend fun migrateFriendDirectories(moves: Map<String,String>): Int {
+        repairLocations()
+        var migrated=0
+        for((key,_) in store.checkpoints("m3u:")) {
+            currentCoroutineContext().ensureActive()
+            val previous=row(key)?:continue
+            val targetDirectory=moves[previous.directory]?:continue
+            musicCheck(targetDirectory.startsWith(ExportLayout.ROOT+"Друзья/")&&
+                targetDirectory.endsWith("/"),MusicError.STORAGE)
+            val bytes=read(previous)?:throw MusicFailure(MusicError.PLAYLIST_CHANGED)
+            val content=bytes.toString(Charsets.UTF_8)
+            musicCheck(content.startsWith("#EXTM3U\n")&&content.length<=4*1024*1024,MusicError.PLAYLIST_CHANGED)
+            val rebased=content.lines().map{line->
+                if(!line.startsWith("./"))line else {
+                    musicCheck(!line.contains('\\')&&!line.contains('\u0000'),MusicError.STORAGE)
+                    val path=java.nio.file.Paths.get(previous.directory)
+                        .resolve(line.removePrefix("./")).normalize()
+                    val absolute=path.toString().replace('\\','/')
+                    musicCheck(absolute.startsWith("Music/"),MusicError.STORAGE)
+                    M3uPlaylist.reference(targetDirectory,absolute)
+                }
+            }.joinToString("\n").toByteArray(Charsets.UTF_8)
+            publish(key,targetDirectory,rebased)
+            migrated++
+        }
+        return migrated
+    }
+
     private suspend fun publish(key: String,directory: String,bytes: ByteArray) {
         musicCheck(bytes.size in 1..4*1024*1024,MusicError.TOO_LARGE)
         val digest=hex(MessageDigest.getInstance("SHA-256").digest(bytes))
