@@ -16,10 +16,21 @@ internal object MusicCatalog {
         val all=MusicPagination.catalogCursor({offset,cursor->guard();api.catalogPage(access,owner,offset,cursor).also{guard()}},progress,{part->partial(part.copy(lists=part.lists.filter(::eligible)))})
         guard()
         onPagination("all",all)
-        val first=try{api.albumCatalogPage(access,owner,0).also{guard()}}catch(e: MusicFailure){
+        var firstAlbumRetries=0
+        val first=try{MusicPagination.retryTransientPage(onRetry={firstAlbumRetries++}) {
+            guard();api.albumCatalogPage(access,owner,0).also{guard()}
+        }}catch(e: MusicFailure){
             if(e.code in setOf(MusicError.METHOD,MusicError.DENIED))null else throw e
         }
-        val albums=first?.let{MusicPagination.catalogCursor({offset,cursor->guard();if(offset==0&&cursor==null)it else api.albumCatalogPage(access,owner,offset,cursor)?:throw MusicFailure(MusicError.INCOMPLETE)})}
+        val albums=first?.let{page->
+            MusicPagination.catalogCursor({offset,cursor->
+                guard()
+                (if(offset==0&&cursor==null)page else api.albumCatalogPage(access,owner,offset,cursor)
+                    ?:throw MusicFailure(MusicError.INCOMPLETE)).also{guard()}
+            }).let{result->result.copy(pagination=result.pagination?.let{stats->
+                stats.copy(retries=stats.retries+firstAlbumRetries)
+            })}
+        }
         albums?.let{onPagination("albums",it)}
         val merged=linkedMapOf<String,NativePlaylist>()
         (all.lists+albums?.lists.orEmpty()).forEach{list->merged[list.key]=merged[list.key]?.reconciled(list)?:list}
@@ -50,7 +61,8 @@ internal object MusicCatalog {
         // response when EVERY album already received from that filter occurs in the base list.
         // If it exposes extra entries, retain the warning for albums and category downloads.
         val baseKeys=all.lists.mapTo(hashSetOf()){it.key}
-        val missingFromBase=albums?.lists?.any{it.key !in baseKeys}==true
+        val missingFromBase=albums?.lists?.any{it.key !in baseKeys}==true ||
+            (albums!=null&&albums.count>all.count)
         val optionalAlbumsIncomplete=albums?.complete==false&&missingFromBase
         return NativeCatalog(current,maxOf(all.count,merged.size),
             all.complete&&!optionalAlbumsIncomplete,baseComplete=all.complete,
