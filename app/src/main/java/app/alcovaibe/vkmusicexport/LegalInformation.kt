@@ -32,3 +32,18 @@ internal fun LegalInformationSheet(page: String,onDismiss: ()->Unit) {
         TextButton(onClick=onDismiss,modifier=Modifier.align(androidx.compose.ui.Alignment.End).padding(16.dp)){Text("Закрыть")}
     }
 }
+
+/** Offline full-screen documents; the privacy bottom sheet remains unchanged. */
+@Composable
+internal fun LegalInformationPage(title: String,page: String,tag: String,onBack: ()->Unit) {
+    val context=LocalContext.current
+    val text by produceState("Загрузка…",page) {
+        value=withContext(Dispatchers.IO){runCatching {
+            context.assets.open("legal/$page.txt").bufferedReader().use{it.readText()}
+        }.getOrDefault("Не удалось прочитать документ. Он также доступен в репозитории alcovaibe/vk-music-export.")}
+    }
+    AppPage(title,onBack,tag=tag) {
+        Text(text,Modifier.fillMaxWidth().testTag("legal_document_text"),
+            style=MaterialTheme.typography.bodySmall)
+    }
+}

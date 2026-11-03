@@ -100,7 +100,10 @@ class InterfaceTest {
         ui.onNodeWithText("Данные и доступ к ВК").assertIsDisplayed()
         ui.onNodeWithText("Закрыть").performClick()
         ui.onNodeWithTag("open_licenses").performClick()
-        ui.onNodeWithText("Лицензии компонентов").assertIsDisplayed()
+        ui.onNodeWithTag("license_menu_screen").assertIsDisplayed()
+        ui.onNodeWithTag("legal_sheet").assertDoesNotExist()
+        ui.onNodeWithTag("license_app_item").assertTextEquals("Лицензия приложения")
+        ui.onNodeWithTag("license_components_item").assertTextEquals("Сторонние компоненты")
         androidx.test.espresso.Espresso.pressBack()
         ui.onNodeWithTag("about_app_screen").assertIsDisplayed()
         ui.onNodeWithContentDescription("Назад").performClick()
@@ -131,5 +134,51 @@ class InterfaceTest {
                 assertTrue(flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR!=0)
             }
         }
+    }
+    @Test fun fullScreenLicenseNavigationSurvivesRecreationAndAndroidBack() {
+        awaitTestWindowFocus(ui.activity)
+        ui.onNodeWithContentDescription("Меню").performClick()
+        ui.onNodeWithTag("open_about").performClick()
+        ui.onNodeWithTag("open_licenses").performClick()
+        ui.onNodeWithTag("license_menu_screen").assertIsDisplayed()
+        ui.onNodeWithTag("legal_sheet").assertDoesNotExist()
+        ui.onNodeWithTag("license_menu_card").assertExists()
+        ui.onNodeWithTag("license_app_item").assertTextEquals("Лицензия приложения")
+        ui.onNodeWithTag("license_components_item").assertTextEquals("Сторонние компоненты")
+        ui.onNodeWithTag("license_app_item").assert(hasAnyAncestor(hasTestTag("license_menu_card")))
+        ui.onNodeWithTag("license_components_item").assert(hasAnyAncestor(hasTestTag("license_menu_card")))
+        ui.onAllNodes(hasAnyAncestor(hasTestTag("license_menu_card")) and hasClickAction())
+            .assertCountEquals(2)
+        ui.activityRule.scenario.recreate()
+        ui.onNodeWithTag("license_menu_screen").assertIsDisplayed()
+        ui.onNodeWithTag("license_app_item").performClick()
+        ui.onNodeWithTag("license_app_screen").assertIsDisplayed()
+        ui.onNodeWithTag("legal_document_text").assertExists()
+        ui.onNodeWithTag("legal_sheet").assertDoesNotExist()
+        ui.activityRule.scenario.recreate()
+        ui.onNodeWithTag("license_app_screen").assertIsDisplayed()
+        androidx.test.espresso.Espresso.pressBack()
+        ui.onNodeWithTag("license_menu_screen").assertIsDisplayed()
+        ui.onNodeWithTag("license_components_item").performClick()
+        ui.onNodeWithTag("license_components_screen").assertIsDisplayed()
+        ui.onNodeWithTag("legal_document_text").assertExists()
+        androidx.test.espresso.Espresso.pressBack()
+        ui.onNodeWithTag("license_menu_screen").assertIsDisplayed()
+        androidx.test.espresso.Espresso.pressBack()
+        ui.onNodeWithTag("about_app_screen").assertIsDisplayed()
+        androidx.test.espresso.Espresso.pressBack()
+        ui.onNodeWithTag("native_music_screen").assertExists()
+    }
+
+    @Test fun splitOfflineLegalDocumentsPreserveEveryCharacter() {
+        val assets=ui.activity.assets
+        fun read(path: String)=assets.open("legal/$path.txt").bufferedReader().use{it.readText()}
+        val project=read("app_license")
+        val dependencies=read("components")
+        assertTrue(project.contains("Copyright (C) 2026 alcovaibe and contributors"))
+        assertTrue(project.contains("GNU GENERAL PUBLIC LICENSE"))
+        assertTrue(dependencies.contains("Kotlin standard library"))
+        assertTrue(dependencies.contains("Apache License"))
+        assertEquals(read("licenses"),project+"\n\n"+dependencies)
     }
 }
