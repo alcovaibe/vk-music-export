@@ -17,8 +17,11 @@ class LegacyAudioExportService : Service() {
     override fun onBind(intent: Intent?): IBinder?=null
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
         if(Build.VERSION.SDK_INT>=34){stopSelfResult(startId);return START_NOT_STICKY}
-        if(work!=null)return START_NOT_STICKY
-        // FGS must be promoted before any disk/network access.
+        // Every startForegroundService request must be acknowledged with foreground
+        // promotion, including reentrant starts while the previous worker is alive
+        // or finishing. A work!=null early return can leave the new start unpromoted
+        // and crash the entire app with ForegroundServiceDidNotStartInTimeException.
+        // Do this before any queue, disk or network work.
         try{startForeground(AudioExportRuntime.NOTIFICATION_ID,
             AudioExportRuntime.notification(this,AudioExportRuntime.state.value),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)}
@@ -33,6 +36,9 @@ class LegacyAudioExportService : Service() {
             }
             stopSelfResult(startId);return START_NOT_STICKY
         }
+        // An existing worker has already been promoted; don't launch a second
+        // queue runner. A completed worker no longer blocks a fresh start.
+        if(work?.isCompleted==false)return START_NOT_STICKY
         if(!AudioExportRuntime.active.compareAndSet(false,true)){
             stopForeground(STOP_FOREGROUND_REMOVE);stopSelfResult(startId);return START_NOT_STICKY
         }
