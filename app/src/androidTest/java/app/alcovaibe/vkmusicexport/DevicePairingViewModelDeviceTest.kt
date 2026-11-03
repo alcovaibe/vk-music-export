@@ -129,13 +129,17 @@ class DevicePairingViewModelDeviceTest {
 
     @Test fun nextActivityWaitsForCancelledOwnerInsteadOfReceivingBusy() {
         val firstStore=ViewModelStore();val secondStore=ViewModelStore()
-        val entered=CompletableDeferred<Unit>();val releaseCleanup=CompletableDeferred<Unit>()
+        val entered=CompletableDeferred<Unit>();val cleanupEntered=CompletableDeferred<Unit>()
+        val releaseCleanup=CompletableDeferred<Unit>()
         val secondBegins=AtomicInteger();lateinit var first: NativeMusicViewModel;lateinit var second: NativeMusicViewModel
         var firstCreated=false;var secondCreated=false
         val firstAuth=object: DeviceAuthApi {
             override suspend fun begin(deviceName: String): DeviceSession {
                 entered.complete(Unit)
-                try{awaitCancellation()}finally{withContext(NonCancellable){releaseCleanup.await()}}
+                try{awaitCancellation()}finally{withContext(NonCancellable){
+                    cleanupEntered.complete(Unit)
+                    releaseCleanup.await()
+                }}
             }
             override suspend fun poll(session: DeviceSession): DeviceCheck=error("Not called")
             override suspend fun validate(session: DeviceSession,code: DeviceConfirmationCode): DeviceValidation=error("Not called")
@@ -148,21 +152,28 @@ class DevicePairingViewModelDeviceTest {
         try {
             first=create(firstStore,FixtureMusicApi(),firstAuth);firstCreated=true;await{first.state.value.initialized}
             instrumentation.runOnMainSync{first.setForeground(true);first.authenticate()}
-            await{entered.isCompleted}
+            await("first owner acquired gate"){entered.isCompleted}
             instrumentation.runOnMainSync{first.cancel();first.authenticate()}
             assertTrue(first.state.value.busy);assertTrue(first.state.value.stopping)
-            second=create(secondStore,FixtureMusicApi(),secondAuth);secondCreated=true;await{second.state.value.initialized}
+            await("first owner entered non-cancellable cleanup"){cleanupEntered.isCompleted}
+            second=create(secondStore,FixtureMusicApi(),secondAuth);secondCreated=true
+            await("second viewmodel initialization"){second.state.value.initialized}
             instrumentation.runOnMainSync{second.setForeground(true);second.authenticate()}
             assertTrue(second.state.value.busy);assertTrue(second.state.value.waitingForSlot)
             assertNull(second.state.value.error);assertEquals(0,secondBegins.get())
             releaseCleanup.complete(Unit)
-            await{!first.state.value.busy&&second.state.value.authPhase==DeviceAuthPhase.READY}
-            assertEquals(1,secondBegins.get());assertFalse(second.state.value.waitingForSlot);assertNull(second.state.value.error)
+            // Wait for each causal milestone, not a combined state predicate.
+            // The emulator can delay the IO checkpoint even after the mutex
+            // has been released; neither busy nor READY should be guessed.
+            await("cancelled owner releases gate",30_000L){!first.state.value.busy}
+            await("next owner invokes authorization",30_000L){secondBegins.get()==1}
+            await("next owner reaches READY",30_000L){second.state.value.authPhase==DeviceAuthPhase.READY}
+            assertFalse(second.state.value.waitingForSlot);assertNull(second.state.value.error)
         }finally {
             releaseCleanup.complete(Unit)
             instrumentation.runOnMainSync{firstStore.clear();secondStore.clear()}
-            if(firstCreated)await{!first.state.value.busy}
-            if(secondCreated)await{!second.state.value.busy}
+            if(firstCreated)await("first owner stopped after teardown",30_000L){!first.state.value.busy}
+            if(secondCreated)await("second owner stopped after teardown",30_000L){!second.state.value.busy}
         }
     }
 
@@ -178,9 +189,12 @@ class DevicePairingViewModelDeviceTest {
         }
         return model
     }
-    private fun await(condition: ()->Boolean)=runBlocking {
-        val deadline=SystemClock.elapsedRealtime()+15000
-        while(!condition()){assertTrue("Pairing fixture timed out",SystemClock.elapsedRealtime()<deadline);delay(10)}
+    private fun await(label: String="pairing fixture",timeoutMs: Long=15_000L,condition: ()->Boolean)=runBlocking {
+        val deadline=SystemClock.elapsedRealtime()+timeoutMs
+        while(!condition()) {
+            assertTrue("Pairing fixture timed out: $label",SystemClock.elapsedRealtime()<deadline)
+            delay(20)
+        }
     }
     private open class FixtureMusicApi: MusicApi {
         override suspend fun library(access: MusicAccess): NativeProbe=error("Not called")
