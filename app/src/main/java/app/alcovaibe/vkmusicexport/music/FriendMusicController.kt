@@ -148,7 +148,7 @@ internal class FriendMusicController(private val application: Application,privat
                             }
                             try {
                                 val current=checked(initial)
-                                api.libraryPage(current,candidate.id,0)
+                                api.probeFriendAudio(current,candidate.id)
                                 checked(initial)
                                 availabilityCache.put(candidate.id,FriendAudioAccess.AVAILABLE)
                                 mutable.update{state->if(state.friends.any{it.id==candidate.id})
