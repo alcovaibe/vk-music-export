@@ -4,6 +4,9 @@ import android.app.Application
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Read-only remote profiles. File publication belongs to the existing persisted download job. */
 internal class FriendMusicController(private val application: Application,private val api: MusicApi,private val scope: CoroutineScope,
@@ -13,15 +16,27 @@ internal class FriendMusicController(private val application: Application,privat
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application)else null
     private val mutable=MutableStateFlow(FriendMusicState());val state=mutable.asStateFlow()
     private var work: Job?=null;private var previewWork: Job?=null;private var generation=0;private var lease: MusicAccess?=null
-    fun reset(){generation++;work?.cancel();previewWork?.cancel();previewWork=null;work=null;lease=null;mutable.value=FriendMusicState()}
+    private val availabilityCache=FriendAvailabilityCache()
+    private var visibleFriendIds=emptyList<Long>()
+    private var previewWake: Channel<Unit>?=null
+    fun reset(){
+        generation++;work?.cancel();previewWork?.cancel();previewWake?.close();previewWake=null
+        previewWork=null;work=null;lease=null;visibleFriendIds=emptyList()
+        availabilityCache.clear();mutable.value=FriendMusicState()
+    }
     fun pauseRead(){generation++;work?.cancel();work=null;mutable.update{it.copy(busy=false,preparing=false,selecting=false,selection=emptySet())}}
     fun back() {
         if(state.value.selecting){mutable.update{it.copy(selecting=false,selection=emptySet())};return}
         pauseRead()
         mutable.update{if(it.playlist!=null)it.copy(playlist=null,playlistTracks=null,playlistComplete=false,playlistProblem=null,musicQuery="",message=null)
             else it.copy(user=null,tracks=null,tracksComplete=false,catalog=null,problems=emptyMap(),musicQuery="",message=null)}
+        previewWake?.trySend(Unit)
     }
-    fun friendsQuery(value: String){mutable.update{it.copy(friendsQuery=value.take(200))}}
+    fun prioritizeVisible(ids: List<Long>) {
+        val prioritized=ids.distinct().take(32)
+        if(visibleFriendIds!=prioritized){visibleFriendIds=prioritized;previewWake?.trySend(Unit)}
+    }
+    fun friendsQuery(value: String){mutable.update{it.copy(friendsQuery=value.take(200))};previewWake?.trySend(Unit)}
     fun musicQuery(value: String){mutable.update{it.copy(musicQuery=value.take(200))}}
     fun tab(value: FriendMusicTab){mutable.update{it.copy(tab=value,playlist=null,playlistTracks=null,playlistComplete=false,playlistProblem=null,selecting=false,selection=emptySet(),musicQuery="",message=null)}}
     fun selectMode(){mutable.update{it.copy(selecting=!it.selecting,selection=emptySet())}}
@@ -45,7 +60,11 @@ internal class FriendMusicController(private val application: Application,privat
                 withTimeout(5*60_000L){body(guard(),guard);guard()}
             }catch(e: TimeoutCancellationException){if(g==generation)problem(FriendMusicProblem(MusicError.TIMEOUT))}
              catch(e: CancellationException){throw e}
-             catch(e: MusicReadChanged){if(g==generation){lease=null;mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))}}
+             catch(e: MusicReadChanged){if(g==generation){
+                 previewWork?.cancel();previewWake?.close();previewWake=null
+                 availabilityCache.clear();lease=null
+                 mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))
+             }}
              catch(e: Exception){if(g==generation) {
                   val error=FriendMusicProblem.from(e)
                   Diagnostics.event("music_friend_load_failure",mapOf("reason" to error.code.name,"vk_code" to error.remoteCode))
@@ -61,50 +80,117 @@ internal class FriendMusicController(private val application: Application,privat
         else->it.copy(problems=it.problems+(it.tab to value))
     }}}
     fun loadFriends() {
-        previewWork?.cancel();previewWork=null
-        mutable.update{it.copy(user=null,friends=emptyList(),friendAccess=emptyMap(),friendsComplete=false,friendsTotal=null,listProblem=null)}
+        previewWork?.cancel();previewWake?.close();previewWake=null;previewWork=null
+        visibleFriendIds=emptyList()
+        mutable.update{it.copy(user=null,friends=emptyList(),friendAccess=emptyMap(),
+            friendsComplete=false,friendsTotal=null,listProblem=null)}
         run {_,guard->
             val rows=mutableListOf<MusicFriend>();val seen=mutableSetOf<Long>();var total: Int?=null
+            var access: MusicAccess?=null
             do {
-                val page=api.friendsPage(guard(),rows.size);guard()
+                val current=guard()
+                if(access==null) {
+                    access=current
+                    availabilityCache.activate(current.readSessionId,current.accountId)
+                }
+                val page=api.friendsPage(current,rows.size);guard()
                 musicCheck(total==null||total==page.count,MusicError.LIBRARY_CHANGED);total=page.count
                 musicCheck(rows.size+page.items.size<=page.count,MusicError.LIBRARY_CHANGED)
                 musicCheck(page.items.isNotEmpty()||rows.size==page.count,MusicError.INCOMPLETE)
                 page.items.forEach{musicCheck(seen.add(it.id),MusicError.INCOMPLETE)};rows.addAll(page.items)
-                mutable.update{it.copy(friends=rows.toList(),friendsTotal=page.count)}
+                val restored=availabilityCache.snapshot(rows)
+                mutable.update{state->
+                    state.copy(friends=rows.toList(),friendsTotal=page.count,
+                        friendAccess=state.friendAccess.filterKeys{it in seen}+restored)
+                }
+                // Begin previewing after the very first page instead of waiting for the full list.
+                if(previewWork==null&&rows.isNotEmpty())previewFriends(current)
+                previewWake?.trySend(Unit)
             }while(rows.size<total!!)
             mutable.update{it.copy(friendsComplete=true)}
+            previewWake?.trySend(Unit)
             Diagnostics.event("music_friends_loaded",mapOf("count" to rows.size))
-            previewFriends(rows.toList())
         }
     }
-    /** Fetch only a minimal remote page; a transient API failure must not be shown as a privacy denial. */
-    private fun previewFriends(friends: List<MusicFriend>) {
-        previewWork?.cancel()
-        val initial=lease?:return
+
+    /** Two in-flight reads; VkAudioClient still enforces its global 350ms request pacing. */
+    private fun previewFriends(initial: MusicAccess) {
+        previewWork?.cancel();previewWake?.close()
+        val wake=Channel<Unit>(Channel.CONFLATED)
+        previewWake=wake
+        val inFlight=mutableSetOf<Long>();val attempted=mutableSetOf<Long>()
+        val mutex=Mutex();var halted=false
         previewWork=scope.launch {
-            for(friend in friends) {
-                currentCoroutineContext().ensureActive()
-                // Keep the foreground friend profile responsive.
-                while(mutable.value.user!=null)delay(300)
-                try {
-                    val access=checked(initial)
-                    api.libraryPage(access,friend.id,0)
-                    checked(initial)
-                    mutable.update{it.copy(friendAccess=it.friendAccess+(friend.id to FriendAudioAccess.AVAILABLE))}
-                }catch(e: CancellationException){throw e}
-                 catch(_: MusicReadChanged){break}
-                 catch(e: Exception) {
-                    val issue=FriendMusicProblem.from(e)
-                    Diagnostics.event("music_friend_access_preview",mapOf("reason" to issue.code.name,"vk_code" to issue.remoteCode))
-                    if(issue.remoteCode==201||issue.code==MusicError.DENIED)
-                        mutable.update{it.copy(friendAccess=it.friendAccess+(friend.id to FriendAudioAccess.DENIED))}
-                    if(issue.code in setOf(MusicError.RATE_LIMIT,MusicError.ACCESS,MusicError.INVALID_ACCESS))break
+            coroutineScope {
+                repeat(2) {
+                    launch {
+                        while(isActive) {
+                            val candidate=mutex.withLock {
+                                val snapshot=mutable.value
+                                if(halted||snapshot.user!=null)null
+                                else FriendAvailabilityPriority.next(snapshot.friends,visibleFriendIds,
+                                    snapshot.friendsQuery){id->
+                                    id in attempted||id in inFlight||availabilityCache.get(id)!=null
+                                }?.also{inFlight.add(it.id)}
+                            }
+                            if(candidate==null) {
+                                val finished=mutex.withLock {
+                                    halted||(mutable.value.friendsComplete&&mutable.value.friends.all{friend->
+                                        friend.id in attempted||friend.id in inFlight||
+                                            availabilityCache.get(friend.id)!=null
+                                    })
+                                }
+                                if(finished)break
+                                if(wake.receiveCatching().getOrNull()==null)break
+                                continue
+                            }
+                            try {
+                                val current=checked(initial)
+                                api.libraryPage(current,candidate.id,0)
+                                checked(initial)
+                                availabilityCache.put(candidate.id,FriendAudioAccess.AVAILABLE)
+                                mutable.update{state->if(state.friends.any{it.id==candidate.id})
+                                    state.copy(friendAccess=state.friendAccess+(candidate.id to FriendAudioAccess.AVAILABLE))
+                                    else state}
+                            }catch(e: CancellationException){throw e}
+                             catch(_: MusicReadChanged){
+                                mutex.withLock{halted=true}
+                                availabilityCache.clear()
+                                mutable.update{it.copy(friendAccess=emptyMap(),
+                                    listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))}
+                                wake.trySend(Unit)
+                             }catch(e: Exception) {
+                                val issue=FriendMusicProblem.from(e)
+                                val status=if(issue.remoteCode==201||issue.code==MusicError.DENIED)
+                                    FriendAudioAccess.DENIED else FriendAudioAccess.CHECK_FAILED
+                                if(status==FriendAudioAccess.DENIED)
+                                    availabilityCache.put(candidate.id,status)
+                                mutable.update{state->if(state.friends.any{it.id==candidate.id})
+                                    state.copy(friendAccess=state.friendAccess+(candidate.id to status))
+                                    else state}
+                                Diagnostics.event("music_friend_access_preview",
+                                    mapOf("reason" to issue.code.name,"vk_code" to issue.remoteCode))
+                                if(issue.code in setOf(MusicError.RATE_LIMIT,MusicError.ACCESS,
+                                        MusicError.INVALID_ACCESS,MusicError.ACCOUNT_CHANGED)) {
+                                    mutex.withLock{halted=true}
+                                    // Unchecked friends are not denied; the preview is simply unavailable.
+                                    mutable.update{state->state.copy(friendAccess=state.friendAccess+
+                                        state.friends.filterNot{it.id in state.friendAccess}
+                                            .associate{it.id to FriendAudioAccess.CHECK_FAILED})}
+                                    wake.trySend(Unit)
+                                }
+                            }finally{
+                                mutex.withLock{inFlight.remove(candidate.id);attempted.add(candidate.id)}
+                                wake.trySend(Unit)
+                            }
+                        }
+                    }
                 }
-                delay(250)
             }
         }
+        wake.trySend(Unit)
     }
+
     private suspend fun tracks(fetch:suspend(Int)->NativePage,guard:suspend()->MusicAccess,playlist: Boolean): NativePage {
         val rows=mutableListOf<NativeTrack>()
         return MusicPagination.tracks({offset->
@@ -116,15 +202,19 @@ internal class FriendMusicController(private val application: Application,privat
     fun open(user: MusicFriend) {
         mutable.update{it.copy(user=user,tab=FriendMusicTab.TRACKS,tracks=null,tracksComplete=false,catalog=null,playlist=null,playlistTracks=null,
             playlistComplete=false,problems=emptyMap(),playlistProblem=null,selecting=false,selection=emptySet(),musicQuery="")}
+        previewWake?.trySend(Unit)
         run {_,guard->
             val fresh=api.friendProfile(guard(),user.id);guard();mutable.update{it.copy(user=fresh)}
             try {
                 val page=tracks({offset->api.libraryPage(guard(),user.id,offset)},guard,false)
-                guard();mutable.update{it.copy(tracks=page,tracksComplete=true,friendAccess=it.friendAccess+(user.id to FriendAudioAccess.AVAILABLE))}
+                guard();availabilityCache.put(user.id,FriendAudioAccess.AVAILABLE)
+                mutable.update{it.copy(tracks=page,tracksComplete=true,friendAccess=it.friendAccess+(user.id to FriendAudioAccess.AVAILABLE))}
             }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){
                 val issue=FriendMusicProblem.from(e)
+                val denied=issue.remoteCode==201||issue.code==MusicError.DENIED
+                if(denied)availabilityCache.put(user.id,FriendAudioAccess.DENIED)
                 mutable.update{it.copy(problems=it.problems+(FriendMusicTab.TRACKS to issue),
-                    friendAccess=if(issue.remoteCode==201||issue.code==MusicError.DENIED)it.friendAccess+(user.id to FriendAudioAccess.DENIED)else it.friendAccess)}
+                    friendAccess=if(denied)it.friendAccess+(user.id to FriendAudioAccess.DENIED)else it.friendAccess)}
             }
             try {
                 val catalog=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false,partial={part->mutable.update{it.copy(catalog=part)}})
