@@ -57,6 +57,21 @@ internal class FriendFolderMigration(private val context: Context,private val st
             record(marker("source:"+key),next)
         }
         val groups=store.savedFiles().groupBy{it.uri}
+        val oldDirectories=groups.values.mapNotNull{aliases->
+            aliases.firstOrNull()?.let{row->
+                row.relativePath.takeIf{legacyFolders(it,row.source)!=null}
+            }
+        }.toMutableSet()
+        for((_,payload) in store.checkpoints(markerPrefix)) {
+            runCatching{json.decodeFromString<FriendFolderMove>(payload)}.getOrNull()?.let{
+                oldDirectories.add(it.before)
+            }
+        }
+        if(!SharedPlaylistStore(context,store).verifyFriendMigrationSources(oldDirectories)) {
+            // Respect manually edited/unverifiable playlists. No physical audio move
+            // begins until the old playlist checkpoint can be checked.
+            return FriendFolderMigrationResult(0,0,1,0,false)
+        }
         for((_,aliases) in groups) {
             currentCoroutineContext().ensureActive()
             val row=aliases.first()
