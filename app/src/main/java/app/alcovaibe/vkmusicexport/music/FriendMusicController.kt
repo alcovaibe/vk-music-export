@@ -135,10 +135,11 @@ internal class FriendMusicController(private val application: Application,privat
                             }
                             if(candidate==null) {
                                 val finished=mutex.withLock {
-                                    halted||(mutable.value.friendsComplete&&mutable.value.friends.all{friend->
-                                        friend.id in attempted||friend.id in inFlight||
-                                            availabilityCache.get(friend.id)!=null
-                                    })
+                                    halted||((mutable.value.friendsComplete||work?.isActive!=true)&&
+                                        mutable.value.friends.all{friend->
+                                            friend.id in attempted||friend.id in inFlight||
+                                                availabilityCache.get(friend.id)!=null
+                                        })
                                 }
                                 if(finished)break
                                 if(wake.receiveCatching().getOrNull()==null)break
