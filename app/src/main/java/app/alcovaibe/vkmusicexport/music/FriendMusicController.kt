@@ -41,7 +41,7 @@ internal class FriendMusicController(private val application: Application,privat
     fun tab(value: FriendMusicTab){mutable.update{it.copy(tab=value,playlist=null,playlistTracks=null,playlistComplete=false,playlistProblem=null,selecting=false,selection=emptySet(),musicQuery="",message=null)}}
     fun selectMode(){mutable.update{it.copy(selecting=!it.selecting,selection=emptySet())}}
     fun toggle(position: Int){mutable.update{if(position in 1..(it.page?.tracks?.size?:0))it.copy(selecting=true,selection=if(position in it.selection)it.selection-position else it.selection+position)else it}}
-    fun refresh(){state.value.user?.let{open(it)}?:loadFriends()}
+    fun refresh(){state.value.user?.let{open(it)}?:loadFriends(forceStatuses=true)}
     private suspend fun checked(initial: MusicAccess): MusicAccess {
         currentCoroutineContext().ensureActive()
         return (sessions?.continueRead(initial)?:withContext(Dispatchers.IO){vault.read()?:throw MusicFailure(MusicError.ACCESS)}.also{
@@ -79,7 +79,7 @@ internal class FriendMusicController(private val application: Application,privat
         it.playlist!=null->it.copy(playlistProblem=value)
         else->it.copy(problems=it.problems+(it.tab to value))
     }}}
-    fun loadFriends() {
+    fun loadFriends(forceStatuses: Boolean=false) {
         previewWork?.cancel();previewWake?.close();previewWake=null;previewWork=null
         visibleFriendIds=emptyList()
         mutable.update{it.copy(user=null,friends=emptyList(),friendAccess=emptyMap(),
@@ -104,7 +104,7 @@ internal class FriendMusicController(private val application: Application,privat
                         friendAccess=state.friendAccess.filterKeys{it in seen}+restored)
                 }
                 // Begin previewing after the very first page instead of waiting for the full list.
-                if(previewWork==null&&rows.isNotEmpty())previewFriends(current)
+                if(previewWork==null&&rows.isNotEmpty())previewFriends(current,forceStatuses)
                 previewWake?.trySend(Unit)
             }while(rows.size<total!!)
             mutable.update{it.copy(friendsComplete=true)}
@@ -114,7 +114,7 @@ internal class FriendMusicController(private val application: Application,privat
     }
 
     /** Two in-flight reads; VkAudioClient still enforces its global 350ms request pacing. */
-    private fun previewFriends(initial: MusicAccess) {
+    private fun previewFriends(initial: MusicAccess,forceStatuses: Boolean) {
         previewWork?.cancel();previewWake?.close()
         val wake=Channel<Unit>(Channel.CONFLATED)
         previewWake=wake
@@ -130,7 +130,8 @@ internal class FriendMusicController(private val application: Application,privat
                                 if(halted||snapshot.user!=null)null
                                 else FriendAvailabilityPriority.next(snapshot.friends,visibleFriendIds,
                                     snapshot.friendsQuery){id->
-                                    id in attempted||id in inFlight||availabilityCache.get(id)!=null
+                                    id in attempted||id in inFlight||
+                                        (!forceStatuses&&availabilityCache.get(id)!=null)
                                 }?.also{inFlight.add(it.id)}
                             }
                             if(candidate==null) {
@@ -138,7 +139,7 @@ internal class FriendMusicController(private val application: Application,privat
                                     halted||((mutable.value.friendsComplete||work?.isActive!=true)&&
                                         mutable.value.friends.all{friend->
                                             friend.id in attempted||friend.id in inFlight||
-                                                availabilityCache.get(friend.id)!=null
+                                                (!forceStatuses&&availabilityCache.get(friend.id)!=null)
                                         })
                                 }
                                 if(finished)break
