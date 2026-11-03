@@ -10,14 +10,17 @@ internal enum class CatalogSection(val title: String,val kind: PlaylistKind?) {
 
 internal object MusicCatalog {
     /** The same server classification is used for the viewer and friends. */
-    suspend fun load(api: MusicApi,access: MusicAccess,owner: Long,guard: suspend()->Unit={},personal: Boolean=true,partial:(NativeCatalog)->Unit={},progress:(Int,Int)->Unit={_,_->}): NativeCatalog {
+    suspend fun load(api: MusicApi,access: MusicAccess,owner: Long,guard: suspend()->Unit={},personal: Boolean=true,partial:(NativeCatalog)->Unit={},progress:(Int,Int)->Unit={_,_->},
+        onPagination:(String,NativeCatalog)->Unit={_,_->}): NativeCatalog {
         fun eligible(list: NativePlaylist)=!list.deleted&&(!personal||list.owner==owner||list.following!=false)
         val all=MusicPagination.catalogCursor({offset,cursor->guard();api.catalogPage(access,owner,offset,cursor).also{guard()}},progress,{part->partial(part.copy(lists=part.lists.filter(::eligible)))})
         guard()
+        onPagination("all",all)
         val first=try{api.albumCatalogPage(access,owner,0).also{guard()}}catch(e: MusicFailure){
             if(e.code in setOf(MusicError.METHOD,MusicError.DENIED))null else throw e
         }
         val albums=first?.let{MusicPagination.catalogCursor({offset,cursor->guard();if(offset==0&&cursor==null)it else api.albumCatalogPage(access,owner,offset,cursor)?:throw MusicFailure(MusicError.INCOMPLETE)})}
+        albums?.let{onPagination("albums",it)}
         val merged=linkedMapOf<String,NativePlaylist>()
         (all.lists+albums?.lists.orEmpty()).forEach{list->merged[list.key]=merged[list.key]?.reconciled(list)?:list}
         // A filter response may be ignored by VK. Never let it overrule explicit item metadata.
@@ -43,7 +46,16 @@ internal object MusicCatalog {
             }
         }
         guard()
-        return NativeCatalog(current,maxOf(all.count,merged.size),all.complete&&(albums?.complete!=false))
+        // An incomplete optional album filter does not invalidate a complete unfiltered
+        // response when EVERY album already received from that filter occurs in the base list.
+        // If it exposes extra entries, retain the warning for albums and category downloads.
+        val baseKeys=all.lists.mapTo(hashSetOf()){it.key}
+        val missingFromBase=albums?.lists?.any{it.key !in baseKeys}==true
+        val optionalAlbumsIncomplete=albums?.complete==false&&missingFromBase
+        return NativeCatalog(current,maxOf(all.count,merged.size),
+            all.complete&&!optionalAlbumsIncomplete,baseComplete=all.complete,
+            optionalAlbumsIncomplete=optionalAlbumsIncomplete,
+            pagination=all.pagination,albumsPagination=albums?.pagination)
     }
 
     fun visible(state: NativeMusicState,section: CatalogSection=state.catalogSection)=
