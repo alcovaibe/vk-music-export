@@ -136,7 +136,7 @@ class CompleteMusicListsDeviceTest {
             assertFalse(model.state.value.libraryStale)
         }finally {
             lastPage.complete(Unit);nextRefresh.complete(Unit)
-            if(::model.isInitialized)ui.runOnUiThread{model.cancel()}
+            runCatching{ui.runOnUiThread{model.cancel()}}
             vault.delete()
         }
     }
