@@ -72,11 +72,13 @@ class CompleteMusicListsDeviceTest {
             ui.runOnUiThread{model.section(CatalogSection.LIBRARY)}
             assertEquals(tracks,model.state.value.page!!.tracks)
             assertEquals(listOf(0,100,200),libraryOffsets)
-            // A failed second page must not retain the previous selection or expose a partial snapshot.
+            // Keep verified early positions visible if a later page fails, but never
+            // claim that the playlist is complete or permit playback of a partial page.
             ui.runOnUiThread{failNextPlaylist=true;model.select(lists[0])}
             ui.waitUntil(15000){!model.state.value.busy}
             assertEquals(MusicError.NETWORK,model.state.value.error)
-            assertNull(model.state.value.page)
+            assertEquals(100,model.state.value.page?.tracks?.size)
+            assertEquals(205,model.state.value.page?.count)
             ui.runOnUiThread{failNextPlaylist=false;model.select(lists[0])}
             ui.waitUntil(15000){!model.state.value.busy}
             assertEquals(tracks,model.state.value.page!!.tracks)
