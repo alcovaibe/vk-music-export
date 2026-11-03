@@ -178,9 +178,8 @@ class BackgroundCheckDeviceTest {
 
     @Test fun repeatedLegacyAudioExportStartAcknowledgesForegroundRequests()=runBlocking<Unit> {
         if(android.os.Build.VERSION.SDK_INT>=34)return@runBlocking
-        // Android 10–13: an overlapping startForegroundService call must not be
-        // ignored before startForeground. A rejected foreground start crashes the
-        // *process*, so exercising two requests protects the whole test suite.
+        // Android 10–13: two foreground start requests must be acknowledged without
+        // crashing the process, and completion must leave a non-ongoing notification.
         val manager=app.getSystemService(NotificationManager::class.java)
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             try {
@@ -191,24 +190,38 @@ class BackgroundCheckDeviceTest {
                         )
                     ).use { it.readBytes() }
                 }
-                // Do not rely on real VK credentials or a network transfer.
+                // The original test cleared the queue and never exercised a running
+                // export. Queue one synthetic item with no account: the engine must
+                // pause with QUEUE_ACCOUNT before contacting VK, deterministically.
                 AudioExportRuntime.initialize(app)
                 AudioExportRuntime.clear(app)
+                AudioExportRuntime.replace(app,listOf(
+                    ExportLayout.task(track(101),listOf("Моя музыка","CI FGS"),1)
+                ))
+                AudioExportStore(app).use { it.status("QUEUED") }
+                AudioExportRuntime.refresh()
                 manager.cancel(AudioExportRuntime.NOTIFICATION_ID)
                 scenario.onActivity {
                     assertTrue(BackgroundTransport.startExport(app))
                     assertTrue(BackgroundTransport.startExport(app))
                 }
                 withTimeout(30_000L) {
+                    while(AudioExportRuntime.state.value.status!="PAUSED" ||
+                        AudioExportRuntime.active.get())delay(50)
+                }
+                // Service teardown and notification manager updates are asynchronous.
+                withTimeout(30_000L) {
                     while(manager.activeNotifications.none {
                         it.id==AudioExportRuntime.NOTIFICATION_ID &&
                             it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0
-                    }) delay(50)
+                    })delay(50)
                 }
+                assertEquals(MusicError.QUEUE_ACCOUNT,AudioExportRuntime.state.value.error)
                 assertFalse(AudioExportRuntime.active.get())
             } finally {
                 BackgroundTransport.stopExport(app)
                 withTimeout(15_000L){while(AudioExportRuntime.active.get())delay(50)}
+                AudioExportRuntime.clear(app)
                 manager.cancel(AudioExportRuntime.NOTIFICATION_ID)
             }
         }
