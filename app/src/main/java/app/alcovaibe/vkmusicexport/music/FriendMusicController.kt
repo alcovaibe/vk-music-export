@@ -147,6 +147,9 @@ internal class FriendMusicController(private val application: Application,privat
                                 continue
                             }
                             try {
+                                // Foreground library and selected profile requests take precedence
+                                // over cosmetic status badges; keep the global VK pacer unchanged.
+                                while(blocked()||mutable.value.user!=null)delay(150)
                                 val current=checked(initial)
                                 api.probeFriendAudio(current,candidate.id)
                                 checked(initial)
