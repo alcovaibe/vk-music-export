@@ -103,8 +103,10 @@ class LegacyDuplicateCheckService : Service() {
                     updates.cancelAndJoin()
                     DuplicateCheckRuntime.interrupted(this@LegacyDuplicateCheckService,id)
                     withContext(Dispatchers.Main){
-                        // A completed scan must not leave an uncancellable FGS notification.
-                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        // Detach the terminal notification from the foreground service before
+                        // stopping it. STOP_FOREGROUND_REMOVE races with notify() on API 30–33
+                        // and Android may erase the newly posted completion/pause notification.
+                        stopForeground(STOP_FOREGROUND_DETACH)
                         getSystemService(NotificationManager::class.java).notify(DuplicateCheckRuntime.NOTIFICATION_ID,
                             DuplicateCheckRuntime.notification(this@LegacyDuplicateCheckService,DuplicateCheckRuntime.state.value))
                         stopSelfResult(startId)
