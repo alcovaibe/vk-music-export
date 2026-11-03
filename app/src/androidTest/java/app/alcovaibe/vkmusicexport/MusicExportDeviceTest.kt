@@ -121,7 +121,7 @@ class MusicExportDeviceTest {
             val beforePlaylist=org.json.JSONObject().put("uri",oldPlaylistUri.toString())
                 .put("directory",legacyPath).put("bytes",sourceBytes.size).put("sha256",sha).toString()
             store.checkpoint("m3u:"+task.source!!.key,beforePlaylist)
-            assertTrue(beforePlaylist.contains(legacyPath))
+            assertEquals(legacyPath,org.json.JSONObject(beforePlaylist).getString("directory"))
 
             // Simulate a process kill after MediaStore moved the audio but before
             // SQLite relink: run() must discover and repair the new physical path.
