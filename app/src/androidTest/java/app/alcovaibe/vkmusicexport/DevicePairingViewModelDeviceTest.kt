@@ -128,11 +128,12 @@ class DevicePairingViewModelDeviceTest {
     }
 
     @Test fun nextActivityWaitsForCancelledOwnerInsteadOfReceivingBusy() {
-        val firstStore=ViewModelStore();val secondStore=ViewModelStore()
+        val firstStore=ViewModelStore();val secondStore=ViewModelStore();val thirdStore=ViewModelStore()
         val entered=CompletableDeferred<Unit>();val cleanupEntered=CompletableDeferred<Unit>()
         val releaseCleanup=CompletableDeferred<Unit>()
         val secondBegins=AtomicInteger();lateinit var first: NativeMusicViewModel;lateinit var second: NativeMusicViewModel
-        var firstCreated=false;var secondCreated=false
+        lateinit var third: NativeMusicViewModel
+        var firstCreated=false;var secondCreated=false;var thirdCreated=false
         val firstAuth=object: DeviceAuthApi {
             override suspend fun begin(deviceName: String): DeviceSession {
                 entered.complete(Unit)
@@ -169,11 +170,21 @@ class DevicePairingViewModelDeviceTest {
             await("next owner invokes authorization",30_000L){secondBegins.get()==1}
             await("next owner reaches READY",30_000L){second.state.value.authPhase==DeviceAuthPhase.READY}
             assertFalse(second.state.value.waitingForSlot);assertNull(second.state.value.error)
+            // A disposed ViewModel's visible StateFlow is not a lifecycle signal.
+            // Verify the real invariant: after clearing its store, a third owner
+            // must acquire the shared gate and reach READY without BUSY.
+            instrumentation.runOnMainSync{secondStore.clear()}
+            third=create(thirdStore,FixtureMusicApi(),secondAuth);thirdCreated=true
+            await("third viewmodel initialization"){third.state.value.initialized}
+            instrumentation.runOnMainSync{third.setForeground(true);third.authenticate()}
+            await("third owner acquired gate after second teardown",30_000L){
+                secondBegins.get()==2 && third.state.value.authPhase==DeviceAuthPhase.READY
+            }
+            assertNull(third.state.value.error)
         }finally {
             releaseCleanup.complete(Unit)
-            instrumentation.runOnMainSync{firstStore.clear();secondStore.clear()}
+            instrumentation.runOnMainSync{firstStore.clear();secondStore.clear();thirdStore.clear()}
             if(firstCreated)await("first owner stopped after teardown",30_000L){!first.state.value.busy}
-            if(secondCreated)await("second owner stopped after teardown",30_000L){!second.state.value.busy}
         }
     }
 
