@@ -99,10 +99,29 @@ class MusicExportDeviceTest {
             row=shared.publish(task,TransferResult(file,ProcessedAudio("mp3","audio/mpeg",1200)),
                 legacyPath){store.prepared(task,it)}
             store.done(task,row!!)
-            SharedPlaylistStore(context,store).publishAll()
-            val beforePlaylist=store.checkpoint("m3u:"+task.source!!.key)
-            assertNotNull(beforePlaylist)
-            assertTrue(beforePlaylist!!.contains(legacyPath))
+            // Reconstruct a genuine older-version M3U8 physically stored under
+            // the historical folder, not a new playlist produced by current code.
+            val sourceBytes=M3uPlaylist.render(legacyPath,listOf(task),mapOf(task.key to row!!))
+                .toByteArray(Charsets.UTF_8)
+            val m3uCollection=if(android.os.Build.VERSION.SDK_INT==29)
+                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            else MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val oldPlaylistUri=context.contentResolver.insert(m3uCollection,ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME,"_Порядок.m3u8")
+                put(MediaStore.MediaColumns.MIME_TYPE,"audio/x-mpegurl")
+                put(MediaStore.MediaColumns.RELATIVE_PATH,legacyPath)
+                put(MediaStore.MediaColumns.IS_PENDING,1)
+            })!!
+            context.contentResolver.openOutputStream(oldPlaylistUri,"w")!!.use{it.write(sourceBytes)}
+            assertEquals(1,context.contentResolver.update(oldPlaylistUri,ContentValues().apply{
+                put(MediaStore.MediaColumns.IS_PENDING,0)
+            },null,null))
+            val sha=java.security.MessageDigest.getInstance("SHA-256").digest(sourceBytes)
+                .joinToString(""){"%02x".format(it.toInt() and 255)}
+            val beforePlaylist=org.json.JSONObject().put("uri",oldPlaylistUri.toString())
+                .put("directory",legacyPath).put("bytes",sourceBytes.size).put("sha256",sha).toString()
+            store.checkpoint("m3u:"+task.source!!.key,beforePlaylist)
+            assertTrue(beforePlaylist.contains(legacyPath))
 
             // Simulate a process kill after MediaStore moved the audio but before
             // SQLite relink: run() must discover and repair the new physical path.
