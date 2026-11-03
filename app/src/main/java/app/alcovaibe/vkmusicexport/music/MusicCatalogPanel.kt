@@ -35,10 +35,13 @@ internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSec
     }else {
         val lists=MusicCatalog.visible(state)
         Text("${state.catalogSection.title}: ${lists.size}",style=MaterialTheme.typography.titleMedium)
+        if(state.catalogRefreshing)Text("Загружаем плейлисты и альбомы…",style=MaterialTheme.typography.bodySmall)
+        if(state.catalogStale)Text("Показан предыдущий каталог; обновление не завершено.",style=MaterialTheme.typography.bodySmall)
+        if(state.catalogVerifying)Text("Проверяем скачанные подборки в фоне…",style=MaterialTheme.typography.bodySmall)
         if(catalog==null)Text("Каталог ещё не загружен.")
         else {
             val complete=catalog.completeFor(state.catalogSection.kind)
-            if(!complete) {
+            if(!complete&&!state.catalogRefreshing) {
                 val albumOnly=catalog.baseComplete&&catalog.optionalAlbumsIncomplete
                 val scan=if(albumOnly)catalog.albumsPagination else catalog.pagination
                 val counts=scan?.let{" Получено позиций: ${it.positions}/${it.expected}."}.orEmpty()
