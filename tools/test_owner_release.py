@@ -66,17 +66,17 @@ class OwnerReleaseTest(unittest.TestCase):
 
     def test_main_release_needs_its_own_marker_version_and_owner_request(self):
         request = dict(authorization='owner_requested_latest', manual_acceptance='pending', repository='alcovaibe/vk-music-export',
-                       branch='main', pull_request=58, version_name='0.11.9', expires_at='2026-11-02T23:59:59Z')
+                       branch='main', pull_request=61, version_name='0.12.0', expires_at='2026-11-02T23:59:59Z')
         env = dict(GITHUB_REPOSITORY=request['repository'], GITHUB_REF='refs/heads/main', GITHUB_EVENT_NAME='push', GITHUB_SHA='c'*40)
-        event = {'head_commit': {'message': 'Release 0.11.9 [publish-main-0.11.9]'}}
+        event = {'head_commit': {'message': 'Release 0.12.0 [publish-main-0.12.0]'}}
         now = dt.datetime(2026,11,1,tzinfo=dt.timezone.utc)
         owner.validate_context(request,env,event,now)
-        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-58.json'))
+        self.assertEqual(owner.request_path(env),Path('docs/release-requests/pr-61.json'))
         for key,value in [('branch','codex/artists-duplicates-about'),('version_name','0.11.2')]:
             with self.subTest(key=key), self.assertRaises(AssertionError):
                 owner.validate_context(dict(request,**{key:value}),env,event,now)
         with self.assertRaises(AssertionError): owner.validate_context(request,env,{'head_commit':{'message':'[publish-pr-52]'}},now)
-        with self.assertRaises(AssertionError): owner.validate_context(request,env,{'head_commit':{'message':'[publish-main-0.11.3]'}},now)
+        with self.assertRaises(AssertionError): owner.validate_context(request,env,{'head_commit':{'message':'[publish-main-0.11.9]'}},now)
         with self.assertRaises(AssertionError): owner.validate_context(dict(request,pull_request=52),env,event,now)
         with self.assertRaises(AssertionError): owner.validate_context(request,env,event,now+dt.timedelta(days=3))
 
