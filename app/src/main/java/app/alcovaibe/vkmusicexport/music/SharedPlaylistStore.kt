@@ -120,6 +120,20 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
         musicCheck(!failed,MusicError.PLAYLIST_CHANGED)
     }
     /**
+     * A user-edited, missing, or otherwise unverifiable legacy M3U8 must not be
+     * left pointing at moved tracks. Bail out before touching its audio files.
+     */
+    suspend fun verifyFriendMigrationSources(legacyDirectories: Set<String>): Boolean {
+        if(legacyDirectories.isEmpty())return true
+        for((key,_) in store.checkpoints("m3u:")) {
+            currentCoroutineContext().ensureActive()
+            val playlist=row(key)?:continue
+            if(playlist.directory in legacyDirectories&&read(playlist)==null)return false
+        }
+        return true
+    }
+
+    /**
      * Rebase existing M3U8 references before changing the playlist directory.
      * repairLocations() applies durable audio relocations first. publish() then
      * writes and verifies a new playlist before removing the original URI,
