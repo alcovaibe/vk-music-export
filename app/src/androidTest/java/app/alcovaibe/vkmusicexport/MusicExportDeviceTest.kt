@@ -79,6 +79,68 @@ class MusicExportDeviceTest {
         }finally{base.deleteRecursively()}
     }
 
+    @Test fun legacyFriendAudioAndM3u8AreMigratedWithoutChangingTrackUriOrVkSource()=runBlocking(Dispatchers.IO) {
+        val (context,base)=isolated("friend-folder-migration")
+        val store=AudioExportStore(context)
+        val shared=SharedAudioStore(context)
+        val friend=MusicFriend(34,"Тестовый","Друг")
+        val album=NativePlaylist(-99,7,"Сборник",1,null,null,null,null,PlaylistKind.ALBUM)
+        val task=FriendMusicExport.tasks(NativePage(listOf(track(48)),1),friend,12,album).single()
+        val legacyPath=ExportLayout.ROOT+task.folders.joinToString("/")+"/"
+        val desiredPath=ExportLayout.ROOT+"Друзья/Тестовый Друг/Альбом — Сборник/"
+        var row: PublishedAudio?=null
+        try {
+            store.replace(listOf(task),account=12)
+            val file=File(base,"tone.mp3").apply {
+                InstrumentationRegistry.getInstrumentation().context.assets.open("native-audio/tone.mp3").use {
+                    writeBytes(it.readBytes())
+                }
+            }
+            row=shared.publish(task,TransferResult(file,ProcessedAudio("mp3","audio/mpeg",1200)),
+                legacyPath){store.prepared(task,it)}
+            store.done(task,row!!)
+            SharedPlaylistStore(context,store).publishAll()
+            val beforePlaylist=store.checkpoint("m3u:"+task.source!!.key)
+            assertNotNull(beforePlaylist)
+            assertTrue(beforePlaylist!!.contains(legacyPath))
+
+            // Simulate a process kill after MediaStore moved the audio but before
+            // SQLite relink: run() must discover and repair the new physical path.
+            val moved=shared.moveVerified(row!!,desiredPath)
+            assertEquals(row!!.uri,moved.uri)
+            assertEquals(legacyPath,store.existing(task.key)?.relativePath)
+            val result=FriendFolderMigration(context,store,shared).run(limit=1)
+            assertEquals(0,result.failures)
+            assertFalse(result.more)
+            assertEquals(1,result.moved)
+            assertEquals(1,result.playlists)
+
+            val after=store.existing(task.key)!!
+            assertEquals(desiredPath,after.relativePath)
+            assertEquals(row!!.uri,after.uri)
+            assertEquals(task.source,after.source)
+            assertTrue(shared.valid(after))
+            val checkpoint=store.checkpoint("m3u:"+task.source!!.key)!!
+            assertTrue(checkpoint.contains(desiredPath))
+            assertFalse(checkpoint.contains(legacyPath))
+            val playlist=org.json.JSONObject(checkpoint)
+            val playlistUri=Uri.parse(playlist.getString("uri"))
+            val playlistText=context.contentResolver.openInputStream(playlistUri)!!.use{it.readBytes().toString(Charsets.UTF_8)}
+            assertTrue(playlistText.contains(M3uPlaylist.reference(desiredPath,after.relativePath+after.displayName)))
+            assertTrue(store.checkpoints("friend-folder-migration:").isEmpty())
+            val repeated=FriendFolderMigration(context,store,shared).run()
+            assertEquals(0,repeated.moved)
+            assertEquals(0,repeated.failures)
+        }finally {
+            row?.let{runCatching{context.contentResolver.delete(Uri.parse(it.uri),null,null)}}
+            val updated=store.checkpoint("m3u:"+task.source!!.key)
+            if(updated!=null)runCatching{
+                context.contentResolver.delete(Uri.parse(org.json.JSONObject(updated).getString("uri")),null,null)
+            }
+            store.close();base.deleteRecursively()
+        }
+    }
+
     @Test fun publishedMusicRetainsMoreThanFiveFilesAndCrashCheckpointIsAdoptedWithoutRedownload()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("public-audio-checkpoints");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val tasks=(0 until 12).map{ExportLayout.task(track(it),listOf("Моя музыка","CI checkpoints"),it+1)}
