@@ -16,7 +16,26 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # A generated update-channel JSON commit must not rerun the Android emulator
+  # matrix after the signed APK was already verified. All PRs, manual dispatches,
+  # release markers and changes to code/workflows still require full CI.
+  changes:
+    name: Detect generated update-channel-only push
+    runs-on: ubuntu-latest
+    outputs:
+      run_android: ${{ steps.scope.outputs.run_android }}
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Classify changed files, failing open
+        id: scope
+        run: python3 tools/ci-change-scope.py
+
   build:
+    needs: changes
+    if: ${{ needs.changes.outputs.run_android == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -79,6 +98,8 @@ jobs:
 
   interface-tests:
     name: interface (API ${{ matrix.api-level }})
+    needs: changes
+    if: ${{ needs.changes.outputs.run_android == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -183,14 +204,29 @@ jobs:
             app/build/outputs/androidTest-results/
           retention-days: 7
 
-  # Keep the stable check name used by release provenance validation.
-  # This succeeds only after all Android 10–17 tests succeed.
+  # Preserve the required stable check. On docs-only main pushes it records
+  # the intentional, independently verified skip; on every code/PR run it
+  # succeeds only when all nine Android API jobs succeed.
   interface:
-    needs: interface-tests
+    needs: [changes, interface-tests]
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Confirm all nine API levels passed
-        run: echo 'Interface checks passed on API 29, 30, 31, 32, 33, 34, 35, 36 and 37.'
+      - name: Require successful matrix or verified generated-JSON-only change
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUN_ANDROID: ${{ needs.changes.outputs.run_android }}
+          MATRIX_RESULT: ${{ needs.interface-tests.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          if [[ "$RUN_ANDROID" == true ]]; then
+            test "$MATRIX_RESULT" = success
+            echo 'Interface checks passed on API 29, 30, 31, 32, 33, 34, 35, 36 and 37.'
+          else
+            test "$RUN_ANDROID" = false
+            test "$MATRIX_RESULT" = skipped
+            echo 'Generated update-channel JSON only: Android binaries and sources unchanged.'
+          fi
 
   release:
     # Normal pushes/PRs run checks only. An owner-requested release requires its marker and pinned build inputs.
@@ -198,7 +234,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]')) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-followups' && contains(github.event.head_commit.message, '[publish-pr-50]')) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[publish-main-0.12.0]'))
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(github.event.head_commit.message, '[publish-main-0.12.0]') || contains(github.event.head_commit.message, '[publish-main-0.12.1]')))
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30
