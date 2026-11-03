@@ -37,8 +37,12 @@ internal class FriendAvailabilityCache(
 internal object FriendAvailabilityPriority {
     fun next(friends: List<MusicFriend>,visibleIds: List<Long>,query: String,
         excluded: (Long)->Boolean): MusicFriend? {
-        val byId=friends.associateBy{it.id}
-        visibleIds.forEach{id->byId[id]?.takeUnless{excluded(it.id)}?.let{return it}}
+        // Index only the visible subset, not the entire friends list on every preview request.
+        if(visibleIds.isNotEmpty()) {
+            val visibleSet=visibleIds.toSet()
+            val visible=friends.filter{it.id in visibleSet&&!excluded(it.id)}.associateBy{it.id}
+            visibleIds.forEach{id->visible[id]?.let{return it}}
+        }
         val needle=query.trim()
         if(needle.isNotEmpty()) {
             friends.firstOrNull{friend->
