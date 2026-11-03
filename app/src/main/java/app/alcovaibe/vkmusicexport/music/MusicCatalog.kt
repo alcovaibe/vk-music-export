@@ -10,8 +10,8 @@ internal enum class CatalogSection(val title: String,val kind: PlaylistKind?) {
 
 internal object MusicCatalog {
     /** The same server classification is used for the viewer and friends. */
-    suspend fun load(api: MusicApi,access: MusicAccess,owner: Long,guard: suspend()->Unit={},personal: Boolean=true,partial:(NativeCatalog)->Unit={},progress:(Int,Int)->Unit={_,_->},
-        onPagination:(String,NativeCatalog)->Unit={_,_->}): NativeCatalog {
+    suspend fun load(api: MusicApi,access: MusicAccess,owner: Long,guard: suspend()->Unit={},personal: Boolean=true,partial:(NativeCatalog)->Unit={},
+        onPagination:(String,NativeCatalog)->Unit={_,_->},progress:(Int,Int)->Unit={_,_->}): NativeCatalog {
         fun eligible(list: NativePlaylist)=!list.deleted&&(!personal||list.owner==owner||list.following!=false)
         val all=MusicPagination.catalogCursor({offset,cursor->guard();api.catalogPage(access,owner,offset,cursor).also{guard()}},progress,{part->partial(part.copy(lists=part.lists.filter(::eligible)))})
         guard()
