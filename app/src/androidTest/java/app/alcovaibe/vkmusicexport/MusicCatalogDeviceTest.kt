@@ -143,8 +143,14 @@ class MusicCatalogViewModelDeviceTest {
             ui.waitUntil(10000){!model.state.value.busy}
             assertEquals(2,MusicCatalog.lists(model.state.value.catalog,CatalogSection.ALBUMS,model.state.value.catalogKinds).size)
             ui.runOnUiThread{model.prepare(catalogKind=PlaylistKind.ALBUM)}
-            ui.waitUntil(10000){!model.state.value.busy&&model.downloadsOpen.value}
-            withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED"||AudioExportRuntime.active.get())delay(50)}
+            // A busy VM may be waiting for a previous catalogue verification to
+            // release the download database on a slow emulator. Wait for the operation
+            // outcome, then report any actual preparation error instead of a bare timeout.
+            ui.waitUntil(25000){!model.state.value.busy}
+            assertTrue("Album queue not opened; stage=${model.state.value.stage}, "+
+                "error=${model.state.value.error}, message=${model.state.value.message}",
+                model.downloadsOpen.value)
+            withTimeout(25000){while(AudioExportRuntime.state.value.status!="PAUSED"||AudioExportRuntime.active.get())delay(50)}
             assertEquals(listOf(101L,102L),fetched);assertEquals(2,AudioExportRuntime.state.value.total)
             assertEquals(MusicError.ACCESS,AudioExportRuntime.state.value.error)
             assertEquals(0,AudioExportRuntime.state.value.failed);assertEquals(2,AudioExportRuntime.state.value.pending)
