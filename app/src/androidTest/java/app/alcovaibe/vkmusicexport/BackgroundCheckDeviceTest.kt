@@ -176,6 +176,44 @@ class BackgroundCheckDeviceTest {
         }}finally{saved?.let{context.contentResolver.delete(Uri.parse(it.uri),null,null)};dir.deleteRecursively()}
     }
 
+    @Test fun repeatedLegacyAudioExportStartAcknowledgesForegroundRequests()=runBlocking<Unit> {
+        if(android.os.Build.VERSION.SDK_INT>=34)return@runBlocking
+        // Android 10–13: an overlapping startForegroundService call must not be
+        // ignored before startForeground. A rejected foreground start crashes the
+        // *process*, so exercising two requests protects the whole test suite.
+        val manager=app.getSystemService(NotificationManager::class.java)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                if(android.os.Build.VERSION.SDK_INT>=33) {
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                        instrumentation.uiAutomation.executeShellCommand(
+                            "pm grant ${app.packageName} android.permission.POST_NOTIFICATIONS"
+                        )
+                    ).use { it.readBytes() }
+                }
+                // Do not rely on real VK credentials or a network transfer.
+                AudioExportRuntime.initialize(app)
+                AudioExportRuntime.clear(app)
+                manager.cancel(AudioExportRuntime.NOTIFICATION_ID)
+                scenario.onActivity {
+                    assertTrue(BackgroundTransport.startExport(app))
+                    assertTrue(BackgroundTransport.startExport(app))
+                }
+                withTimeout(30_000L) {
+                    while(manager.activeNotifications.none {
+                        it.id==AudioExportRuntime.NOTIFICATION_ID &&
+                            it.notification.flags and Notification.FLAG_ONGOING_EVENT == 0
+                    }) delay(50)
+                }
+                assertFalse(AudioExportRuntime.active.get())
+            } finally {
+                BackgroundTransport.stopExport(app)
+                withTimeout(15_000L){while(AudioExportRuntime.active.get())delay(50)}
+                manager.cancel(AudioExportRuntime.NOTIFICATION_ID)
+            }
+        }
+    }
+
     @Test fun legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials()=runBlocking<Unit> {
         if(android.os.Build.VERSION.SDK_INT>=34)return@runBlocking
         // Test on disposable emulators only. Use a deliberately unmatched credential ID;
