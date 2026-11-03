@@ -2,6 +2,11 @@ package app.alcovaibe.vkmusicexport.music
 
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
+import okhttp3.FormBody
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 class FriendAvailabilityTest {
     private fun friend(id: Long,name: String="Friend")=MusicFriend(id,name,"User",handle="@user$id")
@@ -41,6 +46,22 @@ class FriendAvailabilityTest {
             cache.snapshot(listOf(friend(34),friend(35))))
         cache.clear()
         assertNull(cache.get(35))
+    }
+
+    @Test fun actualVkFriendPreviewRequestsJustOneTrackAndAcceptsAnEmptyLibrary()=runBlocking {
+        val requests=mutableListOf<Map<String,String>>()
+        val client=NetworkClients.api().newBuilder().addInterceptor{chain->
+            val form=chain.request().body as FormBody
+            requests.add((0 until form.size).associate{form.name(it) to form.value(it)})
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                .code(200).message("Synthetic")
+                .body("""{"response":{"count":0,"items":[]}}""".toResponseBody()).build()
+        }.build()
+        VkAudioClient(client).probeFriendAudio(MusicAccess("a".repeat(64),"CI",accountId=12),34)
+        assertEquals(1,requests.size)
+        assertEquals("34",requests.single()["owner_id"])
+        assertEquals("1",requests.single()["count"])
+        assertEquals("0",requests.single()["offset"])
     }
 
     @Test fun visibleFriendsAndSearchMatchesAreCheckedBeforeBackgroundItems() {
