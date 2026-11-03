@@ -47,11 +47,14 @@ internal class FriendFolderMigration(private val context: Context,private val st
         musicCheck(limit in 1..100,MusicError.STORAGE)
         var moved=0;var skipped=0;var failed=0;var more=false
         // Existing task metadata covers even empty playlists (no saved audio files).
+        val sourceKeys=hashSetOf<String>()
         for((task,_) in store.taskRows()) {
             currentCoroutineContext().ensureActive()
+            val key=task.source?.key?:continue
+            if(!sourceKeys.add(key))continue
             val folder=ExportLayout.ROOT+task.folders.joinToString("/")+"/"
             val next=planned(task,folder)?:continue
-            record(marker(task.key),next)
+            record(marker("source:"+key),next)
         }
         val groups=store.savedFiles().groupBy{it.uri}
         for((_,aliases) in groups) {
