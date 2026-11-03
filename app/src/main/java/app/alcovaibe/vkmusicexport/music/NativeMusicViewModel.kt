@@ -849,8 +849,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             return
         }
         if(stage!="availability")_availability.value=AvailabilityState()
-        // Verification of downloaded collections never delays a foreground music action.
-        catalogVerificationWork?.cancel();catalogVerificationWork=null
+        // Cancel background verification before any foreground operation. Await its
+        // completion before touching the download database: cancellation alone does
+        // not guarantee that an in-flight SQLite/file read has released its handles.
+        val cancelledVerification=catalogVerificationWork
+        catalogVerificationWork=null
+        cancelledVerification?.cancel()
         _state.update{if(it.catalogVerifying)it.copy(catalogVerifying=false)else it}
         if(stage in setOf("browser_auth","configure","forget")){_duplicates.value=DuplicatesState();friends.reset()}
         if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
@@ -874,6 +878,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 // An old Activity/operation may still be finishing its non-cancellable cleanup.
                 // Wait for that owner instead of failing the user's next attempt with BUSY.
                 NativeMusicGate.mutex.withLock {
+                    cancelledVerification?.join()
                     active(g);_state.update{it.copy(waitingForSlot=false)}
                     try {
                         withContext(Dispatchers.IO){operations.begin(id)}
