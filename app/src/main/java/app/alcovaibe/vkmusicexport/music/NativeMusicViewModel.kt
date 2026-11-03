@@ -1400,7 +1400,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     override fun onCleared(){
         val pending=work
         if(_state.value.stage !in MaintenanceRuntime.stages)pending?.cancel()
-        if(pending==null)stateScope.cancel() else pending.invokeOnCompletion {
+        if(pending==null) {
+            // A completed worker can clear work before the StateFlow collector
+            // publishes its last state. Never freeze an outdated "busy" snapshot.
+            _visibleState.value=visibleState(_state.value)
+            stateScope.cancel()
+        }else pending.invokeOnCompletion {
             // Cleanup can finish after viewModelScope is cancelled. Publish its final state before releasing observers.
             _visibleState.value=visibleState(_state.value);stateScope.cancel()
         }
