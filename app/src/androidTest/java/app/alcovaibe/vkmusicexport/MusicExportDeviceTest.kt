@@ -39,6 +39,46 @@ class MusicExportDeviceTest {
     }
     private fun cleanup(rows: List<PublishedAudio>){rows.forEach{runCatching{target.contentResolver.delete(Uri.parse(it.uri),null,null)}}}
 
+    @Test fun friendFoldersUsePrivateIdentityAndNeverMixIdenticalNamesOrCollections()=runBlocking(Dispatchers.IO) {
+        val (context,base)=isolated("friend-directory-identity")
+        val first=MusicFriend(34,"Алина","Смирнова")
+        val second=MusicFriend(35,"Алина","Смирнова")
+        val song=track(1);val page=NativePage(listOf(song),1)
+        val album=app.alcovaibe.vkmusicexport.music.NativePlaylist(-90,3,"Лето",1,null,null,null,null,PlaylistKind.ALBUM)
+        val album2=album.copy(id=4)
+        val taskA=FriendMusicExport.tasks(page,first,12).single()
+        val taskB=FriendMusicExport.tasks(page,second,12).single()
+        val taskAlbum=FriendMusicExport.tasks(page,first,12,album).single()
+        val taskAlbum2=FriendMusicExport.tasks(page,first,12,album2).single()
+        val taskOtherAlbum=FriendMusicExport.tasks(page,second,12,album).single()
+        try {
+            val store=AudioExportStore(context)
+            val firstRoot=store.directory(taskA)
+            val otherRoot=store.directory(taskB)
+            val firstAlbum=store.directory(taskAlbum)
+            val secondAlbum=store.directory(taskAlbum2)
+            val otherAlbum=store.directory(taskOtherAlbum)
+            assertEquals(ExportLayout.ROOT+"Друзья/Алина Смирнова/",firstRoot)
+            assertEquals(ExportLayout.ROOT+"Друзья/Алина Смирнова (2)/",otherRoot)
+            assertEquals(firstRoot+"Альбом — Лето/",firstAlbum)
+            assertEquals(firstRoot+"Альбом — Лето (2)/",secondAlbum)
+            assertEquals(otherRoot+"Альбом — Лето/",otherAlbum)
+            assertFalse(firstRoot.contains("[34]"));assertFalse(otherRoot.contains("[35]"))
+            assertEquals("34",taskA.source?.id);assertEquals("35",taskB.source?.id)
+            store.close()
+            val reopened=AudioExportStore(context)
+            try {
+                assertEquals(firstRoot,reopened.directory(taskA))
+                assertEquals(otherRoot,reopened.directory(taskB))
+                assertEquals(firstAlbum,reopened.directory(taskAlbum))
+                assertEquals(otherAlbum,reopened.directory(taskOtherAlbum))
+                // The same VK ID keeps its existing directory even after a profile rename.
+                val renamed=FriendMusicExport.tasks(page,first.copy(firstName="Новое имя"),12).single()
+                assertEquals(firstRoot,reopened.directory(renamed))
+            }finally{reopened.close()}
+        }finally{base.deleteRecursively()}
+    }
+
     @Test fun publishedMusicRetainsMoreThanFiveFilesAndCrashCheckpointIsAdoptedWithoutRedownload()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("public-audio-checkpoints");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val tasks=(0 until 12).map{ExportLayout.task(track(it),listOf("Моя музыка","CI checkpoints"),it+1)}

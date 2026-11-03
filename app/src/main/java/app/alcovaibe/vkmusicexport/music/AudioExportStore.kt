@@ -48,8 +48,62 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         val db=writableDatabase;db.beginTransaction()
         try{val result=block();db.setTransactionSuccessful();return result}finally{db.endTransaction()}
     }
+    private fun recordedDirectory(identity: String)=readableDatabase.rawQuery(
+        "SELECT relative_path FROM directories WHERE identity=?",arrayOf(identity)).use{
+        if(it.moveToFirst())it.getString(0)else null
+    }
+    private fun directoryReserved(path: String)=readableDatabase.rawQuery(
+        "SELECT 1 FROM directories WHERE comparison_key=?",arrayOf(path.lowercase(Locale.ROOT))).use{it.moveToFirst()}
+    private fun recordDirectory(identity: String,path: String,replace: Boolean=false) {
+        writableDatabase.execSQL(if(replace)
+            "UPDATE directories SET relative_path=?,comparison_key=? WHERE identity=?"
+            else "INSERT INTO directories(identity,relative_path,comparison_key) VALUES(?,?,?)",
+            if(replace)arrayOf(path,path.lowercase(Locale.ROOT),identity)
+            else arrayOf(identity,path,path.lowercase(Locale.ROOT)))
+    }
+    /**
+     * Friend display roots are reserved by account+friend VK ID, not by names.
+     * Two friends named alike get separate stable roots; each friend's playlists
+     * share their own root. The ID itself remains in the private SQLite identity.
+     * Legacy paths are not silently moved: their saved media URIs remain intact.
+     */
+    private fun friendDirectory(task: AudioExportTask): String? {
+        val source=task.source?:return null
+        val friendId=ExportLayout.friendId(source)?:return null
+        if(task.folders.firstOrNull()!="Друзья"||task.folders.size !in 2..3)return null
+        val display=ExportLayout.displayFolders(task)
+        val rootIdentity="friend:v1:${source.account}:${friendId}"
+        var root=recordedDirectory(rootIdentity)
+        if(root==null) {
+            val base=display[1]
+            var duplicate=1
+            do {
+                val label=if(duplicate==1)base else "${ExportLayout.component(base,150)} ($duplicate)"
+                root=ExportLayout.ROOT+"Друзья/"+label+"/"
+                duplicate++
+                musicCheck(duplicate<=1_000_000,MusicError.STORAGE)
+            }while(directoryReserved(root!!))
+            recordDirectory(rootIdentity,root!!)
+        }
+        if(task.folders.size==2)return root
+        val identity="source:v2:"+source.key
+        val old=recordedDirectory(identity)
+        if(old!=null&&old.startsWith(root!!))return old
+        val name=display[2]
+        var duplicate=1
+        var candidate: String
+        do {
+            val label=if(duplicate==1)name else "${ExportLayout.component(name,150)} ($duplicate)"
+            candidate=root+label+"/"
+            duplicate++
+            musicCheck(duplicate<=1_000_000,MusicError.STORAGE)
+        }while(directoryReserved(candidate))
+        recordDirectory(identity,candidate,replace=old!=null)
+        return candidate
+    }
     /** Source identity stays private; equal visible titles get stable, short folder suffixes. */
     @Synchronized fun directory(task: AudioExportTask): String=transaction {
+        friendDirectory(task)?.let{return@transaction it}
         val identity=task.source?.let{"source:v2:"+it.key}?:json.encodeToString(task.folders)
         val existing=readableDatabase.rawQuery("SELECT relative_path FROM directories WHERE identity=?",arrayOf(identity)).use{
             if(it.moveToFirst())it.getString(0)else null

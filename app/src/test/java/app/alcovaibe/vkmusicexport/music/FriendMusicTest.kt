@@ -29,6 +29,29 @@ class FriendMusicTest {
         assertNotEquals(library[0].key,collection[0].key)
         assertEquals(library.map{it.key},FriendMusicExport.tasks(page,user.copy(firstName="Новое имя"),12).map{it.key})
     }
+    @Test fun friendVkIdStaysInSourceButNotInTheVisibleFilesystemFolder() {
+        val user=MusicFriend(340001,"Тестовый","Друг")
+        val song=NativeTrack("90_7","Трек","Исполнитель",90)
+        val own=FriendMusicExport.tasks(NativePage(listOf(song),1),user,12).single()
+        assertEquals("340001",own.source!!.id)
+        assertEquals("Тестовый Друг [340001]",own.folders[1])
+        assertEquals(ExportLayout.ROOT+"Друзья/Тестовый Друг/",
+            ExportLayout.relative(own))
+        assertEquals(listOf("Друзья","Тестовый Друг"),ExportLayout.displayFolders(own))
+
+        val album=NativePlaylist(-99,8,"Сборник [2026]",1,null,null,null,null,PlaylistKind.ALBUM)
+        val collection=FriendMusicExport.tasks(NativePage(listOf(song),1),user,12,album).single()
+        assertEquals("340001:playlist:-99:8",collection.source!!.id)
+        assertEquals(ExportLayout.ROOT+"Друзья/Тестовый Друг/Альбом — Сборник [2026]/",
+            ExportLayout.relative(collection))
+        assertNotEquals(own.key,collection.key)
+
+        // Literal bracketed digits in a VK title are not generated IDs and must stay.
+        val natural=FriendMusicExport.tasks(NativePage(listOf(song),1),
+            MusicFriend(34,"Группа","[123]"),12).single()
+        assertEquals(ExportLayout.ROOT+"Друзья/Группа [123]/",ExportLayout.relative(natural))
+    }
+
     @Test fun friendsCatalogRetainsSharedPlaylistsAndNeverMixesAlbumsIntoThePlaylistTab()=runTest {
         val playlist=NativePlaylist(-9,1,"Плейлист",1,null,null,null,0,following=false)
         val album=NativePlaylist(-9,2,"Альбом",1,null,null,null,1,following=false)

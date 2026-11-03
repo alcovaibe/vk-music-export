@@ -53,10 +53,29 @@ internal object ExportLayout {
     }
     // Keep the old task identity, including its source ID, for saved-file reuse and old queues.
     // Only remove our final generated suffix; brackets/numbers in the original title remain.
-    fun displayFolders(task: AudioExportTask): List<String> = task.folders.mapIndexed{i,folder->
-        if(i==1&&task.folders.size==2&&task.folders.first() in setOf("Альбомы","Плейлисты"))
-            component(folder.replace(Regex(" \\[(?:-?\\d+_\\d+|album\\d+)\\]$"),""),180)
-        else folder
+    /** VK identities stay in ExportSource and the task key, never in user-visible folder labels. */
+    fun friendId(source: ExportSource?): Long? {
+        val safe=source?:return null
+        return when(safe.kind) {
+            "friend_library" -> safe.id.toLongOrNull()
+            "friend_collection" -> safe.id.substringBefore(':').toLongOrNull()
+            else -> null
+        }?.takeIf{it>0}
+    }
+
+    fun displayFolders(task: AudioExportTask): List<String> {
+        val friendId=friendId(task.source).takeIf{task.folders.firstOrNull()=="Друзья"}
+        return task.folders.mapIndexed{i,folder->
+            when {
+                i==1&&friendId!=null&&folder.endsWith(" [${friendId}]") ->
+                    component(folder.removeSuffix(" [${friendId}]"),180)
+                i==2&&friendId!=null&&task.source?.kind=="friend_collection" ->
+                    component(folder.replace(Regex(" \\[-?[0-9]+_[0-9]+\\]$"),""),180)
+                i==1&&task.folders.size==2&&task.folders.first() in setOf("Альбомы","Плейлисты") ->
+                    component(folder.replace(Regex(" \\[(?:-?\\d+_\\d+|album\\d+)\\]$"),""),180)
+                else -> folder
+            }
+        }
     }
     fun relative(task: AudioExportTask,duplicate: Int=1): String {
         musicCheck(duplicate>0,MusicError.STORAGE)
