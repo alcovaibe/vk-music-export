@@ -45,7 +45,7 @@ class MusicExportDeviceTest {
         val second=MusicFriend(35,"Алина","Смирнова")
         val song=track(1);val page=NativePage(listOf(song),1)
         val album=app.alcovaibe.vkmusicexport.music.NativePlaylist(-90,3,"Лето",1,null,null,null,null,PlaylistKind.ALBUM)
-        val album2=album.copy(id=4)
+        val album2=NativePlaylist(-90,4,"Лето",1,null,null,null,null,PlaylistKind.ALBUM)
         val taskA=FriendMusicExport.tasks(page,first,12).single()
         val taskB=FriendMusicExport.tasks(page,second,12).single()
         val taskAlbum=FriendMusicExport.tasks(page,first,12,album).single()
