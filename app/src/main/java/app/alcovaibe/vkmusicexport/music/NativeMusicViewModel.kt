@@ -1020,33 +1020,81 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("resume_refresh"){probe(it)}
     }
     private suspend fun probe(g: Int) {
-        _state.update{it.copy(probe=null,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY)}
-        val access=access();val probe=api.library(access);active(g)
-        withContext(Dispatchers.IO){vault.replace(access,access.withSession(verifiedAt=System.currentTimeMillis(),accountId=probe.owner))}
-        sessions?.reload()
-        acceptProbe(g,access,probe)
+        _state.update{it.copy(error=null,catalogError=null,libraryRefreshing=true,catalogRefreshing=true,
+            libraryStale=it.page!=null&&it.selected==null,catalogStale=it.catalog!=null)}
+        try {
+            val access=access()
+            val first=MusicPagination.retryTransientPage{api.library(access)}
+            active(g)
+            withContext(Dispatchers.IO){
+                vault.replace(access,access.withSession(verifiedAt=System.currentTimeMillis(),accountId=first.owner))
+            }
+            sessions?.reload()
+            acceptProbe(g,access,first)
+            lastLibraryRefreshMs=android.os.SystemClock.elapsedRealtime()
+        }finally {
+            if(g==generation)_state.update{it.copy(libraryRefreshing=false,catalogRefreshing=false)}
+        }
     }
     private suspend fun acceptProbe(g: Int,access: MusicAccess,probe: NativeProbe) {
         active(g)
-        _artists.value=MusicArtistsState(owner=probe.owner)
-        _state.update{it.copy(probe=probe,page=null,selected=null,catalog=null,catalogError=null,catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY)}
-        try {
-            val full=fullLibrary(g,access,probe)
-            active(g);_state.update{it.copy(probe=full,page=full.library)}
-        }catch(e: CancellationException){throw e}
-         catch(e: Exception){active(g);_state.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
-        try {
-            loadCatalog(g,access,probe.owner)
-            _state.update{it.copy(message="Музыкальный доступ работает. Плейлисты и альбомы показаны отдельно.")}
-        }catch(e: CancellationException){throw e}
-         catch(e: Exception){active(g);val error=(e as? MusicFailure)?.code?:MusicError.RESPONSE;_state.update{it.copy(catalogError=error)}}
+        val sameOwner=_state.value.probe?.owner==probe.owner
+        if(!sameOwner) {
+            friends.reset()
+            _artists.value=MusicArtistsState(owner=probe.owner)
+        }
+        _state.update{old->
+            if(sameOwner)old.copy(libraryRefreshing=true,catalogRefreshing=true)
+            else old.copy(probe=probe,page=probe.library,selected=null,catalog=null,catalogError=null,
+                catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY,
+                libraryRefreshing=true,libraryStale=false,catalogRefreshing=true,catalogStale=false,
+                catalogVerifying=false)
+        }
+        // Independent fetches: the catalogue can appear before the last track page, and
+        // track positions appear as each verified page is returned. One failing source
+        // does not prevent the other source from being displayed.
+        supervisorScope {
+            val catalogue=async {
+                try{loadCatalog(g,access,probe.owner)}
+                catch(e: CancellationException){throw e}
+                catch(e: Exception){active(g);_state.update{it.copy(catalogError=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
+            }
+            try {
+                val full=fullLibrary(g,access,probe)
+                active(g)
+                _state.update{old->
+                    old.copy(probe=full,
+                        page=if(old.catalogSection==CatalogSection.LIBRARY&&old.selected==null)full.library else old.page,
+                        libraryRefreshing=false,libraryStale=false)
+                }
+            }catch(e: CancellationException){throw e}
+             catch(e: Exception) {
+                active(g)
+                _state.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,
+                    libraryRefreshing=false,libraryStale=it.page?.tracks?.size==it.page?.count)}
+            }
+            catalogue.await()
+        }
+        active(g)
+        _state.update{if(it.catalogError==null&&it.error==null)
+            it.copy(message="Музыкальный доступ работает. Плейлисты и альбомы показаны отдельно.")else it}
     }
     private suspend fun fullLibrary(g: Int,access: MusicAccess,proof: NativeProbe): NativeProbe {
         val page=MusicPagination.tracks({offset->
             active(g);if(offset==0)proof.library else api.libraryPage(access,proof.owner,offset)
-        }){n,total->_state.update{it.copy(preparing="Получено треков: $n/$total")}}
+        },progress={n,total->
+            _state.update{it.copy(preparing="Получено треков: $n/$total")}
+        },partial={partial->
+            _state.update{old->
+                if(old.probe?.owner!=proof.owner)old
+                else old.copy(probe=proof.copy(library=partial),
+                    page=if(old.catalogSection==CatalogSection.LIBRARY&&old.selected==null)partial else old.page,
+                    libraryStale=false)
+            }
+        })
         active(g)
-        Diagnostics.event("native_music_sample",mapOf("stage" to "library","entries" to page.tracks.size,"expected_count" to page.count,"complete" to true))
+        Diagnostics.event("native_music_sample",mapOf("stage" to "library","entries" to page.tracks.size,
+            "expected_count" to page.count,"complete" to true))
         return proof.copy(library=page)
     }
     private suspend fun downloadedCatalog(g: Int,access: MusicAccess,owner: Long,catalog: NativeCatalog): Set<String> = withContext(Dispatchers.IO) {
