@@ -911,6 +911,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
                     _state.update{it.copy(busy=false,stage="",stopping=false,waitingForSlot=false,
                         authCodePending=false,authCodeIssue=null,preparing=null,
+                        libraryRefreshing=if(it.stopping)false else it.libraryRefreshing,
+                        catalogRefreshing=if(it.stopping)false else it.catalogRefreshing,
+                        libraryStale=it.libraryStale||(it.stopping&&it.libraryRefreshing&&it.page!=null),
+                        catalogStale=it.catalogStale||(it.stopping&&it.catalogRefreshing&&it.catalog!=null),
                         message=if(it.stopping)"Операция остановлена. Готовые файлы сохранены." else it.message)}
                 }
             }
