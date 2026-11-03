@@ -2,7 +2,7 @@ package app.alcovaibe.vkmusicexport.music
 
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.*
 import okhttp3.*
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -16,6 +16,10 @@ internal interface MusicApi {
     suspend fun accountOwner(access: MusicAccess): Long = library(access).owner
     suspend fun friendsPage(access: MusicAccess,offset: Int): FriendsPage = throw MusicFailure(MusicError.METHOD)
     suspend fun friendProfile(access: MusicAccess,id: Long): MusicFriend = throw MusicFailure(MusicError.METHOD)
+    /** Only access is being checked, not the size or content of the friend's library. */
+    suspend fun probeFriendAudio(access: MusicAccess,owner: Long) {
+        libraryPage(access,owner,0)
+    }
     suspend fun followedArtists(access: MusicAccess,owner: Long): List<MusicArtist> = throw MusicFailure(MusicError.METHOD)
     suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> = followedArtists(access,owner).also{progress(it,1)}
     suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails = throw MusicFailure(MusicError.METHOD)
@@ -80,6 +84,15 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun friendProfile(access: MusicAccess,id: Long): MusicFriend {
         musicCheck(id>0)
         return FriendMusicProtocol.profile(request(access,"users.get",mapOf("user_ids" to id.toString(),"fields" to "photo_200,domain,screen_name")),id)
+    }
+    override suspend fun probeFriendAudio(access: MusicAccess,owner: Long) {
+        musicCheck(owner>0)
+        val response=request(access,"audio.get",mapOf("owner_id" to owner.toString(),
+            "count" to "1","offset" to "0")) as? JsonObject?:throw MusicFailure(MusicError.RESPONSE)
+        val count=(response["count"] as? JsonPrimitive)?.intOrNull?:throw MusicFailure(MusicError.RESPONSE)
+        val items=response["items"] as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
+        musicCheck(count>=0&&items.size<=1&&items.size<=count)
+        // A successful response containing zero tracks still confirms API access.
     }
     override fun previewArtwork(track: NativeTrack): String? = synchronized(previews){previews[track.id]}
     private fun rememberPreviews(value: JsonElement) {
