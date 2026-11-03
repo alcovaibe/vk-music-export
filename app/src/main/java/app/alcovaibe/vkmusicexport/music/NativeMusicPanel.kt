@@ -40,6 +40,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -112,9 +113,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(destination==MusicDestination.FRIENDS&&friendState.user==null) {
             snapshotFlow {
                 friendsRootScroll.layoutInfo.visibleItemsInfo.mapNotNull{item->
-                    (item.key as? String)?.removePrefix("friend_")
-                        ?.takeIf{it!=(item.key as? String)}
-                        ?.toLongOrNull()
+                    (item.key as? String)?.takeIf{it.startsWith("friend_")}
+                        ?.removePrefix("friend_")?.toLongOrNull()
                 }
             }.distinctUntilChanged().collect{model.friends.prioritizeVisible(it)}
         }else model.friends.prioritizeVisible(emptyList())
