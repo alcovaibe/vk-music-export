@@ -130,8 +130,10 @@ class CatalogProfileRegressionTest {
         val gap=MusicPagination.catalogCursor({_,_->
             NativeCatalog(listOf(item(1,0)),3,nextOffset=3)
         })
-        assertFalse(gap.complete)
-        assertEquals(CatalogStopReason.SKIPPED_POSITIONS,gap.pagination?.reason)
+        // The provider explicitly advances over unavailable positions, so the
+        // accessible catalog is complete even when its total count includes skips.
+        assertTrue(gap.complete)
+        assertEquals(CatalogStopReason.COMPLETE,gap.pagination?.reason)
         assertEquals(3,gap.pagination?.positions)
         assertEquals(1,gap.pagination?.received)
     }
