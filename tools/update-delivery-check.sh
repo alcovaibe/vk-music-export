@@ -7,7 +7,7 @@ serial=$(adb get-serialno | tr -d '\r')
 [[ "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" == 1 ]]
 [[ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" == "$expected_api" ]]
 mkdir -p update-delivery-results
-trap 'adb logcat -d -b crash > update-delivery-results/crash.txt || true; adb exec-out screencap -p > update-delivery-results/final.png || true' EXIT
+trap 'adb logcat -d > update-delivery-results/logcat.txt || true; adb logcat -d -b crash > update-delivery-results/crash.txt || true; adb exec-out screencap -p > update-delivery-results/final.png || true' EXIT
 root_ready=false
 for attempt in $(seq 1 5); do
   adb root > update-delivery-results/adb-root.txt 2>&1 || true
@@ -27,6 +27,7 @@ adb shell "mkdir -p $appdata/files; cp /data/local/tmp/updater-protected.bin $ap
 adb install channel-evidence/host.apk
 adb install channel-evidence/tests.apk
 # No user/account sign-in, real release key or live VK calls are involved.
+adb logcat -c
 adb shell am instrument -w -r -e class app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest "$host.test/androidx.test.runner.AndroidJUnitRunner" | tee update-delivery-results/instrumentation.txt
 adb pull "$appdata/files/updater-protected.bin" update-delivery-results/protected-after.bin
 cmp update-delivery-results/protected.bin update-delivery-results/protected-after.bin

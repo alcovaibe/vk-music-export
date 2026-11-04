@@ -29,10 +29,12 @@ class UpdateDeliveryDeviceTest {
         fun shell(command: String)=ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command)).bufferedReader().use{it.readText().trim()}
         assertTrue("Dedicated updater host required",host.packageName.endsWith(".updatecheck"))
         assertEquals("Disposable emulator required","1",shell("getprop ro.kernel.qemu"))
+        android.util.Log.i("VKUpdateDelivery","emulator_guard_passed")
         val production=UpdateProtocol.PACKAGE
         val pm=host.packageManager
         val before=pm.getPackageInfo(production,PackageManager.GET_SIGNING_CERTIFICATES)
         assertEquals(1343L,before.longVersionCode)
+        android.util.Log.i("VKUpdateDelivery","installed_baseline_read")
         val assets=instrumentation.context.assets
         val json=assets.open("update-fixtures/manifest.json").use{it.readBytes()}
         val release=UpdateProtocol.latest(json)
@@ -58,10 +60,17 @@ class UpdateDeliveryDeviceTest {
                 val wrong=release.copy(apk=UpdateAsset(bad.length(),hash(bad.readBytes())))
                 try{service.verify(bad,wrong);fail("Wrong actual signer was accepted")}catch(e: UpdateProblem){assertEquals("INVALID_APK",e.code)}
             }finally{bad.delete()}
+        android.util.Log.i("VKUpdateDelivery","wrong_signer_rejected")
             assertEquals(release,service.latest())
+            val probe=File(host.cacheDir,"candidate-probe.apk").apply{writeBytes(bytes)}
+            try {
+                val inspected=pm.getPackageArchiveInfo(probe.absolutePath,PackageManager.GET_SIGNING_CERTIFICATES)
+                android.util.Log.i("VKUpdateDelivery","identity api=${Build.VERSION.SDK_INT} installed=${before.longVersionCode} package=${inspected?.packageName} code=${inspected?.longVersionCode} name=${inspected?.versionName} min=${inspected?.applicationInfo?.minSdkVersion} flags=${inspected?.applicationInfo?.flags} actualSigners=${inspected?.signingInfo?.apkContentsSigners?.map{hash(it.toByteArray())}} installedSigners=${before.signingInfo?.apkContentsSigners?.map{hash(it.toByteArray())}}")
+            }finally{probe.delete()}
             val apk=service.download(release){received,total->assertTrue(received in 0..total)}
             downloaded=apk
             service.verify(apk,release)
+        android.util.Log.i("VKUpdateDelivery","download_verified")
             val install=UpdateInstaller.install(host,apk)
             assertEquals(Intent.ACTION_VIEW,install.action)
             assertEquals("${host.packageName}.updates",install.data!!.authority)
@@ -75,6 +84,7 @@ class UpdateDeliveryDeviceTest {
             assertTrue(pm.canRequestPackageInstalls())
             host.startActivity(Intent(host,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             Thread.sleep(1000)
+        android.util.Log.i("VKUpdateDelivery","opening_system_installer")
             host.startActivity(install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             fun clickInstall(node: AccessibilityNodeInfo?): Boolean {
                 if(node==null)return false
@@ -91,6 +101,7 @@ class UpdateDeliveryDeviceTest {
                 if(!confirmed)confirmed=clickInstall(automation.rootInActiveWindow)
                 Thread.sleep(500)
             }
+        android.util.Log.i("VKUpdateDelivery","installer_wait_finished")
             assertTrue("System installer confirmation not observed",confirmed)
             val after=pm.getPackageInfo(production,PackageManager.GET_SIGNING_CERTIFICATES)
             assertEquals(release.code.toLong(),after.longVersionCode)
