@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import android.content.Context
+import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.AtomicFile
@@ -41,10 +42,11 @@ internal class DuplicateReceiptStore(context: Context): SQLiteOpenHelper(context
     }
     private fun header(db: SQLiteDatabase): Header?=db.rawQuery(
         "SELECT owner,generation,snapshot,created,receipt_count,next_ordinal,legacy_keys FROM duplicate_state WHERE singleton=1",null).use{c->
-        if(!c.moveToFirst())null else Header(c.getLong(0),c.getString(1),c.getString(2),c.getLong(3),c.getInt(4),c.getLong(5),c.getInt(6)==1).also {
+        if(!c.moveToFirst())null else header(c)
+    }
+    private fun header(c: Cursor)=Header(c.getLong(0),c.getString(1),c.getString(2),c.getLong(3),c.getInt(4),c.getLong(5),c.getInt(6)==1).also {
             musicCheck(it.owner>0&&UUID_PATTERN.matches(it.generation)&&DuplicateReceiptKeys.hex.matches(it.snapshot)&&
                 it.created>=0&&it.size in 0..DuplicateReceiptKeys.MAX_CHECKS&&it.sequence>=it.size&&c.getInt(6) in 0..1,MusicError.STORAGE)
-        }
     }
     private fun writeHeader(db: SQLiteDatabase,h: Header) {
         db.execSQL("INSERT OR REPLACE INTO duplicate_state(singleton,owner,generation,snapshot,created,receipt_count,next_ordinal,legacy_keys) VALUES(1,?,?,?,?,?,?,?)",
@@ -83,18 +85,21 @@ internal class DuplicateReceiptStore(context: Context): SQLiteOpenHelper(context
         db.execSQL("INSERT INTO duplicate_import(singleton,status) VALUES(1,?)",arrayOf(status))
     }
     /** Commit precedes deletion. An interruption leaves an ignored old copy, never a partial import. */
-    private inline fun <T> ready(now: Long,block:(SQLiteDatabase)->T): T {
-        val result=atomic{db->if(!initialized)ensureImported(db,now);block(db)}
+    private fun initialize(now: Long) {
         if(!initialized) {
+            atomic{db->ensureImported(db,now)}
             val status=importStatus(readableDatabase)
             if(status=="imported"||status=="expired"){legacy.delete();directory.delete()}
             initialized=true
         }
-        return result
     }
-    fun count(now: Long,lease: DuplicateCacheLease?): Int=ready(now){db->
-        val h=header(db)
-        if(h!=null&&DuplicateReceiptKeys.fresh(h.created,now)&&(lease==null||h.lease==lease))h.size else 0
+    private inline fun <T> ready(now: Long,block:(SQLiteDatabase)->T): T {
+        initialize(now);return atomic(block)
+    }
+    fun count(now: Long,lease: DuplicateCacheLease?): Int {
+        initialize(now)
+        val h=header(readableDatabase)
+        return if(h!=null&&DuplicateReceiptKeys.fresh(h.created,now)&&(lease==null||h.lease==lease))h.size else 0
     }
     fun begin(owner: Long,tracks: List<NativeTrack>,now: Long): DuplicateCacheLease {
         musicCheck(owner>0&&now>=0,MusicError.STORAGE)
@@ -126,13 +131,32 @@ internal class DuplicateReceiptStore(context: Context): SQLiteOpenHelper(context
         directory.delete()
         return result
     }
-    fun get(lease: DuplicateCacheLease,key: String,now: Long): DuplicateSignature?=ready(now){db->
+    /** One SELECT has a consistent SQLite read snapshot of both generation and receipt.
+     * No writer transaction is needed for a cache hit/miss, including across DB connections.
+     */
+    fun get(lease: DuplicateCacheLease,key: String,now: Long): DuplicateSignature? {
+        initialize(now)
+        var damaged=false
+        val found=readableDatabase.rawQuery("SELECT s.owner,s.generation,s.snapshot,s.created,s.receipt_count,s.next_ordinal,s.legacy_keys,r.codec,r.sha256,r.signature_version FROM duplicate_state s LEFT JOIN duplicate_receipts r ON r.owner=s.owner AND r.track_key=? WHERE s.singleton=1 AND s.owner=? AND s.generation=?",
+            arrayOf(key,lease.owner.toString(),lease.generation)).use{c->
+            if(!c.moveToFirst())null else {
+                val h=header(c)
+                if(!DuplicateReceiptKeys.fresh(h.created,now)||c.isNull(7))null else signature(c,7).also{damaged=it==null}
+            }
+        }
+        return if(damaged)readAndPrune(lease,key,now)else found
+    }
+    private fun signature(c: Cursor,offset: Int): DuplicateSignature? {
+        val codec=c.getString(offset);val sha=c.getString(offset+1)
+        return if(codec in setOf("mp3","m4a")&&DuplicateReceiptKeys.hex.matches(sha)&&c.getInt(offset+2)==2)DuplicateSignature(codec,sha)else null
+    }
+    /** Recheck under the write transaction so a repaired/replaced row is never deleted. */
+    private fun readAndPrune(lease: DuplicateCacheLease,key: String,now: Long): DuplicateSignature?=ready(now){db->
         val h=header(db)
         if(h==null||h.lease!=lease||!DuplicateReceiptKeys.fresh(h.created,now))return@ready null
         val result=db.rawQuery("SELECT codec,sha256,signature_version FROM duplicate_receipts WHERE owner=? AND track_key=?",arrayOf(lease.owner.toString(),key)).use{c->
             if(!c.moveToFirst())return@ready null else {
-                val codec=c.getString(0);val sha=c.getString(1)
-                if(codec in setOf("mp3","m4a")&&DuplicateReceiptKeys.hex.matches(sha)&&c.getInt(2)==2)DuplicateSignature(codec,sha) else null
+                signature(c,0)
             }
         }
         if(result==null) {

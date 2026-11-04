@@ -17,6 +17,10 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class DuplicateReceiptDeviceTest {
@@ -158,6 +162,29 @@ class DuplicateReceiptDeviceTest {
             file.delete();try{cache.save(row,signature,file);fail("Missing verified output must not be saved")}catch(_: MusicFailure){}
             assertEquals(0,cache.count());assertNull(cache.get(row))
         }finally{cache.close();dir.deleteRecursively()}
+    }
+    @Test fun walReaderCompletesWhileAnotherConnectionHoldsTheWriter() {
+        val(context,dir)=isolated("wal-reader");val store=DuplicateReceiptStore(context)
+        val cache=DuplicateScanCache(context,{now},store);val row=track(1)
+        val entered=CountDownLatch(1);val release=CountDownLatch(1);val failure=AtomicReference<Throwable?>()
+        val reader=Executors.newSingleThreadExecutor();var writer: Thread?=null
+        try {
+            cache.begin(12,listOf(row));cache.save(row,signature,audio(context))
+            val db=store.writableDatabase;assertTrue(db.isWriteAheadLoggingEnabled)
+            writer=Thread {
+                try {
+                    db.beginTransactionNonExclusive()
+                    try{entered.countDown();check(release.await(15,TimeUnit.SECONDS))}finally{db.endTransaction()}
+                }catch(e: Throwable){failure.set(e);entered.countDown()}
+            }.apply{start()}
+            assertTrue(entered.await(5,TimeUnit.SECONDS));assertNull(failure.get())
+            val result=reader.submit<DuplicateSignature?>{cache.get(row)}
+            assertEquals(signature,result.get(5,TimeUnit.SECONDS))
+            assertEquals(1L,release.count);assertTrue(writer.isAlive)
+        }finally {
+            release.countDown();writer?.join(5000);reader.shutdownNow();cache.close();dir.deleteRecursively()
+        }
+        assertNull(failure.get())
     }
     @Test fun receiptWritesAndReadsScaleFor1004500And20000() {
         val results=mutableListOf<JsonObject>()
