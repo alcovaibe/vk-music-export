@@ -1,0 +1,951 @@
+[
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/AccessRecoveryDeviceTest.kt",
+    "tests": [
+      "rejectedOrCancelledManualCandidatePreservesEncryptedOldAccess",
+      "damagedEnvelopeAllowsFreshManualAccessAndExplicitLocalReset"
+    ],
+    "conditions": [],
+    "assertions": 8
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/ArtistFailureDeviceTest.kt",
+    "tests": [
+      "actualClientDistinguishesVkDenialHttpFailureAndMissingSectionWithoutDisplayingServerText"
+    ],
+    "conditions": [],
+    "assertions": 16
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/ArtworkDeviceTest.kt",
+    "tests": [
+      "newDownloadsEmbedRealJpegInMp3AndM4aAndImageFailureKeepsAudio",
+      "retrofitKeepsUriNamesAudioBytesAndClearedHistoryAndSkipsExistingCovers",
+      "interruptedPartialWriteRestoresBackupAndCompletedWriteAdoptsNewHash",
+      "diagnosticsSeparateChangedAudioFromInvalidCoverBeforeAnyWrite",
+      "smallerAndAlbumVariantsAreTriedAfter404And410AndFirstDecodedImageStopsSearch",
+      "allMissingVariantsRemainAnErrorAndOtherFailuresAndTotalBudgetStopFallback",
+      "fallbackRetagsOnlyVerifiedAudioAndAll404LeaveOriginalAndIndexIntact",
+      "artworkHttpFailuresKeepStatusAndRedirectReasonWithoutUrlsOrSecrets",
+      "imageTransportHasNoApiCredentialsAndRejectsRedirectsAndInvalidPictures",
+      "resultsListNamesAndArtistsForEveryMissingUnavailableAndFailedTrack",
+      "editingStartsOnlyOnExplicitClickAndProgressCanBeDismissedWithoutStopping"
+    ],
+    "conditions": [],
+    "assertions": 116
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/ArtworkLookupDeviceTest.kt",
+    "tests": [
+      "searchPreviewAndBackNeverWriteUntilSeparateConfirmation",
+      "entryPointBelongsToMissingSavedIdAndCarriesExactTaskKey",
+      "confirmedAlternateRecordEmbedsCoverInMp3AndM4aWithoutReplacingIdentityOrAudio",
+      "lastMomentCancellationRestoresJournalAndLeavesOriginalBytesAndIndex",
+      "backgroundDropsPreviewAndFreshExplicitChoiceUpdatesOnlyTheSavedFile"
+    ],
+    "conditions": [],
+    "assertions": 38
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/AuditRegressionDeviceTest.kt",
+    "tests": [
+      "realM4aHasPortableTextTagsAndStillDecodesAfterRewrite",
+      "shortCompleteManifestCannotPublishCataloguePreview",
+      "legacyArchiveMigrationIsIdempotentAndNeverDeletesOriginalOrIndex",
+      "corruptLegacyIndexKeepsAudioAndExposesRecoveryCopy",
+      "renameAndReorderKeepSamePublishedUriAndDirectory",
+      "allFailuresAndSourceRetrySurviveDatabaseReopenWithoutResettingDone",
+      "playlistPublishesPortableOrderAndIsIdempotent",
+      "schemaTwoPreservesPreparedFilesAndQueueWhileAddingSourceFailures",
+      "formerlyAcceptedPreviewRemainsOnDiskButIsNotReusedOrAllowedToAuthorizeDeletion"
+    ],
+    "conditions": [],
+    "assertions": 66
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/BackgroundCheckDeviceTest.kt",
+    "tests": [
+      "scanOutlivesActivityAndFinishesWithoutSendingAnyDeletion",
+      "pauseAndTaskRecreationReuseCompletedHashesButNewLoginCannotResumeAnOldScheduledRequest",
+      "systemUidtJobHasSeparatePrivateNotificationAndCanRunFromVisibleActivity",
+      "staleRegionFlagCanDownloadOnlyAfterFreshUnrestrictedExactIdAndExplicitRestrictionStillSkips",
+      "repeatedLegacyAudioExportStartAcknowledgesForegroundRequests",
+      "legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"
+    ],
+    "conditions": [],
+    "assertions": 55
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/CatalogRefreshDeviceTest.kt",
+    "tests": [
+      "downloadedAlbumsDeletedSourcesChangedContentsAndMissingFilesRefreshWithoutGhostsOrNewQueues"
+    ],
+    "conditions": [],
+    "assertions": 20
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/CompleteMusicListsDeviceTest.kt",
+    "tests": [
+      "libraryAndPlaylistLoadAllPagesAndLastCollectionNeedsOnlyScrolling",
+      "tracksAppearBeforeLastPageAndRefreshDoesNotEraseLastConfirmedSnapshot"
+    ],
+    "conditions": [],
+    "assertions": 23
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DeviceConfirmationDeviceTest.kt",
+    "tests": [
+      "codeScreenIsSecureClearsOnSubmitPauseAndStateRestoreAndDoesNotUseADialog",
+      "confirmationDispatchIsPinnedToChromeAndDisablesDefaultExternalRedirectHandling"
+    ],
+    "conditions": [],
+    "assertions": 22
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DevicePairingViewModelDeviceTest.kt",
+    "tests": [
+      "codeRetryAndSuperAppExchangeReplaceCredentialOnlyAfterMusicSucceeds",
+      "exchangedSuperAppTokenAndDeniedMusicKeepPreviousEncryptedCredential",
+      "journalSecretCheckIgnoresDigitsInsideNumericTimingsButRejectsSecretValues",
+      "nextActivityWaitsForCancelledOwnerInsteadOfReceivingBusy"
+    ],
+    "conditions": [],
+    "assertions": 44
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DiagnosticsDeviceTest.kt",
+    "tests": [
+      "menuSharesFreshCurrentRunJsonWithReadGrantAndNoClipboardOrPreviousSelector",
+      "queuePressureReportsLossAndProducesValidJson"
+    ],
+    "conditions": [],
+    "assertions": 17
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DownloadContinuityDeviceTest.kt",
+    "tests": [
+      "playlistContinuesAfterUnavailableAndMediaHttpErrorsAndPersistsFinalFailures",
+      "expiredMediaUrlIsRefreshedButRealAccountFailureKeepsLaterItemsPending",
+      "changedRecordInvalidatesOnlyItsReceiptAndOtherLibraryEditsKeepCompletedChecks",
+      "changingLibraryFinishesTaskOnceAndExplicitNextSearchDownloadsOnlyNewCandidates"
+    ],
+    "conditions": [],
+    "assertions": 48
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DownloadProgressDeviceTest.kt",
+    "tests": [
+      "liveProgressCanBeDismissedReopenedPausedResumedRetriedAndCleared",
+      "musicEntrySurvivesRecreationAndStartingAQueueAutomaticallyShowsProgress"
+    ],
+    "conditions": [],
+    "assertions": 28
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DuplicateRemovalViewModelDeviceTest.kt",
+    "tests": [
+      "readyResultAcceptsRemovalDuringJobCleanupAndConfirmedActionDeletesOneRecord"
+    ],
+    "conditions": [],
+    "assertions": 10
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DuplicatesDeviceTest.kt",
+    "tests": [
+      "everyTargetRequiresSeparateConfirmationAndCancelDoesNotDelete",
+      "pausedScanShowsSavedChecksAndExplicitResumeWithoutAnyDeletion",
+      "cleanupButtonFollowsDownloadAllAndExistsOnlyInMyMusic",
+      "temporaryAudioHashIgnoresCoverAndRemovesTemporaryCopiesWithoutChangingInputs",
+      "readyCoverIsExcludedBeforeReadingFileOrCallingVkEvenWhenFileIsMissing",
+      "accessFailureResumesAfterRecreationWithoutRedownloadingCompletedTracksButRemovalIsFresh",
+      "checkpointIsBoundToAccountSnapshotAndExpiryAndCorruptionNeverCreatesMatches",
+      "cancellationDuringProcessingDoesNotCheckpointPartialTrackOrLeaveTransferFiles",
+      "completedSearchReusesEveryHashAfterRecreationReorderAndAlbumChange",
+      "verifiedDownloadedLibraryFilesAreHashedLocallyAndRepeatedSearchDoesNotFetchMedia"
+    ],
+    "conditions": [],
+    "assertions": 77
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/EmulatorWindow.kt",
+    "tests": [],
+    "conditions": [],
+    "assertions": 2
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/FriendsMusicDeviceTest.kt",
+    "tests": [
+      "friendAccessPreviewDistinguishesAvailableAndDenied",
+      "searchProfilesSelectionAndPlaylistTabsFollowTheConceptAndKeepAlbumsSeparate",
+      "selectionPersistsViewerAccountOriginalFriendPositionsAndFullFriendPagination",
+      "deniedMusicIsExplicitAndChangedCredentialsDiscardLateProfileResults",
+      "canonicalCardsClassifyMissingTypesWithoutAnExtraTabWhenVkIgnoresTheAlbumFilter",
+      "incompleteRemoteMetadataNeverReplacesVerifiedLocalMetadataWhenReusingAudio",
+      "scopedHttpDenialDoesNotInvalidateTheAccountButExplicitTokenRejectionIsPreserved"
+    ],
+    "conditions": [],
+    "assertions": 57
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/InterfaceTest.kt",
+    "tests": [
+      "nativeMusicEntryAndHomeSurviveRecreationWithoutRetiredScreens",
+      "fullScreenLicenseNavigationSurvivesRecreationAndAndroidBack",
+      "splitOfflineLegalDocumentsPreserveEveryCharacter"
+    ],
+    "conditions": [],
+    "assertions": 63
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LargeAudioAndReuseDeviceTest.kt",
+    "tests": [
+      "mp3LargerThan100MiBPassesRealParserAndPublishesWithOriginalAudio",
+      "retryAfterReopenDownloadsOnlyFailuresAndNewSelectionSkipsAllSavedTracks",
+      "renamedAlbumFileAndMoveWithNewMediaIdAreReusedWithoutVkRequests",
+      "playlistReplacementFromKnownAlbumIsAdoptedWithoutAnotherDownloadOrCopy",
+      "missingOrModifiedSavedFilesAreDownloadedAgainWhileIntactFilesKeepTheirUris",
+      "albumPlaylistLibraryAndRepeatedPositionsShareOneUriWithoutVkOrMediaRequests",
+      "sharedArtworkAndMoveUpdateAllReferencesAtomicallyAcrossDatabaseReopen",
+      "missingSharedFileIsDownloadedOnceForAllMemberships",
+      "manualRecoveryShowsReferenceCountAndReplacesAllLinksWithoutDeletingEitherFile",
+      "equalTitlesWithDifferentIdsAndCatalogueDurationMismatchNeverAutoMerge"
+    ],
+    "conditions": [],
+    "assertions": 99
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LegacyCleanupDeviceTest.kt",
+    "tests": [
+      "cleanupRetainsLegacyAudioAndIndexesAndKeepsPublicMusicQueueCredentialsCollectionAndJournals",
+      "legacySymlinkIsPreservedAndNeverFollowedIntoCurrentTransferDirectory"
+    ],
+    "conditions": [],
+    "assertions": 15
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LegacyCollectionDeviceTest.kt",
+    "tests": [
+      "obsoleteCollectionIsIgnoredAndNeverRewrittenAfterUpgradeOrNavigation"
+    ],
+    "conditions": [],
+    "assertions": 6
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LibraryRemovalDeviceTest.kt",
+    "tests": [
+      "basketExistsOnlyInLibraryAndConfirmationRequiresAnExplicitClick",
+      "cancelledAndAlbumRequestsCannotDeleteAndConfirmedLibraryRemovalRetainsActualMp3",
+      "aModifiedPublishedFileBlocksMutationEvenAfterAnEarlierSuccessfulVerification"
+    ],
+    "conditions": [],
+    "assertions": 18
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MaintenanceBackgroundDeviceTest.kt",
+    "tests": [
+      "allThreeOperationsContinueWithActivityStoppedAndViewModelClearedAndNotificationReopensProgress",
+      "savedCheckpointRestoresPausedCursorReportsAndNeverRestoresManualConsent"
+    ],
+    "conditions": [],
+    "assertions": 31
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MediaFinalizationDeviceTest.kt",
+    "tests": [
+      "publishingUsesFinalProviderLocationAndRefreshesTheDurableCheckpoint",
+      "unfinishedQueuePublicationAdoptsVerifiedFinalMetadataAfterRestart",
+      "unfinishedLegacyPublicationReusesTheSameVerifiedUriAfterProviderRename",
+      "changedBytesAreNeverAdoptedAsACompletedPublication"
+    ],
+    "conditions": [],
+    "assertions": 19
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicArtistLoadingDeviceTest.kt",
+    "tests": [
+      "stalledSubscriptionRequestStopsSpinnerKeepsVerifiedArtistsAndCanRetry"
+    ],
+    "conditions": [],
+    "assertions": 5
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicCatalogDeviceTest.kt",
+    "tests": [
+      "manualTypesSurviveReopenAndRemainScopedToAccountWithoutChangingQueue",
+      "tabsSeparateAutomaticTypesAndGenericCollectionsNeedNoManualChoice",
+      "fullCatalogAutomaticTypesAndBulkAlbumQueueUseOnlyMatchingSources"
+    ],
+    "conditions": [],
+    "assertions": 31
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicExportDeviceTest.kt",
+    "tests": [
+      "friendFoldersUsePrivateIdentityAndNeverMixIdenticalNamesOrCollections",
+      "legacyFriendAudioAndM3u8AreMigratedWithoutChangingTrackUriOrVkSource",
+      "publishedMusicRetainsMoreThanFiveFilesAndCrashCheckpointIsAdoptedWithoutRedownload",
+      "cancellationBeforePublicationDeletesPendingRowAndKeepsItemResumable",
+      "actualMp3TransferUsesMedia3ThenSharesOneFileAcrossAlbumAndLibraryWithoutSecondNetworkRequest",
+      "cleanNamesKeepDuplicateTracksAndEqualPlaylistTitlesSeparateAcrossRestart",
+      "versionOneQueueAndOldPublishedNamesSurviveMigrationAndResumeWithoutRedownload",
+      "systemUidtJobRunsFromVisibleActivityAndPausesBeforeResolvingRestrictedTracksWithoutCredentials"
+    ],
+    "conditions": [],
+    "assertions": 109
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicLibraryRedesignDeviceTest.kt",
+    "tests": [
+      "warmLibraryKeepsToolsAndShowsVersionSeparatelyWithoutArtistLinks",
+      "sortingChangesOnlyPresentationAndDownloadKeepsTheOriginalVkPosition",
+      "followedArtistsOpenOnlyFromTheirCategoryAndAlbumsReturnToTheArtist"
+    ],
+    "conditions": [],
+    "assertions": 30
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/NativeMusicDeviceTest.kt",
+    "tests": [
+      "operationJournalRecoversInterruptedOwnerAndIgnoresStaleCompletion",
+      "actualMedia3ExtractionOfMp3AndAacFromDirectAndTransportStreamsProducesDecodableAudio",
+      "independentKeystoreEnvelopeTamperDetectionAndRetiredProviderRemoval",
+      "accessScreenRemovesManualCredentialsAndKeepsSavedLibraryUntouched"
+    ],
+    "conditions": [],
+    "assertions": 28
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/PlaybackDeviceTest.kt",
+    "tests": [
+      "localPlaybackSurvivesStoppedActivityAndPublishesMediaNotification",
+      "seekPreviousNextShuffleAndRepeatControlTheServicePlayer",
+      "fullScreenAndMiniPlayerShareStateAndLocalModeIsOffline",
+      "downwardSingleFingerSwipeCollapsesAndKeepsPlaybackWhileOtherGesturesDoNot",
+      "onlineHlsUsesTheRealDecoderAndPublicTimelineHidesTheResolvedAddress",
+      "onlineResourcesCannotOpenLocalFilesContentProvidersOrInlineData"
+    ],
+    "conditions": [],
+    "assertions": 36
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/RecentFilesDeviceTest.kt",
+    "tests": [
+      "recentHistoryRequiresConfirmationAndCancelKeepsTheList"
+    ],
+    "conditions": [],
+    "assertions": 8
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/SavedFileRecoveryDeviceTest.kt",
+    "tests": [
+      "inspectionSeparatesMovesMissingSizeAndHashWithoutWriting",
+      "exactMovedFileRelinksAndSurvivesDatabaseReopenWithoutRevivingHistory",
+      "multipleIdenticalCopiesNeverChooseByNameAndForgetChangesOnlyIndex",
+      "manualSelectionRequiresConfirmationCopiesBytesAndPreservesSourceAndClearedHistory",
+      "interruptedImportAdoptsPublishedCopyButCannotReviveForgottenRecord",
+      "modifiedTagsNeedExplicitConfirmationAndAudioMismatchIsRejected",
+      "staleEntryNeedsConfirmationAndShowsDifferentReasonsAndExplicitActions"
+    ],
+    "conditions": [],
+    "assertions": 64
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/SettingsAndAuthDeviceTest.kt",
+    "tests": [
+      "homeMenuHasOnlyLatestReportAndNoSettingsDestinationAfterRecreation",
+      "approvedPairingSurvivesChromeBackgroundAndSavesOnlyAfterMusicSucceeds",
+      "approvedPairingWithMusicDeniedKeepsPreviousEncryptedCredential",
+      "retainedAuthLauncherTargetsChromeAndDoesNotFallBackToAnotherBrowser"
+    ],
+    "conditions": [],
+    "assertions": 28
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/TrackMetadataDeviceTest.kt",
+    "tests": [
+      "newDownloadsUseResolvedVersionsInNamesTagsAndPlaylistsForBothCodecs",
+      "retrofitUpdatesSharedMembershipsOldPlaylistsAndBothCodecsWithoutChangingAudioOrCover",
+      "tornWriteRestoresTheOriginalFileAndACompletedWriteCanBeRecovered",
+      "foreignIdChangedFileAndUnverifiedLocalReplacementAreNotEdited",
+      "cancellationBeforeWritingLeavesBytesNamesAndIndexUntouchedAndCollisionsKeepBothFiles",
+      "metadataCursorSurvivesDatabaseReopenAndResumesAfterReconnectionWithoutRepeatingReadyFiles",
+      "manuallyChosenTextSurvivesReopenAndFutureChecksUseItWithoutRebindingAudio",
+      "resultsDistinguishUpdatedCurrentUnavailableSkippedAndFailedFiles",
+      "pausedRunOffersContinueWithItsSavedCounts",
+      "unavailableRecordOffersManualLookupAndThePreviewRequiresConfirmation"
+    ],
+    "conditions": [],
+    "assertions": 81
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/TrackMetadataLookupViewModelDeviceTest.kt",
+    "tests": [
+      "unavailableReportOpensLookupBackgroundInvalidatesChoiceAndConfirmedSourceIsRemembered"
+    ],
+    "conditions": [],
+    "assertions": 9
+  },
+  {
+    "file": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/UpdateDeviceTest.kt",
+    "tests": [
+      "legacyGithubCredentialRemovalPreservesMusicAccessAndScopedInstallerUri",
+      "menuOpensBottomSheetDirectlyAndThereIsNoStandaloneUpdateButton"
+    ],
+    "conditions": [],
+    "assertions": 22
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/DiagnosticTest.kt",
+    "tests": [
+      "urlRedactionIsDenyByDefault",
+      "arbitraryMessagesAndCodesNeverSurvive",
+      "aliasesCorrelateResourcesWithoutQueriesOrRawSecrets",
+      "errorCategoriesKeepNoPageText",
+      "interruptedTailExportsValidJsonAndPreviousSurvivesRestart",
+      "startupVersionMetadataSurvivesEventRotation",
+      "capsFiveRunsAndSegmentsWithExplicitRotationAndSequence"
+    ],
+    "conditions": [],
+    "assertions": 27
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtistCatalogFormatsTest.kt",
+    "tests": [
+      "sharedRootBlocksAndNestedCatalogPoolAreJoinedUsingSectionReferences",
+      "inlineArtistsAndHeaderLinksLoadTheRealSubscriptionSection",
+      "semanticSubscriptionBlocksAndDictionaryPoolsDoNotNeedRussianHeadings",
+      "trustedSectionDoesNotTreatItsWholeSharedPoolAsSubscriptions",
+      "structuralReportContainsOnlyWhitelistedNamesTypesAndCounts"
+    ],
+    "conditions": [],
+    "assertions": 10
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtistFailureTextTest.kt",
+    "tests": [
+      "missingSectionIsNotDescribedAsAnApiDenial",
+      "explicitVkCodeAndMethodArePreservedSeparatelyFromHttp",
+      "incompleteCatalogueAndNetworkFailuresHaveDifferentReasons",
+      "untrustedExceptionTextNeverBecomesUiText"
+    ],
+    "conditions": [],
+    "assertions": 17
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtworkDiagnosticsTest.kt",
+    "tests": [
+      "itemAndInterruptedSummaryRetainOnlyCodesAndCounters",
+      "fileFailuresHaveSpecificPrivateReasonsAndRemainIncompleteForQueuePolicy",
+      "noCoverAndUnavailableHaveSeparateCountsAndHttpIsNeverReportedAsMissingCover",
+      "candidateTraceCorrelatesWithFinalItemAndContainsOnlyFixedMetadata",
+      "emptyVkAudioIsUnavailableButMalformedOrMismatchedResponsesRemainErrors"
+    ],
+    "conditions": [],
+    "assertions": 43
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtworkLookupTest.kt",
+    "tests": [
+      "lookupReturnsCandidatesWithoutSelectingLoadingOrWritingAndSupportsBoundedPages",
+      "directLinkResolvesOnlyItsExactRecordWithoutSearchOrOpeningTheUrl",
+      "linksRejectOtherHostsCredentialsRedirectShortenersPlaylistsAndMalformedIdsBeforeApi",
+      "previewAndExplicitSingleUseChoiceKeepOriginalIdentityAndOnlyPassImageToWriter",
+      "expiredChoiceAndChangedCredentialsCannotReachWriter",
+      "cancellationAfterImageAndBeforeWriteLeavesNoApplicableChoice",
+      "noCoverRestrictedAndAlreadyCoveredTargetsCannotCreateChoice",
+      "searchParserRetainsCoverVariantsAndMissingCoverPerRowWithoutGuessing",
+      "malformedOversizedAndDuplicateSearchResultsAreNotTrusted",
+      "linkResponseMustContainExactlyTheRequestedRecordAndEmptyIsNotFound",
+      "actualClientUsesSearchReadOnlyParametersAndNeverLogsQueryUrlsOrNames",
+      "deniedSearchIsReportedWithoutFallbackMutation",
+      "searchHttp403DoesNotRenewRejectOrReplaceTheWorkingMusicCredential"
+    ],
+    "conditions": [],
+    "assertions": 54
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AudioCompletenessTest.kt",
+    "tests": [
+      "completedThirtySecondPlaylistCannotStandInForThreeMinuteSong",
+      "catalogueRoundingAndSmallCodecDelayAreAllowed",
+      "cachedPreviewAndChangedCatalogueDurationCannotBeReused",
+      "durationMismatchRetainsCatalogueActualAndManifestMeasurementsForReport",
+      "mediaHttpAndTrackAccessReasonsAreSeparateFromAccountFailures"
+    ],
+    "conditions": [],
+    "assertions": 20
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AudioStorageTest.kt",
+    "tests": [
+      "storageBudgetAcceptsLargeAudioAndRejectsInsufficientSpaceOrOverflow",
+      "mp3MetadataInspectionDoesNotNarrowLargeFileLengthToInt"
+    ],
+    "conditions": [],
+    "assertions": 3
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AudioTransferTest.kt",
+    "tests": [
+      "completeEncryptedHlsUsesAllSegmentsOriginalIvAndNeverSendsApiSecrets",
+      "failedSegmentAbortsAndRemovesPartialFilesWithoutInvokingProcessor",
+      "cancellationDuringStreamingRemovesTemporaryAndNoReadyResultIsReturned",
+      "unknownFormatsAndFailedDurationValidationNeverLeaveAnOutput",
+      "mediaParserIOExceptionAfterSuccessfulResponseIsFormatAndNeverLeaksItsMessage",
+      "localProcessorIoAndPrematureEndHaveDifferentCodesAndAlwaysRemovePartialFiles",
+      "dnsFailureBeforeHeadersIsNetworkAndOnlyItsFixedCategoryIsRecorded",
+      "socketFailureWhileReadingBodyStaysNetworkAndDoesNotInvokeLocalProcessor",
+      "unusableTemporaryDirectoryIsStorageWithoutAnyNetworkRequest",
+      "transferDeadlineIsTimeoutWhileParentTimeoutRemainsCancellation",
+      "mediaHttpErrorsAreTrackScopedAndNeverLeavePartialFiles"
+    ],
+    "conditions": [],
+    "assertions": 68
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AuditRegressionTest.kt",
+    "tests": [
+      "prependingAndReorderingDoNotChangeExistingTaskIdentities",
+      "namesAccountsAndRepeatedOccurrencesHaveIndependentSemantics",
+      "legacyQueueDeserializationKeepsItsPersistedKey",
+      "m3uPreservesOrderUnicodeAndRepeatedOccurrencesUsingRelativePaths",
+      "identicalMdatWithDifferentDecoderConfigurationCannotMatch",
+      "portableM4aTextTagsDoNotChangeSampleDataOrItsInterpretation",
+      "failedInitializationCanBeRetriedAndConcurrentWaitersShareTheRetry",
+      "cancellingAWaiterDoesNotCancelSharedRecovery",
+      "newPairingCanBeVerifiedWhenOldEnvelopeIsUnreadable"
+    ],
+    "conditions": [],
+    "assertions": 28
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/BackgroundTransportTest.kt",
+    "tests": [
+      "allSupportedVersionsSelectExactlyOneTransport"
+    ],
+    "conditions": [],
+    "assertions": 2
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/BoundedInputTest.kt",
+    "tests": [
+      "returnsExactlyRequestedBytesWithoutReadingNext",
+      "shortStreamsAndEmptyBoundsAreSupported",
+      "zeroLengthReadsStillMakeProgressWithoutInfiniteLoop"
+    ],
+    "conditions": [],
+    "assertions": 5
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/CatalogClassificationRegressionTest.kt",
+    "tests": [
+      "emptyAndNullCursorFieldsDoNotTruncateOffsetPagesAndDiagnosticsOmitPrivateValues",
+      "explicitVkObjectTypeWinsOverReleaseHintsAndMissingMetadataIsNeverGuessedFromTheTitle",
+      "ignoredAlbumFilterUsesCanonicalCardsForBothPersonalAndFriendProfiles",
+      "contradictoryListResponsesAreResolvedByTheExactCanonicalCard",
+      "confirmedAlbumMembershipClassifiesTheComplementAsPlaylistsWithoutDetailRequests",
+      "unresolvedMetadataNeverAddsAFourthTabOrClaimsZeroAlbumsOrDownloadsAGuessedType",
+      "providerNextOffsetAdvancesPastUnavailablePositionsIncludingAnEmptyPage",
+      "detailRequestUsesExactIdentityAndAccessKeyAndAProfileDenialDoesNotBecomeAccountExpiry"
+    ],
+    "conditions": [],
+    "assertions": 40
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/CatalogDownloadsTest.kt",
+    "tests": [
+      "onlyCompleteMatchingCurrentSourceWithIntactOriginalsIsHidden",
+      "serverFailureKeepsCollectionVisibleAndCancellationPropagates"
+    ],
+    "conditions": [],
+    "assertions": 10
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/CatalogProfileRegressionTest.kt",
+    "tests": [
+      "ignoredAlbumFilterCannotTurnAllPlaylistsIntoAlbums",
+      "explicitTypeWinsOverReleaseHintsAndAlbumOnlyResultsAreRetained",
+      "cursorPagesPreserveAllListsAndRepeatedCursorsRemainIncomplete",
+      "validPartialCatalogIsPublishedBeforeALaterPageFailure",
+      "firstOptionalAlbumPageAlsoRetriesTemporaryNetworkErrors",
+      "incompleteAlbumFilterCoveredByMainCatalogDoesNotInvalidatePlaylists",
+      "optionalAlbumFilterWithUnseenItemsRemainsIncompleteOnlyForAlbums",
+      "catalogCursorRetriesOnlyTransientFailuresAndReportsGaps",
+      "incompleteOptionalAlbumDoesNotDiscardAudioAndRequiredFailureReportsExactPosition",
+      "richerDuplicateTypeIsRetainedAndConflictingResponsesRemainUnclassified",
+      "catalogHeaderCanOpenTheSubscriptionsSectionWithoutMixingRecommendations",
+      "realClientUsesCursorWithoutOffsetAndReportsGlobalMalformedTrackPosition"
+    ],
+    "conditions": [],
+    "assertions": 77
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DeviceAuthTest.kt",
+    "tests": [
+      "jsonBootstrapRequiresTypedBoundedFieldsAndNeverPrintsCredentials",
+      "pairingExpiryIsBoundedAndOnlyFirstPartyHttpsBrowserLinksAreAccepted",
+      "unixExpiryBecomesMonotonicDeadlineAndInvalidClockRangesAreRejected",
+      "serverApprovalRejectsPartialSessionsAndKeepsSuperAppSeparateFromApiAccess",
+      "serverErrorsAreFixedCodesAndDoNotRetainResponseMessages",
+      "actualRequestBuildersUseCurrentJsonBootstrapAndKeepSecretsOutOfDiagnostics",
+      "failureOfFirstJsonStageStopsBeforeCreatingOrOpeningAnything",
+      "jsonApiNeverFollowsRedirectToAnUnapprovedHost",
+      "pairingWaitsForUserGestureAndForegroundThenResumesAfterRequestIsOpened",
+      "expirationAndCancellationCannotBecomeAuthenticationSuccess"
+    ],
+    "conditions": [],
+    "assertions": 80
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DeviceCodeFlowTest.kt",
+    "tests": [
+      "codeFormatAndValidationResponsesAreStrictAndRedacted",
+      "incorrectThenCorrectCodeReusesOneRequestAndWaitsForRealApproval",
+      "declineIsDetectedWhileUserHasNotEnteredAnyCode",
+      "backgroundSubmissionCannotSendValidationAndOriginalDeadlineKeepsRunning",
+      "acceptedCodeCannotCompleteARequestThatNeverBecomesApproved",
+      "cancellationDuringCodeValidationCancelsTheActualCoroutineAndDoesNotBecomeExpiry",
+      "validationExpiryIsTerminalAndApprovalAfterMonotonicDeadlineIsRejected"
+    ],
+    "conditions": [],
+    "assertions": 33
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DeviceTokenExchangeTest.kt",
+    "tests": [
+      "actualClientCompletesSuperAppExchangeAndNeverUsesIntermediateTokenAsApiAccess",
+      "malformedPartialAndErrorLoginResponsesCannotBecomeApiAccess",
+      "callbacksRejectLookalikeHostsCredentialsPortsAndFragmentsBeforeAnyRequest",
+      "redirectsCannotReplayPostCredentialsOrEscapeTheCallbackAllowlist",
+      "deadlineAndTransportFailureAlwaysCleanUpNativeCookies",
+      "nativeCookieJarIsBoundedScopedAndCanBeCompletelyCleared",
+      "exchangeWaitsForForegroundAndLateResultCannotCompleteExpiredPairing",
+      "cancellingExchangeRemainsCancellationAndClosesItsWork"
+    ],
+    "conditions": [],
+    "assertions": 59
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DurableSchedulingTest.kt",
+    "tests": [
+      "cancellationAfterQueuedStillSchedulesAndRecordsAcceptance",
+      "rejectedSchedulerRestoresPausedEvenWhenCallerIsCancelled"
+    ],
+    "conditions": [],
+    "assertions": 3
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/EmbeddedArtworkTest.kt",
+    "tests": [
+      "mp3KeepsExistingTagsAndEveryAudioByteIncludingId3v1",
+      "m4aRetainsMdatAndAdjustsChunkOffsetsWhenMoovPrecedesAudio",
+      "malformedMetadataCannotOverwriteInputAndUnsafeImageAddressesAreRejected",
+      "allProvidedVariantsAreOrderedDeduplicatedAndNeverGuessedFromPlaylistOrUrl",
+      "coverComesOnlyFromTheExactAudioOrAlbumAndNeverFromAPlaylist"
+    ],
+    "conditions": [],
+    "assertions": 23
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/FriendAvailabilityTest.kt",
+    "tests": [
+      "confirmedResultsExpireAfterFifteenMinutesAndIgnoreClockRollback",
+      "cachedPermissionsNeverLeakAcrossAccountsOrSessions",
+      "actualVkFriendPreviewRequestsJustOneTrackAndAcceptsAnEmptyLibrary",
+      "visibleFriendsAndSearchMatchesAreCheckedBeforeBackgroundItems"
+    ],
+    "conditions": [],
+    "assertions": 21
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/FriendMusicTest.kt",
+    "tests": [
+      "handlesComeFromVkAndNeverFromNameOrAnUntrustedUrl",
+      "queueAccountIsTheViewerAndFriendAndOriginalTrackOwnersArePreserved",
+      "friendVkIdStaysInSourceButNotInTheVisibleFilesystemFolder",
+      "friendsCatalogRetainsSharedPlaylistsAndNeverMixesAlbumsIntoThePlaylistTab",
+      "accessErrorsDoNotInventAnOwnerPrivacySettingAndNeverDisplayRawServerText"
+    ],
+    "conditions": [],
+    "assertions": 33
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/HlsPlaylistTest.kt",
+    "tests": [
+      "longFiniteRecordingIsNotRejectedByTheOldSegmentOrDayLimits",
+      "finitePlaylistPreservesRelativeUrlsDurationSequenceAndKeyRotation",
+      "masterSelectsExplicitAudioAndOtherwiseHighestBandwidthVariant",
+      "partialLiveGappedRangeDrmAndDiscontinuousPlaylistsAreNotSuccessfulFiles",
+      "mapMustBeUnencryptedAndStableBeforeTheFirstSegment"
+    ],
+    "conditions": [],
+    "assertions": 13
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/LibraryTrackRemovalTest.kt",
+    "tests": [
+      "userSelectedReplacementNeverAuthorizesVkRemovalAfterSharingOrMoving",
+      "wrongAccountForeignFoldersAndMissingCopyNeverReachMutation",
+      "clientBindsExactAccountAndSendsOnePostWithoutPlaylistOrTokenInUrl",
+      "accessFailureIsNotRetriedAndOnlyIntegerOneMeansConfirmedSuccess"
+    ],
+    "conditions": [],
+    "assertions": 26
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicArtistsTest.kt",
+    "tests": [
+      "recommendationsAndNamesInSongsAreNeverInferredAsSubscriptions",
+      "subscriptionSectionAndBlockCursorsAreLoadedToTheEndAndDuplicatesUseIds",
+      "explicitUnfollowedArtistIsExcludedAndUnsupportedIsNotAnEmptySuccess",
+      "ownMusicSectionIsHydratedBeforeFindingArtistsAndGenericRecommendationBlocksAreIgnored",
+      "textActionsAndRepeatedShowAllLinksDoNotRestartTheSameSection",
+      "realEmptySubscriptionBlockRemainsEmpty",
+      "missingArtistPoolAndRepeatingCursorFailWithoutPublishingAPartialLibrary",
+      "artistAlbumsUseOnlyReleaseBlocksNotRecommendations",
+      "thumbnailsAcceptOnlyTrustedHttpsImageHosts",
+      "ownMusicFeedCursorIsNotFollowedAndExplicitFollowedFlagsWorkWithoutHeadings",
+      "nestedButtonsAndMetaHeadingsNavigateOnlyToTheSubscriptionSection",
+      "subscriptionOpenUrlStaysOnTheCurrentOwnerAndNeverFetchesAnExternalPage",
+      "nonRepeatingEmptyCursorsStopAndVerifiedPartialResultsArePublishedBeforeFailure",
+      "ownPreviewIsHydratedEvenWhenItAlreadyContainsTrackBlocks",
+      "sectionButtonsAndShowAllUnderSubscriptionHeadingOpenTheFullList",
+      "unrecognizedProfileProjectionRetriesCurrentUsersOwnCatalogueOnce",
+      "hydratedEmptySubscriptionSectionDoesNotRequestItselfAgain"
+    ],
+    "conditions": [],
+    "assertions": 46
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicCatalogTest.kt",
+    "tests": [
+      "completePaginationFindsAlbumsBeyondTheFirstHundredBeforeFiltering",
+      "numericTypesAreResolvedByServerAlbumMembershipAndOldChoicesCannotMisclassifyPlaylists",
+      "untypedCollectionCanBeDownloadedWithoutManualChoiceAndLibraryAlbumGroupsRemainExplicit",
+      "repeatedPositionsRetainRicherTypesWithoutFalseIncompleteWarningsButStuckPagesDo",
+      "unsupportedAlbumFilterLeavesUntypedCollectionsDownloadableWithoutConsultingOldChoices"
+    ],
+    "conditions": [],
+    "assertions": 23
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicDuplicatesTest.kt",
+    "tests": [
+      "threeOrMoreMatchingRecordsKeepOneAndNeverDeleteOnDiscovery",
+      "eachSingleUseConsentDeletesOnlyItsTargetAndFinalCopyRemains",
+      "differentAudioAndDifferentCodecAreNotDuplicatesEvenWithEqualNames",
+      "repeatedSameIdAndForeignOwnersCannotBecomeDeletableDuplicates",
+      "missingKeeperPreventsDeletionBeforeHashingOrMutation",
+      "changedAudioAfterDiscoveryPreventsDeletion",
+      "libraryChangeDuringLongHashCheckInvalidatesConsent",
+      "accountOrCredentialChangeCannotReplayOldConsent",
+      "completePaginationIncludesDuplicateBeyondFirstHundredPositions",
+      "ambiguousWriteNeverAutomaticallyRetriesAndNeedsNewConsentAndScan",
+      "cancellationDuringVerificationDoesNotSendDelete",
+      "invalidHashesCannotProveEquality",
+      "reorderAtFinalValidationFinishesOnePassWithoutHashingAgain",
+      "libraryEditsFinishWithOnlyUnchangedPairsAndDoNotRestartDiscovery",
+      "unavailableCandidateDoesNotAbortLaterCandidatesButAccountFailureDoes",
+      "verifiedRenewalKeepsConsentButAnIndependentLoginCannotUseIt",
+      "credentialChangeDuringFinalMutationAccessNeverSendsDeletion"
+    ],
+    "conditions": [],
+    "assertions": 56
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicExportTest.kt",
+    "tests": [
+      "all4449PositionsAreFetchedBeyondTenWithShortPagesAndDuplicatesPreserved",
+      "changingCountPrematureEndRepeatedPageAndCancellationCannotPretendSuccess",
+      "sparseCatalogReportsOriginalTotalAndTerminatesWithoutInventingMissingLists",
+      "folderNamesAreBoundedUnicodeSafeAndDuplicatePositionsHaveDistinctIdentity",
+      "visibleNamesOmitOnlyGeneratedNumbersWhileOldQueueIdentityAndRealTitleNumbersRemain",
+      "actualClientRequestsHundredPositionsAndExplicitOffsetWithoutLoggingAccessOrMetadata"
+    ],
+    "conditions": [],
+    "assertions": 38
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicLibrarySortingTest.kt",
+    "tests": [
+      "defaultAndNewestPreserveVkPositions",
+      "oldestReversesVkPositions",
+      "titleUsesDigitsEnglishThenRussian",
+      "yearIsOldestFirstAndUnknownLast",
+      "performerGroupingUsesSameAlphabet"
+    ],
+    "conditions": [],
+    "assertions": 6
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicProgressiveLoadTest.kt",
+    "tests": [
+      "verifiedTrackPagesArePublishedImmediatelyWithoutDeduplicatingPositions",
+      "aFailingLaterPageKeepsOnlyTheEarlierVerifiedSnapshotAndRetriesTwice",
+      "rateLimitsNeverTriggerAnAutomaticTrackRetry"
+    ],
+    "conditions": [],
+    "assertions": 14
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicSessionTest.kt",
+    "tests": [
+      "legacyCodecNeverInventsExpiryAndKeepsAllRenewalSecretsInsideTheEnvelopePayload",
+      "expiryDistinguishesUnknownRelativeAndAbsoluteAndRejectsBadTypes",
+      "concurrentForegroundAndQueueRequestsRenewOnceAndVerifyBeforePersisting",
+      "expiryAndAccessErrorsWithoutRenewalRequireLoginAndNeverCreateNetworkWork",
+      "remoteRevocationRenewsAndRetriesOnlyOnce",
+      "lateAccessErrorCannotRetryAnOldRequestWithAnotherAccountsCredential",
+      "transientFailureKeepsValidAccessAndDoesNotRetryInATightLoop",
+      "malformedRenewalOfExpiredAccessPausesInsteadOfSkippingTheDownloadQueue",
+      "deniedOrDifferentAccountRenewalNeverOverwritesThePreviousToken",
+      "signOutOrNewLoginDuringRefreshCannotBeUndoneByTheLateResponse",
+      "cancelledRefreshDoesNotSaveAndAnInitialPairingCandidateUsesItsOwnToken",
+      "longReadCanFollowMultipleVerifiedRenewalsButNotManualLoginOrSignOut",
+      "loginReplacementBetweenContinuationCheckAndResolveCannotCrossTheReadBoundary",
+      "duplicateScanSurvivesRenewalBetweenTracksAndNeverMutates",
+      "actualReissueClientPostsOnlyToLoginAndPreservesExpiryWithoutLeakingSecrets",
+      "minuteTokensRenewNearExpiryAndLongReadsSurviveMoreThan64Rotations",
+      "transientRenewalRetriesBeforeAStillValidTokenExpires"
+    ],
+    "conditions": [],
+    "assertions": 97
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/NativeProtocolTest.kt",
+    "tests": [
+      "primaryMediaExchangeRetainsAllCoverVariantsForFallbackWithoutAnExtraApiCall",
+      "cachedArtworkParseFailureRemainsAnErrorAndNextAttemptRequestsFreshMetadata",
+      "pagesPreserveDuplicatePositionsAndUnavailableTracks",
+      "malformedShapesNumbersMetadataAndDeepResponsesGetFixedErrors",
+      "remoteErrorMessagesAndParametersNeverEnterExceptionText",
+      "metadataCatalogDoesNotSerializeAccessKeysOrGuessAlbumType",
+      "cdnBoundaryRejectsSchemesCredentialsPortsFragmentsAndLookalikes",
+      "credentialValidationRejectsWrongServiceAndHeadersButAcceptsVkTokenShape",
+      "realRequestBuilderUsesOnlyFixedReadOnlyApiAndBodyCredentialsAndSafeDiagnostics"
+    ],
+    "conditions": [],
+    "assertions": 41
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/PlaybackListsTest.kt",
+    "tests": [
+      "filteringUnavailableItemsKeepsTheExactSelectedOccurrenceAndOriginalOrder",
+      "badSelectionNeverStartsAnotherSongInstead",
+      "offlineQueueUsesOnlyPresentFilesWithoutVkAccessAndDeduplicatesUri",
+      "verifiedLocalCopyCanPlayEvenWhenVkNowMarksItsOriginalRestricted",
+      "friendQueuePreservesViewerSourceAndAllRepeatedPositions",
+      "stringRepresentationsDoNotExposeUserMetadataOrUris"
+    ],
+    "conditions": [],
+    "assertions": 21
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/PlaybackNetworkTest.kt",
+    "tests": [
+      "redirectsKeepRangeRequestsAndNeverSendApiCredentials",
+      "redirectOutsideTheMediaAllowlistIsRejectedBeforeASecondRequest"
+    ],
+    "conditions": [],
+    "assertions": 6
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/PublicDeviceAuthProbeTest.kt",
+    "tests": [
+      "currentNativeCodeCanCreateAnUnapprovedAnonymousPairingRequest"
+    ],
+    "conditions": [
+      "import org.junit.Assume.assumeTrue",
+      "assumeTrue(System.getenv(\"VKM_PUBLIC_BOOTSTRAP_PROBE\")==\"1\")"
+    ],
+    "assertions": 4
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackAvailabilityTest.kt",
+    "tests": [
+      "freshAllowedResponseRecoversStaleRestrictionAndDurationWithoutChangingId",
+      "explicitRestrictionIsRespectedEvenWhenServerIncludesAUrlAndRegionIsNotGuessed",
+      "emptyMissingStreamAndMalformedIdentityAreDifferentAndUnsafeUrlsStayBlocked",
+      "clientUsesTheCurrentAccountAndNormalFixedEndpointWithoutForgedRegionHeaders",
+      "checkUsesOnlyFlaggedOrExplicitFailedTracksAndReportsLinksWithoutDownloadingAudio",
+      "accessFailureStopsCheckInsteadOfDeclaringEveryTrackRegionBlocked",
+      "denialOfOneRecordDoesNotBecomeAnExpiredAccountToken",
+      "explicitAccountAndChallengeErrorsInForbiddenResponsesRemainGlobal"
+    ],
+    "conditions": [],
+    "assertions": 39
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackMetadataBatchTest.kt",
+    "tests": [
+      "automaticRenewalDuringMetadataFetchContinuesBeforeWritingAndAcrossTheWholeBatch",
+      "rejectedAccessKeepsCurrentItemPendingAndANewRunnerResumesWithoutFetchingCompletedIds",
+      "networkLossAndCancellationPreserveTheCursorAndNeverTurnRemainingFilesIntoFailures",
+      "aManualLoginBetweenFetchAndWriteIsRejectedEvenForTheSameAccount",
+      "missingIdsChangedFilesAndOtherAccountsAreSeparateResultsAndTheRunContainsNoAccessMaterial",
+      "chosenReferenceIsUsedInsteadOfDeletedIdWhileOriginalIdentityStaysWithTheFile"
+    ],
+    "conditions": [],
+    "assertions": 39
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackMetadataLookupTest.kt",
+    "tests": [
+      "searchAndLinkNeedNeitherCoverNorMediaAndNeverAutomaticallyWrite",
+      "explicitChoiceChangesOnlyTextAndCanBeAppliedOnce",
+      "verifiedTokenRotationPreservesTheChoiceButAnotherLoginDoesNot",
+      "expiredAndChangedRecordsNeverReachWriter",
+      "textSearchParserDoesNotRequireSafeCoverOrPlayableUrlAndLegacyReportsStillDecode",
+      "cancellationDuringTheFinalReadNeverReachesTheWriter"
+    ],
+    "conditions": [],
+    "assertions": 18
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackMetadataTest.kt",
+    "tests": [
+      "subtitlesAreOptionalValidatedAndPersistedWithoutChangingIdentity",
+      "versionIsNotDuplicatedOrLostToALongFilenameAndNeverGuessedFromNumbers",
+      "exactMetadataLookupNeedsNeitherLibraryMembershipNorMediaOrArtworkAndRejectsWrongIds",
+      "playlistUsesVerifiedSavedVersionEvenWhenTheQueuedSnapshotHadNoSubtitle",
+      "mp3RewritePreservesCoverUnknownFramesAndAudioForBothId3Versions"
+    ],
+    "conditions": [],
+    "assertions": 33
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/music/VkAudioFailureTest.kt",
+    "tests": [
+      "apiDnsFailureIncludesStageAndFixedKindWithoutCredentialOrExceptionText",
+      "unexpectedClientFailureIsResponseInsteadOfBlamingNetwork"
+    ],
+    "conditions": [],
+    "assertions": 12
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/updates/UpdateControllerTest.kt",
+    "tests": [
+      "automaticIntervalManualCooldownAndRollback",
+      "publicChecksNeedNoCredentialAndAutomaticFailuresAreSilent",
+      "equalOlderAndIncompatibleReleasesAreNotOffered",
+      "pendingMetadataCannotReopenAResultAfterPause",
+      "downloadSurvivesPauseAndReadyApkIsReverifiedOnEveryInstallTap",
+      "cancellationIgnoresLateProgressAndClearsTheOfferedRelease"
+    ],
+    "conditions": [],
+    "assertions": 21
+  },
+  {
+    "file": "app/src/test/java/app/alcovaibe/vkmusicexport/updates/UpdateProtocolTest.kt",
+    "tests": [
+      "strictPublicManifestRequiresMatchingPackageTagApkAndDigest",
+      "publicRequestsNeverContainAuthorizationOrCookiesAndRedirectsAreBoundedToGithubCdn",
+      "rejectsDowngradeOtherPackageSignerDebuggableAndIncompatibleSdk",
+      "publicManifestSupportsEtagAndRejectsRollbackAndUnsolicitedNotModified",
+      "sourceErrorsAreFixedCodesAndNeverIncludeResponseBodySecrets",
+      "actualApkTransferFollowsAllowedRedirectsAndRejectsTruncatedData"
+    ],
+    "conditions": [],
+    "assertions": 26
+  }
+]

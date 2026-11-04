@@ -1,0 +1,100 @@
+[
+  {
+    "job_id": "126020268433",
+    "evidence_lines": [
+      "2026-11-03T15:37:17.6378139Z Ran 85 tests in 2.229s",
+      "2026-11-03T15:43:13.3129851Z BUILD SUCCESSFUL in 5m 55s",
+      "2026-11-03T15:43:14.5490216Z PASS: 217 resolved dependencies scanned; no OSV findings."
+    ]
+  },
+  {
+    "job_id": "126020268664",
+    "evidence_lines": [
+      "2026-11-03T15:39:50.1358971Z BUILD SUCCESSFUL in 2m 16s",
+      "2026-11-03T15:39:57.8587301Z BUILD SUCCESSFUL in 7s",
+      "2026-11-03T15:45:43.6049949Z BUILD SUCCESSFUL in 4m 15s",
+      "2026-11-03T15:45:44.0232168Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020268689",
+    "evidence_lines": [
+      "2026-11-03T15:40:04.5924042Z BUILD SUCCESSFUL in 2m 37s",
+      "2026-11-03T15:40:13.0342999Z BUILD SUCCESSFUL in 7s",
+      "2026-11-03T15:46:14.1243999Z BUILD SUCCESSFUL in 4m 32s",
+      "2026-11-03T15:46:14.5376389Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020268711",
+    "evidence_lines": [
+      "2026-11-03T15:39:48.1028455Z BUILD SUCCESSFUL in 2m 22s",
+      "2026-11-03T15:39:55.0803625Z BUILD SUCCESSFUL in 6s",
+      "2026-11-03T15:45:37.6430211Z BUILD SUCCESSFUL in 4m 8s",
+      "2026-11-03T15:45:38.0742470Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020268787",
+    "evidence_lines": [
+      "2026-11-03T15:39:16.5801667Z BUILD SUCCESSFUL in 1m 55s",
+      "2026-11-03T15:46:03.6887385Z BUILD SUCCESSFUL in 4m 39s",
+      "2026-11-03T15:46:04.0724616Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020268790",
+    "evidence_lines": [
+      "2026-11-03T15:39:38.8059451Z BUILD SUCCESSFUL in 2m 11s",
+      "2026-11-03T15:46:37.0423574Z BUILD SUCCESSFUL in 5m 34s",
+      "2026-11-03T15:46:37.4761516Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020268884",
+    "evidence_lines": [
+      "2026-11-03T15:39:33.2187631Z BUILD SUCCESSFUL in 1m 57s",
+      "2026-11-03T15:46:05.0146021Z BUILD SUCCESSFUL in 5m 19s",
+      "2026-11-03T15:46:05.4595303Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020268906",
+    "evidence_lines": [
+      "2026-11-03T15:39:45.4564526Z BUILD SUCCESSFUL in 2m 12s",
+      "2026-11-03T15:47:24.5163761Z BUILD SUCCESSFUL in 5m 49s",
+      "2026-11-03T15:47:24.9436055Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020269006",
+    "evidence_lines": [
+      "2026-11-03T15:39:27.3558992Z BUILD SUCCESSFUL in 2m 5s",
+      "2026-11-03T15:39:34.7024955Z BUILD SUCCESSFUL in 6s",
+      "2026-11-03T15:45:39.1963937Z BUILD SUCCESSFUL in 4m 36s",
+      "2026-11-03T15:45:39.6334246Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126020269086",
+    "evidence_lines": [
+      "2026-11-03T15:39:50.4908377Z BUILD SUCCESSFUL in 2m 28s",
+      "2026-11-03T15:39:59.0768773Z BUILD SUCCESSFUL in 8s",
+      "2026-11-03T15:46:12.8094940Z BUILD SUCCESSFUL in 4m 56s",
+      "2026-11-03T15:46:13.2061432Z Instrumentation verification passed: 144 distinct tests executed, no failures or skips."
+    ]
+  },
+  {
+    "job_id": "126026866925",
+    "evidence_lines": [
+      "2026-11-03T15:48:09.8566641Z PASS: exact owner-requested PR #64 build inputs; real-device acceptance remains pending.",
+      "2026-11-03T15:52:12.4629186Z BUILD SUCCESSFUL in 3m 59s",
+      "2026-11-03T15:52:14.0716162Z RELEASE_BUILD_INFO={\"apk\": \"VK-Music-Export-0.12.1-1433.apk\", \"applicationId\": \"app.alcovaibe.vkmusicexport\", \"buildRun\": \"41665666564\", \"commit\": \"90e6848257e93d82b3a6b8af09cc58ef067a7703\", \"minSdk\": 29, \"tag\": \"v0.12.1-build.1433\", \"versionCode\": 1433, \"versionName\": \"0.12.1\"}",
+      "2026-11-03T15:52:14.0718057Z RELEASE_APK_SHA256=3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "2026-11-03T15:54:35.6070158Z BUILD SUCCESSFUL in 1s",
+      "2026-11-03T15:54:36.4600160Z PASS: 217 resolved dependencies scanned; no OSV findings.",
+      "2026-11-03T15:54:43.9297147Z PASS: exact owner-requested PR #64 build inputs; real-device acceptance remains pending.",
+      "2026-11-03T15:54:43.9298021Z OWNER_REQUESTED_LATEST=https://github.com/alcovaibe/***/releases/tag/v0.12.1-build.1433"
+    ]
+  }
+]

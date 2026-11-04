@@ -1,0 +1,2226 @@
+[
+  {
+    "path": ".github/ISSUE_TEMPLATE/android_10_13_test.yml",
+    "bytes": 6429,
+    "lines": 117,
+    "sha256": "8d146105fca22d00938fb6632d7db30f6dee1cc07e9c3230c61648f9b0745dde",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+    "bytes": 5872,
+    "lines": 136,
+    "sha256": "27c7182e57979558be5def5016f0ac801b82906a60cfbd73ce71d71b3ff7a647",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/dependabot.yml",
+    "bytes": 260,
+    "lines": 12,
+    "sha256": "e4135efaa27bccbb3cd49244bd8b7b8db48d46bfa683dc8ba9a3ee3188c62b72",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/main-ruleset.json",
+    "bytes": 763,
+    "lines": 22,
+    "sha256": "9e61d01417d461807ba9083810ba96ef2d4da9e9c2e32d55d52f87ff73a35d5b",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/workflows/android.yml",
+    "bytes": 14031,
+    "lines": 323,
+    "sha256": "0c5661bd25f2c8a52d8e7278bc118119b71c7905533721b13213c87aafaee508",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/workflows/archive-releases.yml",
+    "bytes": 1733,
+    "lines": 50,
+    "sha256": "eff5b796258b2b65941bd55938969b0a955918563397a141be3c92d01faa3379",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/workflows/recover-release.yml",
+    "bytes": 3697,
+    "lines": 91,
+    "sha256": "e5499f6a0fc460bb1b8f90f6910769100a223cad6bcc91c7b0ba983a9e6827e5",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".github/workflows/release-artifact-check.yml",
+    "bytes": 3322,
+    "lines": 75,
+    "sha256": "9bf8b5f593b04477cf92c8061b900ef2d9644594812249fe6856bf2852c059a3",
+    "kind": ".yml",
+    "text_scanned": true
+  },
+  {
+    "path": ".gitignore",
+    "bytes": 355,
+    "lines": 30,
+    "sha256": "3aaac752c8bb088fbfed45c51ae852be308d05372eb128366d0ce193f1f13fbb",
+    "kind": "text",
+    "text_scanned": true
+  },
+  {
+    "path": "CHANGELOG.md",
+    "bytes": 34795,
+    "lines": 166,
+    "sha256": "a7ed645c97073f77cf68f9dbb727dc2e2bc75dec07f023176e300f5d5f137d73",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "CONTRIBUTING.md",
+    "bytes": 63229,
+    "lines": 240,
+    "sha256": "a5471962a895c37887958c7afa2fb627282f8d1bad80bdb8aa35d36b293938c5",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "LICENSE",
+    "bytes": 35149,
+    "lines": 674,
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "kind": "text",
+    "text_scanned": true
+  },
+  {
+    "path": "NOTICE",
+    "bytes": 904,
+    "lines": 19,
+    "sha256": "b5ff9e3e8bf3fb4c1617d734d93aeb6d94ee5c910bee990d142645e9c190f1d8",
+    "kind": "text",
+    "text_scanned": true
+  },
+  {
+    "path": "PRIVACY.md",
+    "bytes": 7332,
+    "lines": 25,
+    "sha256": "efdcc2b71effe381d2a44d1534cc5fda3ab4c74f1b1b75d8bf46fe1a110a6734",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "README.md",
+    "bytes": 49068,
+    "lines": 266,
+    "sha256": "cf437158c0366d3dec7b11b6ef2a227c44318bc69e9088b143dd4d9ade73aa3f",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "SECURITY.md",
+    "bytes": 3452,
+    "lines": 11,
+    "sha256": "d2909afb4771081a8eb6da9a597e8fdf31f91418605ec15f276716920eed89e7",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "THIRD_PARTY_NOTICES.md",
+    "bytes": 3419,
+    "lines": 20,
+    "sha256": "339c67f57237a6bb44ea04139472c8d34127728eee1ff965918d481d3cc9f37b",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "app/.gitignore",
+    "bytes": 6,
+    "lines": 0,
+    "sha256": "5c3174b74edc6f2b9e0743594b8bd3c7f31e4f4405758cc9872b3fe1de1d28b4",
+    "kind": "text",
+    "text_scanned": true
+  },
+  {
+    "path": "app/build.gradle.kts",
+    "bytes": 5458,
+    "lines": 118,
+    "sha256": "d5e5f62d88edb0bf7db0c04da3d4725552a830597bfc165037a87a519a400b98",
+    "kind": ".kts",
+    "text_scanned": true
+  },
+  {
+    "path": "app/gradle.lockfile",
+    "bytes": 58071,
+    "lines": 262,
+    "sha256": "7bfead0621b18e46fca11391a1a294e2580452f379038cef2ffdee5df1041707",
+    "kind": ".lockfile",
+    "text_scanned": true
+  },
+  {
+    "path": "app/proguard-rules.pro",
+    "bytes": 42,
+    "lines": 1,
+    "sha256": "40b329b14cc79bf6337240111ff6af8f87de2ebed5c9af1f2f4495ab5322d3c9",
+    "kind": ".pro",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/assets/native-audio/tone-aac.ts",
+    "bytes": 23124,
+    "lines": null,
+    "sha256": "f549f9e5061c6c5e670133400ed142163369f0e463c30fd77ea8d9c5ebaee233",
+    "kind": ".ts",
+    "text_scanned": false
+  },
+  {
+    "path": "app/src/androidTest/assets/native-audio/tone-mp3.ts",
+    "bytes": 24628,
+    "lines": null,
+    "sha256": "3a6cc02fc01987be519b86d17ff3ee6d6d8cd72e8256804227133038e33d23cc",
+    "kind": ".ts",
+    "text_scanned": false
+  },
+  {
+    "path": "app/src/androidTest/assets/native-audio/tone.m4a",
+    "bytes": 19629,
+    "lines": null,
+    "sha256": "90d300640850a0a8087d326edf4b3d37354f95080924e53fc3892be8e562c561",
+    "kind": ".m4a",
+    "text_scanned": false
+  },
+  {
+    "path": "app/src/androidTest/assets/native-audio/tone.mp3",
+    "bytes": 19689,
+    "lines": null,
+    "sha256": "1e927357dcd9d185f5f306d7c66cc747b1c53ff24fe08f78ad52395d676c32d9",
+    "kind": ".mp3",
+    "text_scanned": false
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/AccessRecoveryDeviceTest.kt",
+    "bytes": 5032,
+    "lines": 78,
+    "sha256": "cb403f45c12c82847cbcd1e0c3779b0470c399f938485e3ca67bbe003c52f95a",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/ArtistFailureDeviceTest.kt",
+    "bytes": 2525,
+    "lines": 44,
+    "sha256": "043421405eacc520b9151bb9204b59fe2395c3c9935b9db8ea32937f95e9e656",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/ArtworkDeviceTest.kt",
+    "bytes": 25613,
+    "lines": 316,
+    "sha256": "5d4764538a90fad73df81577959d2030608f10000471dadedfc5a7ff3b67a110",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/ArtworkLookupDeviceTest.kt",
+    "bytes": 13949,
+    "lines": 173,
+    "sha256": "3019a550321f2070cb58b44f969089a466e28ad11cb28e8ebc56abe491a5ef87",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/AuditRegressionDeviceTest.kt",
+    "bytes": 15914,
+    "lines": 226,
+    "sha256": "1e22d6a16e386e62d03b59702699b264e8dcabe7c18ca6682ca0f779a2d4cf4b",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/BackgroundCheckDeviceTest.kt",
+    "bytes": 19397,
+    "lines": 279,
+    "sha256": "eeaf93cf414ed45a5bbb60c3c8d29088c8f70de63d1dd80e24b7ac774550f9da",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/CatalogRefreshDeviceTest.kt",
+    "bytes": 7328,
+    "lines": 106,
+    "sha256": "9aace25a218b7d7152dfebbc4e3ad71e0287302155536b1283cc5b65fc94bc51",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/CompleteMusicListsDeviceTest.kt",
+    "bytes": 8605,
+    "lines": 144,
+    "sha256": "00050ffa06400c174e96f11056251c1b1ce9d9534d4eb417b3665f6c57a1b71f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DeviceConfirmationDeviceTest.kt",
+    "bytes": 5022,
+    "lines": 94,
+    "sha256": "db121776a8ed38865a524a4493d720bd97afa17004e4d6ac2d94f30a3e84bd55",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DevicePairingViewModelDeviceTest.kt",
+    "bytes": 14192,
+    "lines": 216,
+    "sha256": "5655e3b6dd582262ed2bd2b073a53d0a7cab226e059cf13c5bb551f8ff9ea3bf",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DiagnosticsDeviceTest.kt",
+    "bytes": 5937,
+    "lines": 94,
+    "sha256": "f131b9ba23ca3a524c46d82bd321a8b501c8a02389e00cf39eab584f58a53c29",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DownloadContinuityDeviceTest.kt",
+    "bytes": 9970,
+    "lines": 156,
+    "sha256": "5f72778d475bde88c452d8f7f90d624e76d0098e0b826d270981c7906da000c1",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DownloadProgressDeviceTest.kt",
+    "bytes": 7790,
+    "lines": 124,
+    "sha256": "4152759eefc0d0cb1722ae163f1052a42914b85617d538d221df2bd55c512370",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DuplicateRemovalViewModelDeviceTest.kt",
+    "bytes": 4431,
+    "lines": 68,
+    "sha256": "e6a3a37de62209babb8d7d29dd8fa4a1727087b6a5e685bafaf78583294a94d6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/DuplicatesDeviceTest.kt",
+    "bytes": 22139,
+    "lines": 298,
+    "sha256": "de7ac59a693381b6009e426924345095411a4c5acf67a60b6ee70929a93ab7ef",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/EmulatorWindow.kt",
+    "bytes": 2324,
+    "lines": 50,
+    "sha256": "b2446ab0468427f9ed6f8657ddbc2bc859f1dec357824470cb638bdd4d0417ef",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/FriendsMusicDeviceTest.kt",
+    "bytes": 18234,
+    "lines": 236,
+    "sha256": "e9397bc835387425d0b1ac97d4d75fae38acd3647b5797bef6d1669a3ffcdfb2",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/InterfaceTest.kt",
+    "bytes": 11822,
+    "lines": 194,
+    "sha256": "91b21212f7dcf5306a9897fd59dbcdbce608b5dbf661db57a9434269c92d69fa",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LargeAudioAndReuseDeviceTest.kt",
+    "bytes": 24276,
+    "lines": 347,
+    "sha256": "eec8935cab7c062eef93a85767dc1796fd0013ad6935e17b2ccb925f779b6e77",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LegacyCleanupDeviceTest.kt",
+    "bytes": 4546,
+    "lines": 69,
+    "sha256": "1f061ff408b4925979f47f8496d02e2a3ba2708f4de7c702622307cc045fd7d3",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LegacyCollectionDeviceTest.kt",
+    "bytes": 1625,
+    "lines": 35,
+    "sha256": "3c2649dc0db1655ba4d654579755150f67c573f8ab63339a658fe3f0a769ee5b",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/LibraryRemovalDeviceTest.kt",
+    "bytes": 9374,
+    "lines": 134,
+    "sha256": "cacffbf3ffc0248f13f8e38f02c9c9e5e6084dcf996cb117f0814d94fb1d358c",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MaintenanceBackgroundDeviceTest.kt",
+    "bytes": 11703,
+    "lines": 151,
+    "sha256": "c43e558b989d6209068dddae8e404e7c894cb85e0f5bce02af83e2ec17508ed6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MediaFinalizationDeviceTest.kt",
+    "bytes": 7263,
+    "lines": 113,
+    "sha256": "b19c7a4ccad67acecafcccb4fc6b0895ba146f32a3eaa85635adce077d9ca96e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicArtistLoadingDeviceTest.kt",
+    "bytes": 3213,
+    "lines": 53,
+    "sha256": "a227590bcbd1a1aeac80242c6106e35cd828ce5390f24eda73b77ef6fdbbca05",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicCatalogDeviceTest.kt",
+    "bytes": 11207,
+    "lines": 171,
+    "sha256": "4d3fcf9e07ac2c580dc3ca3d29b97f79569ac17696eeb9fc475ed2dec0563bc6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicExportDeviceTest.kt",
+    "bytes": 25071,
+    "lines": 341,
+    "sha256": "9ed4ce7b26250decef7d30917c4196c9b36579d4c70293c6d85e5f70d85e9842",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/MusicLibraryRedesignDeviceTest.kt",
+    "bytes": 10357,
+    "lines": 155,
+    "sha256": "4d4100b322b24d15b95b1a243cab1503a36164a02b2f41d132030f4d2e318d64",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/NativeMusicDeviceTest.kt",
+    "bytes": 7410,
+    "lines": 112,
+    "sha256": "b9a465bf96bfdae05d7f7e67799b2422c5d20fec80a6d2a70f9d5b1bb57b5b60",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/PlaybackDeviceTest.kt",
+    "bytes": 15326,
+    "lines": 260,
+    "sha256": "b0a50ffc0c14eb4e673f442bdb882afcd5151770f868ad2c1d963fb3617aee9f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/RecentFilesDeviceTest.kt",
+    "bytes": 2298,
+    "lines": 44,
+    "sha256": "787f87141517bde2b6f3597cbc67a28e93d56cbdfd167c6a3ce85d084603d085",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/SavedFileRecoveryDeviceTest.kt",
+    "bytes": 11439,
+    "lines": 155,
+    "sha256": "f618de8c54cefd988e03eed178042522f5004054a30909f55589bbbcd115bd33",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/SettingsAndAuthDeviceTest.kt",
+    "bytes": 7380,
+    "lines": 131,
+    "sha256": "034ba3932c02ebc19835c301f4b79dd399f9f9ecccd84ace20aa73f2f5251050",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/TrackMetadataDeviceTest.kt",
+    "bytes": 24157,
+    "lines": 309,
+    "sha256": "fa685b3006a988d5197f6341d01242373172f12b6e1cd6c582924391f5a024d7",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/TrackMetadataLookupViewModelDeviceTest.kt",
+    "bytes": 5598,
+    "lines": 73,
+    "sha256": "d64f05eba767fa774163ad1cf5be569285b41fa3d318d0c4f8f332fd4e6d6043",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/androidTest/java/app/alcovaibe/vkmusicexport/UpdateDeviceTest.kt",
+    "bytes": 5374,
+    "lines": 89,
+    "sha256": "179f817e0a4fa6182d99fd9bb20a883818e169c6b79d4c8a282beaf193fb10f4",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/AndroidManifest.xml",
+    "bytes": 3579,
+    "lines": 49,
+    "sha256": "b01a0abc679665d7f9d2e53db9b342803ac488114d2cfdb0e021fcbe840bc8a8",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/assets/legal/apache_2_0.txt",
+    "bytes": 11358,
+    "lines": 202,
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "kind": ".txt",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/assets/legal/app_license.txt",
+    "bytes": 36055,
+    "lines": 695,
+    "sha256": "a5df5b072272713a23a0c801db0ae842d424e4addf093496bfbb7d17ca6378d7",
+    "kind": ".txt",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/assets/legal/components.txt",
+    "bytes": 14779,
+    "lines": 224,
+    "sha256": "33d08650a547155a17edc99272d5c08aa56f0d6caa8a92bc05f1fa52d6052ce2",
+    "kind": ".txt",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/assets/legal/licenses.txt",
+    "bytes": 50836,
+    "lines": 921,
+    "sha256": "cc75c1112f36201a151cab38779c35b8b055f97347078c8b5636c538ba4e6c4f",
+    "kind": ".txt",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/assets/legal/privacy.txt",
+    "bytes": 7332,
+    "lines": 25,
+    "sha256": "efdcc2b71effe381d2a44d1534cc5fda3ab4c74f1b1b75d8bf46fe1a110a6734",
+    "kind": ".txt",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/AboutAppPage.kt",
+    "bytes": 4534,
+    "lines": 78,
+    "sha256": "a324e053cfd8635ba1276c006bf3b7797bb26f3ff23c70d804c224ae019261c8",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/AppPage.kt",
+    "bytes": 3351,
+    "lines": 67,
+    "sha256": "a8a7495f90aa6407572ce495c9d59b7d6e6b01cea21983bfa0ee38182833f89f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/DiagnosticApplication.kt",
+    "bytes": 3523,
+    "lines": 52,
+    "sha256": "09b7d1e54d26646262ebfce001121c7ac9af9265b72a1b63e1ccebf6c25c648d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/LegalInformation.kt",
+    "bytes": 2626,
+    "lines": 49,
+    "sha256": "b2674531974f386ceb5a66278ed53b6dfa8d77f953c468677ce10117823b99ce",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/MainActivity.kt",
+    "bytes": 6518,
+    "lines": 108,
+    "sha256": "d64ed7011c2bbe70bbfc8150f5c0f447b7d487bc3cbb9269f28b7ee721c2254d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/ThirdPartyComponentsPage.kt",
+    "bytes": 4507,
+    "lines": 85,
+    "sha256": "7dbb6dd0829c40403b4767e69c25e2b3c1fc80b25bc861c3d89e5b15e3e2da42",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/diagnostics/ChromeDiagnostics.kt",
+    "bytes": 1050,
+    "lines": 23,
+    "sha256": "d8ce9506449fa8ae2d973143e31fbe531b0ba94d17ff2abfc8ef4d4014b8b145",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/diagnostics/Diagnostics.kt",
+    "bytes": 7346,
+    "lines": 126,
+    "sha256": "25fa6c6007af0920b3a5e2cbf88230a7c0bd54e76c585770ea1b1304d7e0592e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/diagnostics/LatestReportMenu.kt",
+    "bytes": 4362,
+    "lines": 75,
+    "sha256": "4a5dedd85ab4e58c58ac7bce5c7cb4c7b3a66b5332ed757032bb69491ecc8dfe",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/diagnostics/Privacy.kt",
+    "bytes": 5751,
+    "lines": 82,
+    "sha256": "03c6275f9ec15489b6090e655576b403e6f14be35cad2ffc3d447a9ed26b3dcc",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/diagnostics/RunJournal.kt",
+    "bytes": 5913,
+    "lines": 93,
+    "sha256": "f3d48f6032c4df3c31e3cabedf4526914ff05441bb90368c3f5c4e045dab7a74",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AndroidAudioProcessor.kt",
+    "bytes": 9394,
+    "lines": 157,
+    "sha256": "f3e26a48c3485bc5f0e3a598845134ed46f04487f7dbccf07344a3c663ebb234",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtistCatalogShape.kt",
+    "bytes": 2841,
+    "lines": 39,
+    "sha256": "ebfcda86e287351f7fd50eb7e847c10e00e5c756097bd7a1d4afa71e1605a8aa",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtistLoadingFailure.kt",
+    "bytes": 4655,
+    "lines": 43,
+    "sha256": "03870e84fb7bb75d80a029225dc4d817e41f242f57cc1d0f93e7d3f0c494b8b8",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtworkDiagnostics.kt",
+    "bytes": 6694,
+    "lines": 70,
+    "sha256": "4b3441403a73760f9e54efbe2e8c7d1b2bb9804f3c84d22001edf457ba1ef8b1",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtworkLoader.kt",
+    "bytes": 6438,
+    "lines": 93,
+    "sha256": "9c0ba3e64a3fb65490822b081805ee01dbcd4b2a532beb78d09507a0caca707c",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtworkLookup.kt",
+    "bytes": 6340,
+    "lines": 87,
+    "sha256": "c22f127bac816b12f6153c03b5f87f079e5f6ae903e8f974e4a3d42c102f34c9",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtworkLookupSheet.kt",
+    "bytes": 8879,
+    "lines": 97,
+    "sha256": "0636cc013dfd2c0f1f9e85ea052196fa41585e6075323972d7f0b253431df6a3",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtworkRepair.kt",
+    "bytes": 5523,
+    "lines": 99,
+    "sha256": "87d5c6ef31d37c37568e3ec96e3b2dfc21cbed42de02d5c7fd4f33b6229ac5ec",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ArtworkSheet.kt",
+    "bytes": 6081,
+    "lines": 74,
+    "sha256": "757bfd095d75f4ba179b3aba0b2517d6c03510f714b03bb5de94e8cf5f22ec23",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioCompleteness.kt",
+    "bytes": 1403,
+    "lines": 25,
+    "sha256": "14e94b25f1f5976d167becab568809e4b51e731dc4cad079a9b31a97abcf5b5a",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioExportEngine.kt",
+    "bytes": 9000,
+    "lines": 138,
+    "sha256": "9ecdea0a9ba54736e0102f3dd7b8198c38ebe2a5af29e288057b2004d8d8a31f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioExportJob.kt",
+    "bytes": 13661,
+    "lines": 222,
+    "sha256": "ad1b19bfd149a4281864cb66e21faa7d242ff09ea3839b0abad2f535276bbe61",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioExportStore.kt",
+    "bytes": 33085,
+    "lines": 450,
+    "sha256": "c961831a795c5f56cedec06acfa13d2dacb4e1fa43c6f317379d757197b002a4",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioStorage.kt",
+    "bytes": 545,
+    "lines": 13,
+    "sha256": "9db63051af8545965804527ce56bea88dd36999ff47e21b0666e2f6f03ca0060",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioTransfer.kt",
+    "bytes": 11801,
+    "lines": 174,
+    "sha256": "337d021cbcbcb90ec2112ccaf4c8c87589ec6a2b070f31809d10e2d0712275ce",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AvailabilitySheet.kt",
+    "bytes": 3250,
+    "lines": 37,
+    "sha256": "6e2e588ffe99ad8d561abc6c1b1a1fc6f765454ada2c289827c85adba68d6fd3",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/BackgroundTransport.kt",
+    "bytes": 2436,
+    "lines": 49,
+    "sha256": "7031b5d1d7d5ba002f9eca12dc6128d247e860c324bb5c51f261d4c1ba3fb83e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/CatalogDownloads.kt",
+    "bytes": 2294,
+    "lines": 41,
+    "sha256": "09942c4c199d33f85de3834f202aeabcdba27d38c9ca21c9044a8c6b4ffc8f2a",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/CompatStreams.kt",
+    "bytes": 925,
+    "lines": 30,
+    "sha256": "d5aa3f76662d0f4ffcc85836425507fe3b228ea1710153b92f4432fb528bee46",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DeviceAuth.kt",
+    "bytes": 22743,
+    "lines": 370,
+    "sha256": "3275628ec2b98de133da39b94ea13c63740b2d15f0ccc69d7da2ce00dc4a16f8",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DeviceTokenExchange.kt",
+    "bytes": 13511,
+    "lines": 216,
+    "sha256": "5574dc2a54eda60b115bcf6d334bbd54c7daf6dfbd5d5caacb5484bd573cbd59",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DownloadProgressSheet.kt",
+    "bytes": 9829,
+    "lines": 130,
+    "sha256": "ab89186c3681e310a9e2b81fec83a3a210f3e29cbe8649b2c696e29962778213",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DuplicateAudioHasher.kt",
+    "bytes": 3287,
+    "lines": 59,
+    "sha256": "3ff30a836cd9a4645bf57caa2c324bd1e6d64a03b0a12e197055d2c289984d62",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DuplicateCheckJob.kt",
+    "bytes": 9268,
+    "lines": 145,
+    "sha256": "f5067a06b7e6e1bf53d91b11afb1d4e2a65b2f85471eb4646d298cbcee330d5c",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DuplicateCheckTask.kt",
+    "bytes": 8584,
+    "lines": 109,
+    "sha256": "f52ac7c1da96b6a4ebb5aa4e16136c20f5bc47a11d93ff602f523a9f6446bfe2",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DuplicateScanCache.kt",
+    "bytes": 5572,
+    "lines": 98,
+    "sha256": "6ff0826d6442f4bfbfb852c6e626a68b5f9f7fdfd59e414a239b5725489c3411",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DuplicatesSheet.kt",
+    "bytes": 8183,
+    "lines": 85,
+    "sha256": "82c327433b591756a6b52a6ebe537678a775bb616c0bb12a76f42f6b04047a71",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DurableScheduling.kt",
+    "bytes": 506,
+    "lines": 12,
+    "sha256": "1ba4abc81c0ea4b89394ff32fe7092f6798d80517991959b535ccf9afd6e131f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/EmbeddedArtwork.kt",
+    "bytes": 17035,
+    "lines": 262,
+    "sha256": "442053b4a3bd330d4cc2170cb482cce04feb4fbe8338bc981971d655af0a8f0c",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ExportFailureDetails.kt",
+    "bytes": 1316,
+    "lines": 23,
+    "sha256": "fa5167c46b84576718b191353adfd99672d8b64cd0ad68bc334effb38acc36b9",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ExportLayout.kt",
+    "bytes": 7492,
+    "lines": 120,
+    "sha256": "41f7aa483259557b3ca86535fbf66b030a36bb54fab87f98e445afbf5cfab3f7",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/ExportReportShare.kt",
+    "bytes": 2824,
+    "lines": 52,
+    "sha256": "a5bd048a7e2a80929dbd5c93a0324413e0d93c6a4e2c308fa0ddeb975585a53f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/FriendAvailability.kt",
+    "bytes": 2398,
+    "lines": 55,
+    "sha256": "5dcc4475d7472538008d236ef7bac00ace63c35342501d2d1d495e489944cf8b",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/FriendFolderMigration.kt",
+    "bytes": 5860,
+    "lines": 115,
+    "sha256": "e3f261b5f5ebf10da46fc45b9f2e2b073056d29791b986cd1b32443c330eaa73",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/FriendMusic.kt",
+    "bytes": 7695,
+    "lines": 97,
+    "sha256": "9ab907ce35b5db1b63ef82281c9b969468f864c3e713e9ea7691d3cd528c8bf0",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/FriendMusicController.kt",
+    "bytes": 18008,
+    "lines": 266,
+    "sha256": "2745b7c130c4e78fdeb1a6398cc2f1d31d5eacf05dc9683814a817c7d3d302be",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/FriendMusicUi.kt",
+    "bytes": 25262,
+    "lines": 284,
+    "sha256": "621495a80fe3baca972c7f50c897ec2b3efae7f876d7281aa2bb61c885ab4f5d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/HlsPlaylist.kt",
+    "bytes": 6399,
+    "lines": 114,
+    "sha256": "18dd70fe8ebeefe919cebe20258100c160e95fa5bc026a3290e04d0fa2819110",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/LegacyArchiveMigration.kt",
+    "bytes": 7020,
+    "lines": 102,
+    "sha256": "fd78b620e64ea6240ce88330f1129179c4292491c2560bb28f93a1bed922515a",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/LegacyAudioCleanup.kt",
+    "bytes": 1639,
+    "lines": 34,
+    "sha256": "4c4195e2a7d2897a695accf4d31bdd08f9936bc57a5258a04a141b4c4177a5b0",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/LegacyTransferServices.kt",
+    "bytes": 7709,
+    "lines": 133,
+    "sha256": "c1ffdc396e12440770045275f5fefc55eb90ec21b81f3150c34e2a142c753b82",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/LibraryRemovalSheet.kt",
+    "bytes": 4417,
+    "lines": 67,
+    "sha256": "c03bedbc748e8e26457141339c215831b7d8ed16d1b3c052533b09f6971f2a44",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/LibraryTrackRemoval.kt",
+    "bytes": 2189,
+    "lines": 39,
+    "sha256": "3df1e2668e0ab3979a272161241e1ba85327fed2d06ede8065b582a861c26d90",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/M3uPlaylist.kt",
+    "bytes": 1714,
+    "lines": 30,
+    "sha256": "b67efb02e82b709ca8002f1688ab872326264e75eb4680c967e91e9e4a869e46",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MaintenanceRuntime.kt",
+    "bytes": 9885,
+    "lines": 153,
+    "sha256": "7a8df8251b2ad5e3a45aee119ed1b4516b7d01effbd8998e8b12094d83d841c9",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MaintenanceService.kt",
+    "bytes": 5528,
+    "lines": 72,
+    "sha256": "f5835190d2b3ee833ff98fea7a06742fcd5573a10984d82bf259093607768f50",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicAccessManagementScreen.kt",
+    "bytes": 15258,
+    "lines": 182,
+    "sha256": "142129348c1a739d8fb487e685b4a754cd3967d77743c5c8fccd15abe865741a",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicAccessStore.kt",
+    "bytes": 3130,
+    "lines": 55,
+    "sha256": "c2e1aad29ab92303afb898545a18c6e5a512f69e72aa386990e2ae64d8a1f1d0",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicArtists.kt",
+    "bytes": 16509,
+    "lines": 217,
+    "sha256": "2d16c0cc71d92a67604b567b431aeb52cd0299c95ca823eca66cc28147c7b15b",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicCatalog.kt",
+    "bytes": 5339,
+    "lines": 81,
+    "sha256": "eaa1444e8197ce1b5b4c6ff196fdd5e89703709cc1d52d66cce9779612800fee",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicCatalogPanel.kt",
+    "bytes": 6179,
+    "lines": 76,
+    "sha256": "4830f40bb3e39980aec8157fa9906d7908f489d7924addef097e001a0b53d34c",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicDuplicates.kt",
+    "bytes": 10404,
+    "lines": 135,
+    "sha256": "82dce6ca146d4441abfa2eba3a876625106c409052a8923cd53128510b9286ca",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicFailures.kt",
+    "bytes": 1453,
+    "lines": 35,
+    "sha256": "8e9fb0a4a043d69328c497dcbbf3c5f4d5c481a38b230fe91723076c52deb709",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicLibraryIcons.kt",
+    "bytes": 4268,
+    "lines": 52,
+    "sha256": "34496acd0485ce073fc931c9390935f5d425d230135dec3a2245bd2f58bf396e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicLibrarySorting.kt",
+    "bytes": 2103,
+    "lines": 39,
+    "sha256": "1a67d0a0ef1d9cad4ba7c71e6b8f588a54b8d9caf03effb6d8583c96bbd8ebf8",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicLibraryUi.kt",
+    "bytes": 16099,
+    "lines": 235,
+    "sha256": "0d96704365b5234be73a00fd42e95cc37bcf4e5731084c1523f8095e886c05c9",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicPagination.kt",
+    "bytes": 6226,
+    "lines": 117,
+    "sha256": "150abc7cb0376cf287cc59aedabebb1347b820cb21a79b3e0ce82b88127dc165",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicPlaybackService.kt",
+    "bytes": 16904,
+    "lines": 251,
+    "sha256": "ab48297ea5b4369191ab92416fa21cc8828c2227791ac536df5234baa63c8017",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/MusicSession.kt",
+    "bytes": 14228,
+    "lines": 223,
+    "sha256": "24e0a078eff713838f9d0ce07c09e71f94491d62861ffd710b04254a103ba509",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/NativeMusicPanel.kt",
+    "bytes": 41874,
+    "lines": 487,
+    "sha256": "65c6ef6faaa244a8c26632c8c7c70023a8b96e8a1937d76dcff258f5821c013e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/NativeMusicViewModel.kt",
+    "bytes": 103187,
+    "lines": 1414,
+    "sha256": "88114f1ad51f3dd7855a92d8924ef40c60df265fc1f56dce15a7191132d664cb",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/NativeOperationJournal.kt",
+    "bytes": 1592,
+    "lines": 35,
+    "sha256": "b30d332341e4a422acd19a9497d5a39778c2b125366449b76d4471f1272482e0",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/NativeProtocol.kt",
+    "bytes": 24028,
+    "lines": 325,
+    "sha256": "31101f408eeb4e09b777ffe08c521e112ab1218de9c84400489b227f47377365",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/PlaybackMediaSource.kt",
+    "bytes": 6178,
+    "lines": 121,
+    "sha256": "20a74344b815387f7fa183c8e0472cb0f546e92efafcd0bf501cd2a31d7af9cb",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/PlaybackModel.kt",
+    "bytes": 2543,
+    "lines": 38,
+    "sha256": "0de2066834535a1d65eceaf240b9dfa96d50bc9972694c6b0ac7431d575625f6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/PlaybackUi.kt",
+    "bytes": 19671,
+    "lines": 273,
+    "sha256": "053471b02926ee616ff2fb9c20e6d02d498e3c9a802dd5ac45dd58d0d16e102c",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/RecentFilesHeading.kt",
+    "bytes": 2436,
+    "lines": 42,
+    "sha256": "814f13224ea504e5e3aa3cef23fcd54cc786d2bbb017c4b559e977fd20472b4e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/RetryableReadiness.kt",
+    "bytes": 579,
+    "lines": 14,
+    "sha256": "26b10a2fb82f2b08b3c44999afe58249bce85bb5a8ec5ac7da487d338524aaab",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/SavedAudioReuse.kt",
+    "bytes": 1968,
+    "lines": 41,
+    "sha256": "bda1597c9a63f1cbb75cdd77eb51c11f5f12d30ddb4f9c30299fe236db4c8646",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/SavedFileRecovery.kt",
+    "bytes": 7811,
+    "lines": 109,
+    "sha256": "0feeb25ffc336615e828a19403648095515f81414742ee9f60f6e60cf95ac27f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/SavedFilesSheet.kt",
+    "bytes": 7001,
+    "lines": 78,
+    "sha256": "69c600347f182c817336b269bfd18b119c2a41f0bb5524867c97a537355cc247",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/SharedAudioStore.kt",
+    "bytes": 18081,
+    "lines": 256,
+    "sha256": "b1aae5a9dd29b5a14e129fc07700b4a36a56e0afb77bf432a2168e745b7438a5",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/SharedPlaylistStore.kt",
+    "bytes": 11672,
+    "lines": 203,
+    "sha256": "1175d5e34c5e32d76b727c995a955ecf1533d93fce6f8c96ca3c192e72cb02c1",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/TrackAvailability.kt",
+    "bytes": 3156,
+    "lines": 46,
+    "sha256": "f73fc411caf15c3c2ac9278972e61342c288867cf84a8de1e1815acf22881b02",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/TrackMetadataBatch.kt",
+    "bytes": 5425,
+    "lines": 75,
+    "sha256": "d29e44507cebb5b254712cd2f3a6966c00129f635e8119e7c5d5c327fc145d89",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/TrackMetadataLookup.kt",
+    "bytes": 4034,
+    "lines": 61,
+    "sha256": "c90e392b5c3d3e2ea567094af5ad162397f1dde3b57b9734297671f3cc845a6e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/TrackMetadataLookupSheet.kt",
+    "bytes": 7058,
+    "lines": 78,
+    "sha256": "35a59ad33e4130a8b376c64dee9fb43ec38ad98e3d7413d334b80d67007a1304",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/TrackMetadataRepair.kt",
+    "bytes": 5250,
+    "lines": 90,
+    "sha256": "dae7902b95ce1255cc0a05b7fa1a4b286388fd02ba0e9d72256969cc902bf922",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/TrackMetadataSheet.kt",
+    "bytes": 5541,
+    "lines": 56,
+    "sha256": "972716322a47b74c3c41938b7cfece1e4ec2d88e8b4ea651891daff311da05dc",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
+    "bytes": 22868,
+    "lines": 298,
+    "sha256": "b8daabb2cf9d9cffcf6d80abe68363b7a20d3b64e8287f53e6cfe62ec028c97e",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/GithubUpdates.kt",
+    "bytes": 9411,
+    "lines": 160,
+    "sha256": "de3e6489966765174c75707b7ea3bfddda3fa3daebf9728a5386f04ddea58477",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdateAccess.kt",
+    "bytes": 593,
+    "lines": 17,
+    "sha256": "74684b1ecff9d98d364ddabcf052c73601b6341398252ee70e22d2ab71e3c290",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdateController.kt",
+    "bytes": 7480,
+    "lines": 129,
+    "sha256": "d63b17bd239b98863a3d93a618006ec4e8a135fb7304a3909d066efc3c065230",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdateFileProvider.kt",
+    "bytes": 178,
+    "lines": 4,
+    "sha256": "285289f638fc2f6311c23b28b5bad0b9fbbd6fa264fea08ba5d1b47016473176",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdateIcon.kt",
+    "bytes": 858,
+    "lines": 19,
+    "sha256": "cf5b6dad4f6220470c6219ad10deacbfbac5ef97bf50f25845cc2dfbdd297b25",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdatePanel.kt",
+    "bytes": 8849,
+    "lines": 127,
+    "sha256": "f98d5cc8ef3f06ea61227d3ac88c4c759f8818c6344f373003128de6590ade3b",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdateProtocol.kt",
+    "bytes": 4223,
+    "lines": 59,
+    "sha256": "7067377d06ba03bc2befb324516bf524b69d678225df0b6307bdab011b409e76",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_launcher.xml",
+    "bytes": 213,
+    "lines": 4,
+    "sha256": "f505a53cb3af52c155303df47bfffc9fcb37475e867086192afd67e4cec38962",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_launcher_foreground.xml",
+    "bytes": 2073,
+    "lines": 28,
+    "sha256": "8e61387fb10fe14c9c52b799cb460dc58cfe99687aff71d5ae5cf73bb84320e9",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_launcher_monochrome.xml",
+    "bytes": 1205,
+    "lines": 13,
+    "sha256": "9f9f5504be42ae391a0550512289b08eef6933a5c9c3684685132b08436ba728",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_music_note.xml",
+    "bytes": 271,
+    "lines": 3,
+    "sha256": "7ecfd07720fafdf15a6af605cdf47b05be2015cd2932f2a918007863f0d9d2c7",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/drawable/ic_vk_logo.xml",
+    "bytes": 793,
+    "lines": 10,
+    "sha256": "663a69590303d274400b9600b444a0622f13804e9f76caf7eb402ef1d1020f76",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+    "bytes": 302,
+    "lines": 5,
+    "sha256": "e54ef02f974370a15158cdcb76d357f1d32938d147e275d57de0c3f80af10375",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+    "bytes": 302,
+    "lines": 5,
+    "sha256": "e54ef02f974370a15158cdcb76d357f1d32938d147e275d57de0c3f80af10375",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/values/colors.xml",
+    "bytes": 14,
+    "lines": 1,
+    "sha256": "485d9633441e98267df0b414bc4d4dbd8b8ca586f80ce68a61ae382965162946",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/values/ic_launcher_background.xml",
+    "bytes": 76,
+    "lines": 1,
+    "sha256": "30eed36a3a49dbd0ea945863d8cfc2d0adfa46ce5e40e1cb7e19d34f2008c6cd",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/values/strings.xml",
+    "bytes": 72,
+    "lines": 1,
+    "sha256": "8f8991d13d45f4d6eb7949cc2f7dda86dcaa79968bc1b6fe5676fbeb7d18dd75",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/values/themes.xml",
+    "bytes": 319,
+    "lines": 7,
+    "sha256": "63438560e3b5956dd2fd4f25bb51fc88a8373b53b2038fec1c3900ffaafc8c7b",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/xml/data_extraction_rules.xml",
+    "bytes": 578,
+    "lines": 10,
+    "sha256": "73c331d855efe65a67ebd016c825ef2b28a898e4acb2c654dcb9215c5684153a",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/xml/diagnostic_paths.xml",
+    "bytes": 134,
+    "lines": 1,
+    "sha256": "fda6083cbb1e408d9ece0011eb55e6785b6ed0429d085a61c069a7bf9ed0faf5",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/main/res/xml/update_paths.xml",
+    "bytes": 61,
+    "lines": 1,
+    "sha256": "1612d7e829a51b283d4407c084e53c5a61d7009186d46229daab3ab0188cf714",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/DiagnosticTest.kt",
+    "bytes": 5915,
+    "lines": 96,
+    "sha256": "c752aa36e4e94c62c6705e582eea74bb1a3a62ef0e91f571456fb1a9fbd7cfab",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtistCatalogFormatsTest.kt",
+    "bytes": 3215,
+    "lines": 42,
+    "sha256": "933fdc2cfe69078c75c661812fcc3994369e6ab796f954ca9d6e732bbfe199be",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtistFailureTextTest.kt",
+    "bytes": 2489,
+    "lines": 33,
+    "sha256": "4dbefa48e1d92d6b69a343db9c493e08fcd6e9dcdc3a4c36071d9b1f813fab43",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtworkDiagnosticsTest.kt",
+    "bytes": 5777,
+    "lines": 78,
+    "sha256": "63594ff5fa7f1d4e1a726ec8f66145d67d5c61be4622e047d9f4ac9a05f1fcab",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/ArtworkLookupTest.kt",
+    "bytes": 12124,
+    "lines": 151,
+    "sha256": "13cdd45fbfc9926ec933b35d156aa6f720864e18ebba09547b4a6119fdc45526",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AudioCompletenessTest.kt",
+    "bytes": 2494,
+    "lines": 44,
+    "sha256": "b616ca8c90c66c9c8abe599a740a3429cdae9547d1821ba2acb8cd70c9a10960",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AudioStorageTest.kt",
+    "bytes": 1068,
+    "lines": 26,
+    "sha256": "bebf26553de45055f3759c7fc5dcbdb78ee66a50503f04c5a837dc7095cf2b76",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AudioTransferTest.kt",
+    "bytes": 13743,
+    "lines": 181,
+    "sha256": "7c982a2983f1b3036041aa92827c4946ea809e472fb08f2d9d0db7b4379988d6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/AuditRegressionTest.kt",
+    "bytes": 7353,
+    "lines": 109,
+    "sha256": "9930dac39ab225b89c3c98ece060f0a767c2fbb70d36fd8a03191cde833b043d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/BackgroundTransportTest.kt",
+    "bytes": 447,
+    "lines": 11,
+    "sha256": "7e4700b54e3afa7212cac77b4e4cb85cf0c4f9876f8e5d885d4724b52888a018",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/BoundedInputTest.kt",
+    "bytes": 1371,
+    "lines": 32,
+    "sha256": "fff91d4e492f65e1c3db8e28bb2ce7ce39184f0963dd8ce92aef45f1355d33d6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/CatalogClassificationRegressionTest.kt",
+    "bytes": 9051,
+    "lines": 121,
+    "sha256": "cc47feeb82cfe0858b522de0f65f65604c73c32801b93144e014128469dab1a1",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/CatalogDownloadsTest.kt",
+    "bytes": 2128,
+    "lines": 35,
+    "sha256": "076528c4fcc73c2af24cdbb898d86fef84cd64ade52b36f0ab769765365ea478",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/CatalogProfileRegressionTest.kt",
+    "bytes": 12961,
+    "lines": 193,
+    "sha256": "7d4cfe65250a55940d75be4bd7daca75256fb3ad684f57d261f76caf47bc6dba",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DeviceAuthTest.kt",
+    "bytes": 14913,
+    "lines": 201,
+    "sha256": "e95bbeeb17e56cfaf46a0e31d35656079aa1d463fb745900f9192a57f32fb06a",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DeviceCodeFlowTest.kt",
+    "bytes": 8742,
+    "lines": 143,
+    "sha256": "61656caabbe44fc61e30d9c998db7017d8ee072b4a7a4597bbd6702e4e3a0c28",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DeviceTokenExchangeTest.kt",
+    "bytes": 13050,
+    "lines": 185,
+    "sha256": "4425d3e147ddf571fa25ee58f45faf19a7d741d3f94fd30c5a4ec1db5a2a4892",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/DurableSchedulingTest.kt",
+    "bytes": 983,
+    "lines": 25,
+    "sha256": "d9e5a7c91cb9eb9563aadc9daeb1976ebb1964984275957cf6236168e7efbaec",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/EmbeddedArtworkTest.kt",
+    "bytes": 6344,
+    "lines": 74,
+    "sha256": "e3b191588c050318e81bceb8b546058b344a1a4e56290343218b41c152c7f6e5",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/FriendAvailabilityTest.kt",
+    "bytes": 3623,
+    "lines": 83,
+    "sha256": "82033503b981e2c881a4c28ab34c0dd8bf293b795be6c67b13d917cf6f135ce7",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/FriendMusicTest.kt",
+    "bytes": 5675,
+    "lines": 78,
+    "sha256": "25edc8e5198eed53989a55d5ad1a4de37955e02eddae9d85074f418ba5905081",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/HlsPlaylistTest.kt",
+    "bytes": 3176,
+    "lines": 56,
+    "sha256": "5157aab2c957571a9bb47d789241d91a13b84d6870b3bc9ba92354e21820ca65",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/LibraryTrackRemovalTest.kt",
+    "bytes": 5888,
+    "lines": 81,
+    "sha256": "d1ae8b92935fb149b441faeb0fab6a89f1af02132a5a9991570e02a69370d7b5",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicArtistsTest.kt",
+    "bytes": 12265,
+    "lines": 154,
+    "sha256": "186c4480f3c078f9934068cadfa731cfd39740570d0a0d7a16b43e8122e0856f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicCatalogTest.kt",
+    "bytes": 5420,
+    "lines": 72,
+    "sha256": "4c789cdaa655f381b54ecd699b5e72a83e7802b333eca229bde26b9b699b0474",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicDuplicatesTest.kt",
+    "bytes": 11645,
+    "lines": 173,
+    "sha256": "749f2639efe6d777f86cdecf57f0f7452f0f7b1edadba53199898b527c34c02f",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicExportTest.kt",
+    "bytes": 6727,
+    "lines": 90,
+    "sha256": "291bc55c4ceb87b27c9e64c56083878bf4ec889554f9f49817f0cc60bec677cc",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicLibrarySortingTest.kt",
+    "bytes": 1603,
+    "lines": 35,
+    "sha256": "ae779fcb14c558ced4d623f2e4393261c5a61afe6f25bb9e5cec7c829878096d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicProgressiveLoadTest.kt",
+    "bytes": 2065,
+    "lines": 50,
+    "sha256": "7b0f74c628a7bb296357e46c45e807e7ca475e7e828fbbb998f8bf4ffe2cddae",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/MusicSessionTest.kt",
+    "bytes": 14688,
+    "lines": 212,
+    "sha256": "67d7d618dac6ce86f3a2fcfd26e03a706bed779f118d9b9470b3e41a43a03971",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/NativeProtocolTest.kt",
+    "bytes": 8060,
+    "lines": 106,
+    "sha256": "6638eefdbe1386f7b06b0dda53581e6241314110d7ae58ad1db697e42feec15d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/PlaybackListsTest.kt",
+    "bytes": 3192,
+    "lines": 46,
+    "sha256": "4fe35f99c1c77d77945755e25eb3eedead73839d241c7ec47c5e4f03b1eba4e9",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/PlaybackNetworkTest.kt",
+    "bytes": 1823,
+    "lines": 34,
+    "sha256": "cab1fd5a1de5f250dae2325dbb9348016b5472b6f446d6c696df3d0fbabe4ff9",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/PublicDeviceAuthProbeTest.kt",
+    "bytes": 1240,
+    "lines": 24,
+    "sha256": "cf6f8bf43c88772ce46d215f616463ce8d0182efffc2dfecbacec26baf28edfd",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackAvailabilityTest.kt",
+    "bytes": 7173,
+    "lines": 99,
+    "sha256": "c573e340d1901e7934626abf2906cf00d3292f8c3b541a6ed837a99c2b99fea5",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackMetadataBatchTest.kt",
+    "bytes": 7868,
+    "lines": 106,
+    "sha256": "65cef09831e4e0b463898491460f435508b220ba7ab817e8f4d1b98d16af4439",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackMetadataLookupTest.kt",
+    "bytes": 4907,
+    "lines": 68,
+    "sha256": "2d66d3fb5916ae7875e8ea82f52cfe2ebffa3c23c2ce007deb85396ebd57b7c6",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/TrackMetadataTest.kt",
+    "bytes": 7097,
+    "lines": 95,
+    "sha256": "0f73e7e702e9e0b2b79fdb8fe5f1107427f02ffdf35d694cc1f380e4357ec5f1",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/music/VkAudioFailureTest.kt",
+    "bytes": 1667,
+    "lines": 27,
+    "sha256": "dfafdd0b4a0cad5f230e571cd1b35d684ee0d276f333fa34e1cb070670db405d",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/updates/UpdateControllerTest.kt",
+    "bytes": 4961,
+    "lines": 74,
+    "sha256": "81da3a810397345e3d9cc7fe18b34eabc6b512c596a5b82480d1dd16643a5cbc",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "app/src/test/java/app/alcovaibe/vkmusicexport/updates/UpdateProtocolTest.kt",
+    "bytes": 6977,
+    "lines": 87,
+    "sha256": "ffa48df6b9c8cb3770321dd30e3f636a759055151d51542181608f89814b4b16",
+    "kind": "Kotlin",
+    "text_scanned": true
+  },
+  {
+    "path": "build.gradle.kts",
+    "bytes": 176,
+    "lines": 5,
+    "sha256": "2afa298ed4cca24c808051bbb6a6a7cbe9f32ddcf191efd0dbe7043e8aa81238",
+    "kind": ".kts",
+    "text_scanned": true
+  },
+  {
+    "path": "config/release-certificate.pem",
+    "bytes": 1846,
+    "lines": 30,
+    "sha256": "6be5bf525fa1214506b8d0262c172e9bbfdb44e2783ffbedb36f309e90651264",
+    "kind": ".pem",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/ANDROID_API29_COMPATIBILITY.md",
+    "bytes": 5880,
+    "lines": 37,
+    "sha256": "0463d4b3a96b361ecbc3b5cd45153243beaebf7936fde7d60f7fe77cf418e06d",
+    "kind": "Markdown",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-acceptance/current.json",
+    "bytes": 805,
+    "lines": 21,
+    "sha256": "81450e39703c4c083d69bf02a478ee56934e23418b76a0d1dd83e496794e9bef",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-48.json",
+    "bytes": 1113,
+    "lines": 21,
+    "sha256": "e7948d0b139ae5b6cdc5458e8b2318630e8ac08c532e3a233842946c1663f43e",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-50.json",
+    "bytes": 1068,
+    "lines": 21,
+    "sha256": "edefac6ab68adfad93720d9a239669ffe00f3dc6de35748005f744905d938619",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-52.json",
+    "bytes": 1292,
+    "lines": 25,
+    "sha256": "26f43ef7ea34d66190f1f76de72cd48dfbdb5e77fb8d9c9d3251e24157edaf2a",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-53.json",
+    "bytes": 1586,
+    "lines": 30,
+    "sha256": "bca19554922244f72d7ed172ab4c2771f6627c0320953577cc55729bb009d77d",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-54.json",
+    "bytes": 1461,
+    "lines": 26,
+    "sha256": "5655618a495d1ca02bbb1e9a735b53761977d7f4eaafd73e3a968b21e959e266",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-55.json",
+    "bytes": 1461,
+    "lines": 26,
+    "sha256": "9bd635b1ad95252674d13c7e72bec1e1e8309969608e8424c3976017b3052ace",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-56.json",
+    "bytes": 1369,
+    "lines": 26,
+    "sha256": "a2992d8de7da3bd232297b67eef2e98cdb781f523f1f081c5a0e588e6d0e40c9",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-57.json",
+    "bytes": 1824,
+    "lines": 33,
+    "sha256": "63f850dda70527fd647e2095dcb7c5d549dbbecc42cb8104c5cbb052bd1a80ab",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-58.json",
+    "bytes": 1625,
+    "lines": 30,
+    "sha256": "d532e0d7dbafd1a048512eac76aea5afd438a06b08904d76bf77fddfc9f83eeb",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-61.json",
+    "bytes": 1515,
+    "lines": 27,
+    "sha256": "bcda7958b688f44e91e32edff2c0de7b45e37e6ac7a149564a032411ba53f312",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/release-requests/pr-64.json",
+    "bytes": 1715,
+    "lines": 27,
+    "sha256": "6ee553a8a9806bc269b816daf166d0444b63a339e25a149eef2b80373d5a027a",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "docs/updates/android.json",
+    "bytes": 396,
+    "lines": 15,
+    "sha256": "18c81d4737c195100cce120b4bfb0cc12164cd165cb77618f51cad190f91cccd",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "gradle.properties",
+    "bytes": 103,
+    "lines": 3,
+    "sha256": "fa078c27c9e4bde28a029d673875b028884505efa436b68cf60e1ac0be5b679b",
+    "kind": ".properties",
+    "text_scanned": true
+  },
+  {
+    "path": "gradle/gradle-daemon-jvm.properties",
+    "bytes": 1138,
+    "lines": 12,
+    "sha256": "231649d2f8e8dc24310f18c921e3ae33fd2715b7f48a7ddcaf27a85003e0729a",
+    "kind": ".properties",
+    "text_scanned": true
+  },
+  {
+    "path": "gradle/libs.versions.toml",
+    "bytes": 3280,
+    "lines": 50,
+    "sha256": "0b54202cd6373aa53cd0fa654c86f4b765bae2241ccc02e4fd44364de9e85ce5",
+    "kind": ".toml",
+    "text_scanned": true
+  },
+  {
+    "path": "gradle/verification-metadata.xml",
+    "bytes": 212099,
+    "lines": 3384,
+    "sha256": "4b1c21302be18ea49506f61ce4db3443b1208bd25030312e4dfe16012956c55b",
+    "kind": ".xml",
+    "text_scanned": true
+  },
+  {
+    "path": "gradle/wrapper/gradle-wrapper.jar",
+    "bytes": 48749,
+    "lines": null,
+    "sha256": "3b8a25775a69158b5ad2b1d17a80a88dc7b40a352a73eb27d06c612a7ce68e98",
+    "kind": ".jar",
+    "text_scanned": false
+  },
+  {
+    "path": "gradle/wrapper/gradle-wrapper.properties",
+    "bytes": 369,
+    "lines": 9,
+    "sha256": "735381a9802f5f82c887a3aadd62b39f1c3fcf3673021164775f224c6183041f",
+    "kind": ".properties",
+    "text_scanned": true
+  },
+  {
+    "path": "gradlew",
+    "bytes": 8656,
+    "lines": 248,
+    "sha256": "a5a5c199ba02189ae8c46a334223371a20599d9c298ef65e7540ede4a3f72d59",
+    "kind": "text",
+    "text_scanned": true
+  },
+  {
+    "path": "gradlew.bat",
+    "bytes": 4888,
+    "lines": 112,
+    "sha256": "f17917f8dbe61182b149273ee78090fec1197442c3f38276af907bfa5190db16",
+    "kind": ".bat",
+    "text_scanned": true
+  },
+  {
+    "path": "settings.gradle.kts",
+    "bytes": 624,
+    "lines": 26,
+    "sha256": "643be71cf8218ce008707a9ecbb3b9c46fd09db9be25f31accea0d3522dae8b7",
+    "kind": ".kts",
+    "text_scanned": true
+  },
+  {
+    "path": "third_party/Apache-2.0.txt",
+    "bytes": 11358,
+    "lines": 202,
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "kind": ".txt",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/apk_manifest.py",
+    "bytes": 1487,
+    "lines": 29,
+    "sha256": "e4310bb13340b198df101f35c39a693c1ba2f34c56fefbe9e2a36989f46983cd",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/archive-releases.py",
+    "bytes": 8669,
+    "lines": 190,
+    "sha256": "5f2897e03db4c8a7776683591b03595af12a567d29ed5183eb7a0e9e75478daf",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/build-release.sh",
+    "bytes": 2739,
+    "lines": 50,
+    "sha256": "4abbdffb00332ea4875b0cc896fb75e6eee01d5f2cc691baccad0304aaee5d30",
+    "kind": ".sh",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/ci-change-scope.py",
+    "bytes": 2424,
+    "lines": 65,
+    "sha256": "55ae0e7775e402f858e11264050d1b34309f65ce3640580c7120fee75d47c485",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/compat-upgrade-check.sh",
+    "bytes": 2521,
+    "lines": 46,
+    "sha256": "2605847ecec7c305dd28cf854dcf8f9cc4bcbff1712f5fefe26e8edc85e371bf",
+    "kind": ".sh",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/dependency-audit.py",
+    "bytes": 4502,
+    "lines": 98,
+    "sha256": "72bec12931ccdcbe04241e6e8da337b5a98a8b22ad6866746f0ef800d0b31f83",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/download-baselines.py",
+    "bytes": 2031,
+    "lines": 33,
+    "sha256": "f38c62eb426aeafb18009e083555d0d0086014a08561a9fc7c9da6ebb7e43cc5",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/emulator-dialog.py",
+    "bytes": 859,
+    "lines": 17,
+    "sha256": "7a62a14960c6c39cf261405ed0126c353cc293f9baffa0c1eddfec2b3a69b15b",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/fixtures/upgrade-collection.json",
+    "bytes": 414,
+    "lines": 1,
+    "sha256": "5f5a930c5c05789835415b0da412e6472af4b693bbb578a4fa0100669314ada1",
+    "kind": ".json",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/interface-check.sh",
+    "bytes": 3814,
+    "lines": 74,
+    "sha256": "a37f4a237a14eb5f4c8e06db6fa44efc0fb12ecae0c4c1195ec9267834304a41",
+    "kind": ".sh",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/pin-sdk-tools.sh",
+    "bytes": 1499,
+    "lines": 32,
+    "sha256": "2e7610412e2e562ce6e3d015ba11aed533133b86bdfa29ffd4c644cb32ddc6f7",
+    "kind": ".sh",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/prepare-signing.py",
+    "bytes": 1118,
+    "lines": 23,
+    "sha256": "fc9d8098518aca7417425f63d5a8a8ee3b5c090d063a9728b426be681e364d2e",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/promote-owner-release.py",
+    "bytes": 8530,
+    "lines": 151,
+    "sha256": "9dbe6b50b180838d7af98faef8bc6a818485b688719e400d2aa3ae67e408020e",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/publish-release.py",
+    "bytes": 4643,
+    "lines": 65,
+    "sha256": "5fc4783cdbe9d39e3a84e8d8943443809ec6987e15b0542fddf18225a2a7c390",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/recover-release.py",
+    "bytes": 3706,
+    "lines": 66,
+    "sha256": "305dbbf88e497b11c4224dbd953bc3df027103751fe9aa6ad5a25361d9a881af",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/release_gate.py",
+    "bytes": 2826,
+    "lines": 57,
+    "sha256": "8b5ed9fda560f14912e272a599a5e20625d3b7edc5c9829d43a76a74d0ebc7f6",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/release_notes.py",
+    "bytes": 424,
+    "lines": 11,
+    "sha256": "513c938d47e4b5e47c7595b2ce732a41ce1db29d54de9f5fb5efe400c6c33b65",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_apk_manifest.py",
+    "bytes": 2078,
+    "lines": 40,
+    "sha256": "1732153d592391718fe59fa1aebf3f36e01c965718ab30321e8a40e8f8ac8ae8",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_archive_releases.py",
+    "bytes": 6399,
+    "lines": 104,
+    "sha256": "2035cea436a10ce75c95f50b909f4d02a16dee401d238ca422a090cdb4424419",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_audit_guards.py",
+    "bytes": 3316,
+    "lines": 68,
+    "sha256": "895d1cbbcc8ffc33b9633fb6e3732da221ff611904cb86c31c2f41cf37e12324",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_ci_change_scope.py",
+    "bytes": 3322,
+    "lines": 80,
+    "sha256": "4d8340b203847e1961ef7cc26402e982bf4753261b737fb544821837bb02ca0d",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_instrumentation_reports.py",
+    "bytes": 8233,
+    "lines": 131,
+    "sha256": "87e9bcefa0d1a211bf1498b82488183ba3ae262b533ebc94cb5561c3ed8e992a",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_owner_release.py",
+    "bytes": 9799,
+    "lines": 124,
+    "sha256": "a209ce308b05f7c2655a5db37790716efebeecfb13fda8d4acec08037fa088bb",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_release_baselines.py",
+    "bytes": 3022,
+    "lines": 56,
+    "sha256": "d8676181ddadd6d11e87f5f27a76c5e05273ca59b9e444f4f4d275b99efe67bd",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_release_tools.py",
+    "bytes": 14073,
+    "lines": 239,
+    "sha256": "da8860817e322ccd6a4547013510d41cdb69d74e40b858c59f401ae9640f3b96",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_sdk_tools.py",
+    "bytes": 4557,
+    "lines": 106,
+    "sha256": "859433b70c3fec64a5ebbba7404d720119d6726b24e61e571524ceac5c43597e",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/test_update_channel.py",
+    "bytes": 3800,
+    "lines": 67,
+    "sha256": "db489b2e9ce853f5650f3cee2937995364818a863268a219dac238fe2177e334",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/update_channel.py",
+    "bytes": 4690,
+    "lines": 85,
+    "sha256": "7a36a7da27af22b32fa66e1f18e58a252c3e127866db6fdb4f5bc5db6f5d5bed",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/upgrade-check-all.sh",
+    "bytes": 1730,
+    "lines": 43,
+    "sha256": "0fc75c451101b4f2310cacca9a34f19c74a01a3c15ef6e7bb13d2db8ad1184c0",
+    "kind": ".sh",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/upgrade-check.sh",
+    "bytes": 14218,
+    "lines": 230,
+    "sha256": "4a60babc0d8ad3852f26a600bd118c0eb47603f428e7cc2b9cf52af9bb863a86",
+    "kind": ".sh",
+    "text_scanned": true
+  },
+  {
+    "path": "tools/verify-instrumentation.py",
+    "bytes": 5640,
+    "lines": 78,
+    "sha256": "42a6b5dd7531e8336017f60280c0978de9d4223242f7707b6ce6b3a0f9ab6236",
+    "kind": ".py",
+    "text_scanned": true
+  },
+  {
+    "path": "version.properties",
+    "bytes": 36,
+    "lines": 2,
+    "sha256": "06f23c64c9688700315709336efdbcb516b2a4f0cd3ac9cff9a6d1e6bcf53bd0",
+    "kind": ".properties",
+    "text_scanned": true
+  }
+]
