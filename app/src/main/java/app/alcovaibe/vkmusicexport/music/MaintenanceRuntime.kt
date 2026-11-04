@@ -80,7 +80,11 @@ internal object MaintenanceRuntime {
     /** Keep the durable owner reference and its UI projection consistent. IO callers only. */
     fun updateMetadata(owner: Long,update:(TrackMetadataState)->TrackMetadataState)=synchronized(lock) {
         musicCheck(owner>0,MusicError.STORAGE)
-        metadata.update(update);snapshot=snapshot.copy(metadataOwner=owner)
+        var replaced=false
+        metadata.update{previous->update(previous).also{replaced=it!==previous}}
+        // A screen load may deliberately keep an active task's state. Keep its
+        // durable account reference too, including when the caller saw another account.
+        if(replaced)snapshot=snapshot.copy(metadataOwner=owner)
     }
     fun checkpoint()=synchronized(lock) {
         snapshot=snapshot.copy(status=status.value,metadata=metadata.value.copy(visible=false),

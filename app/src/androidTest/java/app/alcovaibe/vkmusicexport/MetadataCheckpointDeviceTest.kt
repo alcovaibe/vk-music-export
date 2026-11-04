@@ -156,7 +156,9 @@ class MetadataCheckpointDeviceTest {
             val run=run(2).copy(next=1,unavailable=1,issues=listOf(TrackMetadataIssue("Synthetic","Unavailable",run(2).targets[0])))
             AudioExportStore(context).use{it.metadataRun(run)}
             MaintenanceRuntime.initialize(context)
-            MaintenanceRuntime.updateMetadata(12){run.state()};MaintenanceRuntime.checkpoint()
+            MaintenanceRuntime.updateMetadata(12){run.state()}
+            MaintenanceRuntime.updateMetadata(99){it} // A rejected screen load must not rebind the active state.
+            MaintenanceRuntime.checkpoint()
             val file=File(context.noBackupFilesDir,"maintenance.json")
             val saved=Json.parseToJsonElement(file.readText()).jsonObject
             assertEquals(12,saved.getValue("metadataOwner").jsonPrimitive.int)
