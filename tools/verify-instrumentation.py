@@ -71,6 +71,10 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
                 'verifiedRenewalKeepsArtworkChoiceWhileLoginAndLogoutCannotWrite')
     if required not in executed:
         raise ValueError('Required artwork lookup session integration test did not execute')
+    metadata_required = ('v3MigrationRetainsQueueAudioAndLegacyCursorAcrossReopen', 'failedLegacyImportRollsBackAndKeepsItsOnlyOriginalCopy', 'cursorAndIssuesRollbackTogetherAndStaleWritersCannotReplaceANewRun', 'sqliteFullLeavesThePreviousCursorAndIssueSetRecoverable', 'immutableTargetsAndManualIssueResolutionSurviveAccountScopedReopen', 'maintenanceJournalUsesDatabaseIssuesAndRestoresThemAfterReload', 'checkpointPayloadScalesLinearlyFor1004500And20000Targets')
+    for method in metadata_required:
+        if ('app.alcovaibe.vkmusicexport.MetadataCheckpointDeviceTest', method) not in executed:
+            raise ValueError(f'Required metadata checkpoint integration test did not execute: {method}')
     return len(executed)
 
 

@@ -180,7 +180,7 @@ class AuditRegressionDeviceTest {
             store.checkpoint("artwork-transaction","preserve-me")
             store.writableDatabase.execSQL("DROP TABLE source_failures");store.writableDatabase.version=2
             store.close();store=AudioExportStore(context)
-            assertEquals(3,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
+            assertEquals(4,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
             assertEquals("PAUSED",store.snapshot().status);assertEquals("preserve-me",store.checkpoint("artwork-transaction"))
             assertTrue(store.sourceFailures().isEmpty());assertEquals(12L,store.account())
             assertEquals(prepared,store.prepared().single().second)

@@ -71,4 +71,7 @@ if [[ "$result" != 0 ]]; then
   timeout 15 adb logcat -d -b events | python3 -c 'import sys; print("".join(x for x in sys.stdin if "am_anr" in x or "am_crash" in x)[-12000:])' || true
 fi
 timeout 15 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
+if [[ "$result" == 0 ]]; then
+  timeout 15 adb pull /data/local/tmp/vk-music-export-benchmarks/ interface-benchmarks/ || result=$?
+fi
 exit "$result"

@@ -196,7 +196,7 @@ with sqlite3.connect('upgrade-results/queue-after.db') as db:
     rows=db.execute('SELECT payload,state FROM tasks').fetchall()
     assert rows==[(Path('upgrade-results/queue-expected.json').read_text(),'PENDING')], 'Queue changed during schema upgrade'
     assert db.execute("SELECT value FROM meta WHERE name='status'").fetchone()[0]=='PAUSED'
-    assert db.execute('PRAGMA user_version').fetchone()[0]==3, 'Queue schema migration did not complete'
+    assert db.execute('PRAGMA user_version').fetchone()[0]==4, 'Queue schema migration did not complete'
     assert db.execute("SELECT COUNT(*) FROM directories").fetchone()[0]==1
     saved=[json.loads(row[0]) for row in db.execute('SELECT payload FROM files')]
     assert len(saved)==1 and saved[0]['source']['kind']=='legacy_archive', 'Signed release did not import the indexed legacy audio'

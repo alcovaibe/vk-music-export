@@ -167,8 +167,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val owner=vault.read()?.accountId?:return@launch
-                val saved=AudioExportStore(getApplication()).use{it.metadataRun(owner)}?:return@launch
-                _trackMetadata.update{if(it.visible&&!it.running&&!_state.value.busy)saved.state()else it}
+                val saved=AudioExportStore(getApplication()).use{it.metadataRunState(owner)}?:return@launch
+                MaintenanceRuntime.updateMetadata(owner){if(it.visible&&!it.running&&!_state.value.busy)saved.copy(visible=true)else it}
             }catch(_: Exception){_trackMetadata.update{it.copy(message="Не удалось прочитать сохранённую проверку.")}}
         }
     }
@@ -183,7 +183,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                         AudioExportStore(getApplication()).use{store->
                             val shared=SharedAudioStore(getApplication())
                             vault.read()?.accountId?.let{owner->store.metadataRun(owner)}?.let{saved->
-                                _trackMetadata.update{saved.state(it.visible,running=true).copy(message=null)}
+                                MaintenanceRuntime.updateMetadata(owner){saved.state(it.visible,running=true).copy(message=null)}
                             }
                             ArtworkRepair(getApplication(),store,shared).recover()
                             val initial=sessions?.current()?:access()
@@ -202,15 +202,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             val files=store.savedFiles()
                             val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
                             val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
-                                verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},
+                                verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},checkpoint=store::metadataProgress,
                                 metadataSource={store.metadataReplacement(owner,it)?.referenceId},beforeItem={maintenanceBeforeItem("track_metadata",it)},
                                 progress={snapshot,name->
-                                    _trackMetadata.update{snapshot.state(it.visible,running=true).copy(name=name,message=null)}
+                                    MaintenanceRuntime.updateMetadata(owner){snapshot.state(it.visible,running=true).copy(name=name,message=null)}
                                     MaintenanceRuntime.checkpoint();AudioExportRuntime.refresh()
                                 })
                             try {
                                 val result=batch.run(pending)
-                                _trackMetadata.update{result.state(it.visible,running=true)}
+                                MaintenanceRuntime.updateMetadata(owner){result.state(it.visible,running=true)}
                             }finally {
                                 withContext(NonCancellable+Dispatchers.IO) {
                                     SharedPlaylistStore(getApplication(),store).repairLocations()
@@ -393,7 +393,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                                     updated=run.updated+if(written)count else 0,current=run.current+if(written)0 else count,
                                     issues=run.issues.map{if(it.target?.uri==row.uri&&it.target.trackId==row.track.id)
                                         it.copy(resolved=true,selectedId=reference,reason="Название и версия проверены по выбранной записи ВК.")else it})
-                                store.metadataRun(updated);_trackMetadata.update{updated.state(it.visible)}
+                                store.metadataRun(updated);MaintenanceRuntime.updateMetadata(s.owner){updated.state(it.visible)}
                             }
                             written
                         }finally {withContext(NonCancellable+Dispatchers.IO){SharedPlaylistStore(getApplication(),store).repairLocations();AudioExportRuntime.refresh()}}

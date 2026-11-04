@@ -189,7 +189,7 @@ class TrackMetadataDeviceTest {
                 val repair=TrackMetadataRepair(context,store,shared)
                 return TrackMetadataBatch(api,{MusicAccess("a".repeat(64),"CI/1",accountId=12)},
                     find={store.existing(it.taskKey)},verify=shared::requireValid,update=repair::update,recover=repair::recover,
-                    save={store.metadataRun(it)}).run(run)
+                    save={store.metadataRun(it)},checkpoint=store::metadataProgress).run(run)
             }
             try{execute(TrackMetadataRun.start(12,rows));fail("Expired access must pause")}
             catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
@@ -241,7 +241,7 @@ class TrackMetadataDeviceTest {
             store.close();store=AudioExportStore(context);fetched.clear()
             val repair=TrackMetadataRepair(context,store,shared)
             val result=TrackMetadataBatch(api,{credential},find=store::metadataTarget,verify=shared::requireValid,
-                update=repair::update,recover=repair::recover,save={store.metadataRun(it)},metadataSource={store.metadataReplacement(12,it)?.referenceId})
+                update=repair::update,recover=repair::recover,save={store.metadataRun(it)},checkpoint=store::metadataProgress,metadataSource={store.metadataReplacement(12,it)?.referenceId})
                 .run(TrackMetadataRun.start(12,store.savedFiles()))
             assertEquals(chosen.map{it.id},fetched);assertEquals(2,result.current);assertEquals(0,result.unavailable)
             assertNull(store.metadataReplacement(99,store.existing(rows.first().taskKey)!!))

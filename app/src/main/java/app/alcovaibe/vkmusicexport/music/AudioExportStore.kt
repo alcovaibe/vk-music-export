@@ -18,7 +18,7 @@ internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,v
 }
 
 /** SQLite checkpoints each item. Only canonical track/folder metadata and local media URIs; no VK secrets. IO only. */
-internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,3) {
+internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,4) {
     private val json=Json{encodeDefaults=true}
     init{setWriteAheadLoggingEnabled(true)}
     override fun onConfigure(db: SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
@@ -30,6 +30,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         db.execSQL("CREATE TABLE meta(name TEXT PRIMARY KEY,value TEXT NOT NULL)")
         createDirectories(db)
         createSourceFailures(db)
+        TrackMetadataCheckpoints.create(db)
     }
     private fun createDirectories(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE directories(identity TEXT PRIMARY KEY,relative_path TEXT NOT NULL,comparison_key TEXT NOT NULL UNIQUE)")
@@ -38,9 +39,10 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         db.execSQL("CREATE TABLE source_failures(source_key TEXT PRIMARY KEY,payload TEXT NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase,oldVersion: Int,newVersion: Int) {
-        check(oldVersion in 1..2&&newVersion==3){"Unsupported export schema"}
+        check(oldVersion in 1..3&&newVersion==4){"Unsupported export schema"}
         if(oldVersion<2)createDirectories(db)
-        createSourceFailures(db) // Preserve all tasks, files, checkpoints and unknown legacy owner.
+        if(oldVersion<3)createSourceFailures(db)
+        TrackMetadataCheckpoints.create(db) // Preserve tasks/files and lazily import old checkpoints atomically.
     }
     private fun put(name: String,value: String){writableDatabase.execSQL("INSERT OR REPLACE INTO meta(name,value) VALUES(?,?)",arrayOf(name,value))}
     private fun get(name: String)=readableDatabase.rawQuery("SELECT value FROM meta WHERE name=?",arrayOf(name)).use{if(it.moveToFirst())it.getString(0)else null}
@@ -204,13 +206,10 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         }}
     @Synchronized fun checkpoint(name: String): String?=get(name)
     @Synchronized fun checkpoint(name: String,value: String){put(name,value)}
-    @Synchronized fun metadataRun(owner: Long): TrackMetadataRun?=get("track-metadata-run:$owner")?.let {
-        json.decodeFromString<TrackMetadataRun>(it).also{run->musicCheck(run.owner==owner&&run.next in 0..run.targets.size,MusicError.STORAGE)}
-    }
-    @Synchronized fun metadataRun(run: TrackMetadataRun) {
-        musicCheck(run.owner>0&&run.next in 0..run.targets.size,MusicError.STORAGE)
-        put("track-metadata-run:${run.owner}",json.encodeToString(run))
-    }
+    @Synchronized fun metadataRun(owner: Long): TrackMetadataRun?=TrackMetadataCheckpoints(writableDatabase).load(owner)
+    @Synchronized fun metadataRunState(owner: Long): TrackMetadataState?=TrackMetadataCheckpoints(writableDatabase).state(owner)
+    @Synchronized fun metadataRun(run: TrackMetadataRun){TrackMetadataCheckpoints(writableDatabase).save(run)}
+    @Synchronized fun metadataProgress(before: TrackMetadataRun,after: TrackMetadataRun){TrackMetadataCheckpoints(writableDatabase).advance(before,after)}
     private fun metadataChoiceKey(owner: Long,trackId: String,uri: String)=
         "track-metadata-choice:$owner:"+java.security.MessageDigest.getInstance("SHA-256").digest((trackId+"\u0000"+uri).toByteArray()).joinToString(""){"%02x".format(it.toInt() and 255)}
     @Synchronized fun metadataReplacement(owner: Long,row: PublishedAudio): TrackMetadataReplacement? = get(metadataChoiceKey(owner,row.track.id,row.uri))?.let{

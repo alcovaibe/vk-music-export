@@ -202,6 +202,7 @@ jobs:
           path: |
             interface-screenshots/
             interface-diagnostics/
+            interface-benchmarks/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           retention-days: 7
