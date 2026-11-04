@@ -4,7 +4,6 @@ import android.content.ContextWrapper
 import android.database.sqlite.SQLiteConstraintException
 import android.database.sqlite.SQLiteFullException
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -225,14 +224,10 @@ class MetadataCheckpointDeviceTest {
             put("results",JsonArray(results))
         }
         val file=File(inst.targetContext.filesDir,"metadata-benchmarks/api-${Build.VERSION.SDK_INT}.json").apply{parentFile!!.mkdirs();writeText(report.toString())}
-        // Shell cannot directly read app-owned storage on every API. run-as reads
-        // the debuggable test target's private file; sh owns the output redirection.
-        val destination="/data/local/tmp/vk-music-export-benchmarks"
-        val copy="sh -c 'run-as ${inst.targetContext.packageName} cat ${file.absolutePath} > $destination/${file.name} 2>&1'"
-        for(command in listOf("mkdir -p $destination",copy)) {
-            ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
-        }
-        val copied=ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand("cat $destination/${file.name}")).use{it.readBytes().toString(Charsets.UTF_8)}
-        assertEquals(report.toString(),copied)
+        val payload=file.readText();assertEquals(report.toString(),payload)
+        // Host captures this tag continuously, before AGP can uninstall the app.
+        // Keep the single line below Android's log-entry budget on API29+.
+        assertTrue(payload.toByteArray().size<3000)
+        assertTrue(android.util.Log.i("VKMetadataBench","VK_METADATA_BENCHMARK="+payload)>0)
     }
 }

@@ -44,8 +44,16 @@ if [[ "$expected_api" -le 33 ]]; then
 fi
 # Do not let an old report satisfy this run if instrumentation never starts.
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
+# Preserve benchmark evidence continuously; app-owned directories are not shell
+# readable on every API, and AGP removes app data after instrumentation.
+adb logcat -v raw -s VKMetadataBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
+benchmark_logcat_pid=$!
+trap 'kill "$benchmark_logcat_pid" 2>/dev/null || true' EXIT
 ./gradlew --dependency-verification strict connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
 result=$?
+kill "$benchmark_logcat_pid" 2>/dev/null || true
+wait "$benchmark_logcat_pid" 2>/dev/null || true
+trap - EXIT
 python3 - <<'PYFAILURES'
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -72,6 +80,26 @@ if [[ "$result" != 0 ]]; then
 fi
 timeout 15 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
 if [[ "$result" == 0 ]]; then
-  timeout 15 adb pull /data/local/tmp/vk-music-export-benchmarks/ interface-benchmarks/ || result=$?
+  python3 - "$expected_api" <<'PYBENCHMARK'
+import json
+from pathlib import Path
+import sys
+prefix = 'VK_METADATA_BENCHMARK='
+lines = Path('interface-diagnostics/metadata-benchmarks.log').read_text().splitlines()
+records = [json.loads(line[len(prefix):]) for line in lines if line.startswith(prefix)]
+if len(records) != 1:
+    raise SystemExit(f'Expected one complete metadata benchmark, got {len(records)}')
+record = records[0]
+if record.get('api') != int(sys.argv[1]) or [r.get('targets') for r in record.get('results', [])] != [100, 4500, 20000]:
+    raise SystemExit('Metadata benchmark API or workloads mismatch')
+for row in record['results']:
+    if row.get('target_writes') != row['targets'] or row.get('progress_writes') != row['targets'] + 1:
+        raise SystemExit('Metadata benchmark lost its measured write counts')
+out = Path('interface-benchmarks') / f"api-{record['api']}.json"
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n')
+print(f'Metadata benchmark evidence verified: API {record["api"]}, three workloads')
+PYBENCHMARK
+  result=$?
 fi
 exit "$result"
