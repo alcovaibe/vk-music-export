@@ -31,3 +31,13 @@ Verifier инструментальных результатов требует 
 Локальный Gradle `testDebugUnitTest --tests '*ArtworkLookupTest' --tests '*MusicSession*'` не дошёл до конфигурации: wrapper не загрузил Gradle 9.8.2, `Network is unreachable`. Локальные Kotlin/device tests успешными не объявляются. Результаты JVM/Lint/R8 и API29–37 нужно читать в Android Actions по точному SHA этого изменения, а не по предшествующему F01 run.
 
 Реальный VK renew/token expiry, длительная OEM-проверка и ручная приёмка не выполнялись. Новый файл не изменяет исторический аудит. Main и опубликованные Releases не затрагиваются; перенос исправления требует отдельного одобрения владельца.
+
+## Разбор первого CI-прогона
+
+Первый коммит F22: `755689bfcb714630b388461756ce63d98db95387`, Android run `41837220217`. JVM-отчёт содержит 277 случаев: 276 passed, 1 штатно skipped (`PublicDeviceAuthProbeTest`), без failures/errors. Все 17 ArtworkLookupTest и все 25 MusicSession/Boundary tests прошли. Lint debug/release, release R8 и OSV (217 зависимостей) успешны.
+
+API34 завершился с 1 failure из 145 тестов. Новый F22 ViewModel-сценарий прошёл (0.867 s); упал существующий `DevicePairingViewModelDeviceTest.nextActivityWaitsForCancelledOwnerInsteadOfReceivingBusy` на немедленном assert строки 163 (весь сценарий 0.064 s). Эти результаты взяты из JUnit XML артефакта `Android-interface-API-34`, не из предположения о причине любого красного CI.
+
+Тест ожидал синхронной публикации combined UI StateFlow после `runOnMainSync`, хотя `_state` и `_visibleState` обновляются разными coroutine collectors. Исправлена синхронизация проверки stopping/waiting: bounded await удерживает существующий `releaseCleanup` закрытым и требует busy + waitingForSlot. Во время ожидания по-прежнему обязательны отсутствие ошибки и ноль вызовов второго auth begin. Gate освобождается только после подтверждённого состояния; проверки READY и передачи третьему владельцу сохранены. Код авторизации ради этого падения не изменялся, тест не отключён и его условие не заменено просто задержкой или повторным запуском.
+
+После изменения теста требуется новый полный CI по новому SHA; успешные результаты первого прогона не присваиваются следующему коммиту автоматически.
