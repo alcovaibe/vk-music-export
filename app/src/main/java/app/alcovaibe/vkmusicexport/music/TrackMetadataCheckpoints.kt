@@ -113,7 +113,7 @@ internal class TrackMetadataCheckpoints(private val db: SQLiteDatabase) {
         }else {
             db.delete("metadata_targets","owner=?",arrayOf(run.owner.toString()))
             run.targets.forEachIndexed{i,target->db.execSQL("INSERT INTO metadata_targets(owner,ordinal,payload) VALUES(?,?,?)",
-                arrayOf(run.owner,i,rowPayload(target)))}
+                arrayOf<Any>(run.owner,i,rowPayload(target)))}
         }
         if(old?.id==run.runId) {
             val existing=db.rawQuery("SELECT ordinal,payload FROM metadata_issues WHERE owner=? ORDER BY ordinal",arrayOf(run.owner.toString())).use{c->
@@ -125,7 +125,7 @@ internal class TrackMetadataCheckpoints(private val db: SQLiteDatabase) {
             run.issues.forEachIndexed{i,issue->
                 val encoded=rowPayload(issue)
                 if(i>=existing.size)insertIssue(run.owner,i,issue)
-                else if(existing[i]!=encoded)db.execSQL("UPDATE metadata_issues SET payload=? WHERE owner=? AND ordinal=?",arrayOf(encoded,run.owner,i))
+                else if(existing[i]!=encoded)db.execSQL("UPDATE metadata_issues SET payload=? WHERE owner=? AND ordinal=?",arrayOf<Any>(encoded,run.owner,i))
             }
             if(run.issues.size<existing.size)db.delete("metadata_issues","owner=? AND ordinal>=?",arrayOf(run.owner.toString(),run.issues.size.toString()))
         }else {
@@ -133,14 +133,14 @@ internal class TrackMetadataCheckpoints(private val db: SQLiteDatabase) {
             run.issues.forEachIndexed{i,issue->insertIssue(run.owner,i,issue)}
         }
         db.execSQL("INSERT OR REPLACE INTO metadata_runs(owner,run_id,target_count,targets_sha256,progress) VALUES(?,?,?,?,?)",
-            arrayOf(run.owner,run.runId,run.targets.size,digest,json.encodeToString(TrackMetadataProgress.of(run))))
+            arrayOf<Any>(run.owner,run.runId,run.targets.size,digest,json.encodeToString(TrackMetadataProgress.of(run))))
         db.delete("meta","name=?",arrayOf(legacy(run.owner)))
     }
     private inline fun <reified T> rowPayload(value: T): String=json.encodeToString(value).also {
         musicCheck(it.toByteArray().size<=MAX_ROW_BYTES,MusicError.STORAGE)
     }
     private fun insertIssue(owner: Long,index: Int,issue: TrackMetadataIssue) {
-        db.execSQL("INSERT INTO metadata_issues(owner,ordinal,payload) VALUES(?,?,?)",arrayOf(owner,index,rowPayload(issue)))
+        db.execSQL("INSERT INTO metadata_issues(owner,ordinal,payload) VALUES(?,?,?)",arrayOf<Any>(owner,index,rowPayload(issue)))
     }
     /** Batch-only append contract: targets stay identical; old issues are not edited.
      * Explicit manual resolutions go through save(), outside this hot path.
@@ -158,7 +158,7 @@ internal class TrackMetadataCheckpoints(private val db: SQLiteDatabase) {
         musicCheck(h.id==before.runId&&h.count==before.targets.size&&h.progress==TrackMetadataProgress.of(before),MusicError.STORAGE)
         for(i in before.issues.size until after.issues.size)insertIssue(after.owner,i,after.issues[i])
         db.execSQL("UPDATE metadata_runs SET progress=? WHERE owner=? AND run_id=?",
-            arrayOf(json.encodeToString(TrackMetadataProgress.of(after)),after.owner,after.runId))
+            arrayOf<Any>(json.encodeToString(TrackMetadataProgress.of(after)),after.owner,after.runId))
     }
     companion object {
         private val json=Json{encodeDefaults=true}

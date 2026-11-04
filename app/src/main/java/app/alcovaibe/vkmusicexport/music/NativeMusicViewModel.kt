@@ -183,7 +183,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                         AudioExportStore(getApplication()).use{store->
                             val shared=SharedAudioStore(getApplication())
                             vault.read()?.accountId?.let{owner->store.metadataRun(owner)}?.let{saved->
-                                MaintenanceRuntime.updateMetadata(owner){saved.state(it.visible,running=true).copy(message=null)}
+                                MaintenanceRuntime.updateMetadata(saved.owner){saved.state(it.visible,running=true).copy(message=null)}
                             }
                             ArtworkRepair(getApplication(),store,shared).recover()
                             val initial=sessions?.current()?:access()
