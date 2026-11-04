@@ -1,0 +1,230 @@
+{
+  "source_sha": "c82228112194e46798e21a0d0c4abae2b7082222",
+  "run_id": 41899539434,
+  "conclusion": "success",
+  "required_checks_failed": [],
+  "unit": {
+    "executed": 288,
+    "passed": 287,
+    "skipped": [
+      "app.alcovaibe.vkmusicexport.music.PublicDeviceAuthProbeTest.currentNativeCodeCanCreateAnUnapprovedAnonymousPairingRequest"
+    ]
+  },
+  "android": {
+    "29": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "30": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "31": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "32": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "33": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "34": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "35": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "36": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    },
+    "37": {
+      "executed": 163,
+      "failures": 0,
+      "skipped": 0
+    }
+  },
+  "updater": {
+    "29": {
+      "api": 29,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 1.242,
+      "install_seconds": 4.982
+    },
+    "30": {
+      "api": 30,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 0.97,
+      "install_seconds": 3.853
+    },
+    "31": {
+      "api": 31,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 0.744,
+      "install_seconds": 3.323
+    },
+    "32": {
+      "api": 32,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 1.01,
+      "install_seconds": 5.725
+    },
+    "33": {
+      "api": 33,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 0.728,
+      "install_seconds": 4.037
+    },
+    "34": {
+      "api": 34,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 0.962,
+      "install_seconds": 3.221
+    },
+    "35": {
+      "api": 35,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 1,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 1.064,
+      "install_seconds": 7.382
+    },
+    "36": {
+      "api": 36,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 1,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 3.914,
+      "install_seconds": 7.166
+    },
+    "37": {
+      "api": 37,
+      "from": 1343,
+      "to": 1433,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "system_installer": true,
+      "process_restart": true,
+      "offline_restore": true,
+      "emulator_framework_dialogs": 0,
+      "private_marker_preserved": true,
+      "marker_sha256": "8a5636dc30a2a4ada938ac22abd125585554bd9b2234ec0e044fd592324182ac",
+      "prepare_seconds": 5.413,
+      "install_seconds": 8.485
+    }
+  },
+  "public_apk_verification": {
+    "schema": 1,
+    "state": "candidate_verified",
+    "manifest": {
+      "schemaVersion": 1,
+      "platform": "android",
+      "channel": "stable",
+      "applicationId": "app.alcovaibe.vkmusicexport",
+      "release": {
+        "versionName": "0.12.1",
+        "versionCode": 1433,
+        "minSdk": 29,
+        "tag": "v0.12.1-build.1433",
+        "apk": "VK-Music-Export-0.12.1-1433.apk",
+        "size": 5969335,
+        "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889"
+      }
+    },
+    "release_id": 432907850,
+    "release_commit": "90e6848257e93d82b3a6b8af09cc58ef067a7703",
+    "apk_verification": {
+      "applicationId": "app.alcovaibe.vkmusicexport",
+      "versionCode": 1433,
+      "versionName": "0.12.1",
+      "minSdk": 29,
+      "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+      "size": 5969335,
+      "certificate_sha256": "137c9a12a112f9f91e1ffaacc86e1a24e361cbe1ab611ae54059c8373a24f038"
+    }
+  },
+  "osv": {
+    "components": 217,
+    "findings": 0
+  },
+  "scope": "Isolated debug updater host using real signed public APKs 1343 to 1433; no new production APK published.",
+  "python": {
+    "tests": 119,
+    "seconds": 1.793,
+    "job_id": 126817952858,
+    "conclusion": "success"
+  },
+  "collector_run": 41900245213
+}

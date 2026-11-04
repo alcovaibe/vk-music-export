@@ -1,0 +1,26 @@
+{
+  "url": "https://raw.githubusercontent.com/alcovaibe/vk-music-export/main/docs/updates/android.json",
+  "public_manifest": {
+    "schemaVersion": 1,
+    "platform": "android",
+    "channel": "stable",
+    "applicationId": "app.alcovaibe.vkmusicexport",
+    "release": {
+      "versionName": "0.12.0",
+      "versionCode": 1343,
+      "minSdk": 29,
+      "tag": "v0.12.0-build.1343",
+      "apk": "VK-Music-Export-0.12.0-1343.apk",
+      "size": 5899726,
+      "sha256": "8b939e1cba8549480263b9208ca160414ef0d149dc24d075d06cfddec731dc64"
+    }
+  },
+  "raw_body_sha256": "18c81d4737c195100cce120b4bfb0cc12164cd165cb77618f51cad190f91cccd",
+  "latest_id": 432907850,
+  "latest_tag": "v0.12.1-build.1433",
+  "latest_commit": "90e6848257e93d82b3a6b8af09cc58ef067a7703",
+  "main_sha": "90e6848257e93d82b3a6b8af09cc58ef067a7703",
+  "main_protected": false,
+  "delivery_verified": false,
+  "probe_run": 41901417478
+}
