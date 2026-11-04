@@ -1,7 +1,7 @@
 name: Android checks and APK
 on:
   push:
-    branches: [main, codex/music-library-redesign, codex/music-followups]
+    branches: [main, 'fix/**', codex/music-library-redesign, codex/music-followups]
   pull_request:
   workflow_dispatch:
     inputs:
