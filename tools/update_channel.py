@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -44,6 +45,18 @@ def channel_manifest(info, release, apk_path):
                         'size': size, 'sha256': digest}}
 
 
+def pending_review(branch):
+    # Retry dispatch even if the PR already exists: its first dispatch may have
+    # failed after PR creation. Never auto-merge or describe this as delivered.
+    subprocess.run(['gh', 'workflow', 'run', 'android.yml', '--repo', REPO, '--ref', branch,
+                    '-f', 'channel=checks'], check=True)
+    message = f'Update channel pending review/merge: {branch}; main was not changed.'
+    print(message)
+    if os.environ.get('GITHUB_STEP_SUMMARY'):
+        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+            summary.write('\n' + message + '\n')
+
+
 def publish_channel(info, apk_path):
     latest = api(f'repos/{REPO}/releases/latest')
     # An old recovery or rerun must never roll back the public channel.
@@ -63,7 +76,7 @@ def publish_channel(info, apk_path):
     prs = api(f'repos/{REPO}/pulls?head=alcovaibe:{branch}&state=all&per_page=10')
     if prs:
         assert any(pr['state'] == 'open' for pr in prs), 'Channel PR was closed; inspect it before retrying'
-        print('Public update channel PR already exists; main was not changed.')
+        pending_review(branch)
         return
     base = api(f'repos/{REPO}/git/ref/heads/main')['object']['sha']
     subprocess.run(['gh', 'api', '--method', 'POST', f'repos/{REPO}/git/refs', '--input', '-'],
@@ -81,5 +94,13 @@ def publish_channel(info, apk_path):
         subprocess.run(['gh', 'pr', 'create', '--repo', REPO, '--base', 'main', '--head', branch,
                         '--title', f"Update stable channel to {info['tag']}", '--body-file', str(body)], check=True)
     # PR events created by GITHUB_TOKEN do not trigger checks. An explicit dispatch does.
-    subprocess.run(['gh', 'workflow', 'run', 'android.yml', '--repo', REPO, '--ref', branch,
-                    '-f', 'channel=checks'], check=True)
+    pending_review(branch)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Retry channel PR delivery for an already verified, published APK; never republish or merge.')
+    parser.add_argument('--info', type=Path, required=True)
+    parser.add_argument('--apk', type=Path, required=True)
+    args = parser.parse_args()
+    publish_channel(json.loads(args.info.read_text()), args.apk)

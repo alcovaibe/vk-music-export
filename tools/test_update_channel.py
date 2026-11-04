@@ -11,6 +11,9 @@ from update_channel import channel_manifest, publish_channel, PACKAGE
 
 class UpdateChannelTest(unittest.TestCase):
     def setUp(self):
+        summary = patch.dict('os.environ', {'GITHUB_STEP_SUMMARY': ''})
+        summary.start()
+        self.addCleanup(summary.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.apk = Path(self.temp.name) / 'fixture.apk'
@@ -65,3 +68,29 @@ class UpdateChannelTest(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 publish_channel(self.info, self.apk)
             write.assert_not_called()
+
+    def test_existing_open_pr_retries_checks_without_writing_any_branch(self):
+        old = channel_manifest(self.info, self.release, self.apk)
+        old['release']['versionCode'] = 1080
+        existing = {'sha': 'file-sha', 'content': base64.b64encode(json.dumps(old).encode()).decode()}
+        with patch('update_channel.api', side_effect=[self.release, existing, [{'state': 'open'}]]), patch('subprocess.run') as write:
+            publish_channel(self.info, self.apk)
+            write.assert_called_once()
+            self.assertIn('channel=checks', write.call_args.args[0])
+            self.assertNotIn('PUT', write.call_args.args[0])
+            self.assertNotIn('POST', write.call_args.args[0])
+
+    def test_closed_channel_pr_is_not_silently_reopened_or_merged(self):
+        old = channel_manifest(self.info, self.release, self.apk)
+        old['release']['versionCode'] = 1080
+        existing = {'sha': 'file-sha', 'content': base64.b64encode(json.dumps(old).encode()).decode()}
+        with patch('update_channel.api', side_effect=[self.release, existing, [{'state': 'closed'}]]), patch('subprocess.run') as write:
+            with self.assertRaisesRegex(AssertionError, 'closed'):
+                publish_channel(self.info, self.apk)
+            write.assert_not_called()
+
+    def test_wrong_package_tag_and_sdk_never_generate_channel(self):
+        for changes in ({'applicationId': 'another.package'}, {'minSdk': 0},
+                        {'tag': 'v0.9.4-build.1082'}, {'apk': 'another.apk'}):
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                channel_manifest(dict(self.info, **changes), self.release, self.apk)

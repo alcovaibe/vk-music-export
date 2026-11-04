@@ -1,0 +1,27 @@
+name: Update channel consistency
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: update-channel-check-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+jobs:
+  channel-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release automation regression tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
+      - name: Validate this revision's channel schema
+        run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --schema-only
+      - name: Compare live public main channel with Latest (read only)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/check-update-channel.py
