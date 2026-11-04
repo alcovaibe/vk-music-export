@@ -226,5 +226,50 @@
     "job_id": 126817952858,
     "conclusion": "success"
   },
-  "collector_run": 41900245213
+  "collector_run": 41900245213,
+  "pr": {
+    "number": 68,
+    "head": "c82228112194e46798e21a0d0c4abae2b7082222",
+    "workflow_results": [
+      {
+        "id": 41904273245,
+        "name": "Android checks and APK",
+        "status": "completed",
+        "result": "success",
+        "head": "c82228112194e46798e21a0d0c4abae2b7082222",
+        "attempt": 1
+      },
+      {
+        "id": 41904273570,
+        "name": "Update channel consistency",
+        "status": "completed",
+        "result": "success",
+        "head": "c82228112194e46798e21a0d0c4abae2b7082222",
+        "attempt": 1
+      },
+      {
+        "id": 41904273240,
+        "name": "Release artifact compatibility",
+        "status": "completed",
+        "result": "success",
+        "head": "c82228112194e46798e21a0d0c4abae2b7082222",
+        "attempt": 1
+      }
+    ],
+    "merged": false
+  },
+  "superseded_pr": {
+    "number": 67,
+    "state": "closed",
+    "merged": false,
+    "retry": {
+      "id": 41893874809,
+      "name": "Android checks and APK",
+      "status": "completed",
+      "result": "success",
+      "head": "a7a1b76aaac180f4c3b0cfd48e40608f4d27adef",
+      "attempt": 2
+    },
+    "initial_failure": "API 29 RemoteServiceException: foreground service did not enter foreground; cause not declared fixed"
+  }
 }
