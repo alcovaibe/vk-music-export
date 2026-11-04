@@ -79,6 +79,9 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
     for method in receipt_required:
         if ('app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest', method) not in executed:
             raise ValueError(f'Required duplicate receipt integration test did not execute: {method}')
+    for method in ('malformedCheckpointAndOutOfDirectoryPathNeverDeleteAnUnrelatedFile', 'corruptOwnedApkIsRemovedAndCanNeverRestoreReady'):
+        if ('app.alcovaibe.vkmusicexport.UpdateCheckpointDeviceTest', method) not in executed:
+            raise ValueError(f'Required updater checkpoint test did not execute: {method}')
     return len(executed)
 
 

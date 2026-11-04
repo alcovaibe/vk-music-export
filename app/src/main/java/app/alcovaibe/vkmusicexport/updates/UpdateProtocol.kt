@@ -42,6 +42,15 @@ internal object UpdateProtocol {
             size !in 1..MAX_APK || !Regex("[a-f0-9]{64}").matches(hash))throw UpdateProblem("INVALID_RESPONSE")
         return UpdateRelease(name,code,sdk,UpdateAsset(size,hash))
     }
+    fun manifest(release: UpdateRelease): String = buildJsonObject {
+        put("schemaVersion",1);put("platform","android");put("channel","stable");put("applicationId",PACKAGE)
+        putJsonObject("release") {
+            put("versionName",release.name);put("versionCode",release.code);put("minSdk",release.minSdk)
+            put("tag","v${release.name}-build.${release.code}")
+            put("apk","VK-Music-Export-${release.name}-${release.code}.apk")
+            put("size",release.apk.size);put("sha256",release.apk.hash)
+        }
+    }.toString()
     fun downloadUrl(release: UpdateRelease): String =
         "$RELEASES/download/v${release.name}-build.${release.code}/VK-Music-Export-${release.name}-${release.code}.apk"
     fun redirect(from: String, location: String): String = try {

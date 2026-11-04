@@ -56,3 +56,26 @@ class ChannelConsistencyTest(unittest.TestCase):
                            ('platform', 'ios'), ('schemaVersion', 2)):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 channel.validate_manifest(dict(self.manifest, **{key: value}))
+
+    def test_cli_refuses_latest_movement_and_removes_previous_success_receipt(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        self.latest.update(id=17,target_commitish='a'*40)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); manifest=root/'candidate.json';manifest.write_text(json.dumps(self.manifest))
+            receipt=root/'channel-verification.json';receipt.write_text('{"state":"old_success"}')
+            changed=dict(self.latest,id=18)
+            with patch('sys.argv',['check','--manifest',str(manifest),'--output',directory]),patch.object(channel,'api',side_effect=[self.latest,changed]):
+                with self.assertRaisesRegex(ValueError,'Latest changed'): channel.main()
+            self.assertFalse(receipt.exists())
+
+    def test_live_retry_waits_for_cdn_and_checks_raw_pointer_again(self):
+        import tempfile
+        from unittest.mock import patch
+        self.latest.update(id=17,target_commitish='a'*40)
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('sys.argv',['check','--public-retries','2','--output',directory]),patch.object(channel,'public_manifest',side_effect=[ValueError('stale CDN'),self.manifest,self.manifest]),patch.object(channel,'api',return_value=self.latest),patch.object(channel.time,'sleep') as delay:
+                channel.main();delay.assert_called_once_with(10)
+            import json
+            self.assertEqual(json.loads((Path(directory)/'channel-verification.json').read_text())['state'],'public_channel_verified')

@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import os
+import shutil
 import zipfile
 
 CORE=('SHA256SUMS.txt','build-info.json','upgrade-check.txt','release-certificate.pem','sbom.cdx.json','osv.json','LICENSE','NOTICE')
@@ -40,8 +41,9 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
             raise ValueError('Missing durable channel verification and API 29–37 evidence')
         checked=json.loads(checked_path.read_text())
         subject=validate_manifest(checked['manifest'])
-        assert checked['state']=='candidate_verified' and checked['apk_verification']['sha256']==subject['sha256']
-        assert checked['apk_verification']['versionCode']==subject['versionCode']
+        if (checked['state']!='candidate_verified' or checked['apk_verification']['sha256']!=subject['sha256']
+                or checked['apk_verification']['versionCode']!=subject['versionCode']):
+            raise ValueError('Channel signature evidence has another subject')
         for api in range(29,38):
             if not any(name.startswith(f'ci/Android-interface-API-{api}/') and name.endswith('.xml') for name in files):
                 raise ValueError(f'Missing durable interface evidence API {api}')
@@ -49,7 +51,8 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
                 raise ValueError(f'Missing durable updater evidence API {api}')
             proof=json.loads((ci/f'Update-delivery-API-{api}/result.json').read_text())
             if (proof['api']!=api or proof['to']!=subject['versionCode'] or proof['sha256']!=subject['sha256']
-                    or proof['system_installer'] is not True or proof['private_marker_preserved'] is not True):
+                    or proof['system_installer'] is not True or proof['private_marker_preserved'] is not True
+                    or proof['process_restart'] is not True or proof['offline_restore'] is not True):
                 raise ValueError(f'Inconsistent updater evidence API {api}')
         if not any(name.startswith('ci/Android-reports/') and name.endswith('.xml') for name in files):
             raise ValueError('Missing durable unit/lint/build evidence')
@@ -66,8 +69,15 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
     target=output/'release-evidence.zip';temporary=target.with_suffix('.zip.part')
     try:
         with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr('evidence-manifest.json',json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
-            for name,path in files.items(): archive.write(path,name)
+            def entry(name):
+                item=zipfile.ZipInfo(name,date_time=(1980,1,1,0,0,0))
+                item.compress_type=zipfile.ZIP_DEFLATED
+                item.external_attr=0o100644 << 16
+                return item
+            archive.writestr(entry('evidence-manifest.json'),json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+            for name,path in sorted(files.items()):
+                with path.open('rb') as source,archive.open(entry(name),'w') as target_file:
+                    shutil.copyfileobj(source,target_file)
         temporary.replace(target)
     finally: temporary.unlink(missing_ok=True)
     return target

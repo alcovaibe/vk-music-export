@@ -1,11 +1,11 @@
 """Read-only validation of the channel used by installed apps against GitHub Latest.
 
-No branch, PR, release or acceptance is changed. A matching asset digest is a
-metadata consistency check, not a new download/signature/manual-acceptance test.
+No branch, PR, release or acceptance is changed. --verify-apk checks downloaded
+bytes, cryptographic signature and actual APK manifest; manual acceptance is separate.
 """
 import argparse
-import base64
 import json
+import time
 from pathlib import Path
 
 from update_channel import api, REPO, CHANNEL_PATH, PACKAGE, release_code
@@ -36,8 +36,12 @@ def main():
     parser.add_argument('--manifest', type=Path, help='Validate a local/PR manifest instead of the live main channel')
     parser.add_argument('--schema-only', action='store_true', help='Offline schema check; requires --manifest')
     parser.add_argument('--verify-apk', action='store_true', help='Download public bytes and verify signature and actual APK identity')
+    parser.add_argument('--public-retries', type=int, default=1, choices=range(1, 7), help='Retry public CDN propagation up to six times, ten seconds apart')
     parser.add_argument('--output', type=Path, default=Path('channel-evidence'))
     args = parser.parse_args()
+    if args.public_retries != 1 and args.manifest:
+        parser.error('--public-retries is only for the live public channel')
+    (args.output/'channel-verification.json').unlink(missing_ok=True)
     if args.schema_only and args.manifest is None:
         parser.error('--schema-only requires --manifest')
     if args.manifest:
@@ -45,7 +49,15 @@ def main():
     else:
         # The app reads this same main path. Fetch it afresh, independently of the
         # checkout used by a scheduled job or manually selected workflow branch.
-        manifest = public_manifest()
+        for attempt in range(args.public_retries):
+            try:
+                manifest = public_manifest()
+                check_latest(manifest, api(f'repos/{REPO}/releases/latest'))
+                break
+            except ValueError:
+                if attempt+1 == args.public_retries:
+                    raise
+                time.sleep(10)
     if args.schema_only:
         validate_manifest(manifest)
         print('PASS: local channel schema (no network/APK verification).')
@@ -57,6 +69,13 @@ def main():
         if args.verify_apk:
             apk = download_apk(manifest, args.output)
             result['apk_verification'] = verify_apk(apk, manifest)
+        # Do not attest delivery if Latest or the raw pointer moved during verification.
+        final_latest = api(f'repos/{REPO}/releases/latest')
+        check_latest(manifest, final_latest)
+        if (final_latest['id'], final_latest['target_commitish']) != (latest['id'], latest['target_commitish']):
+            raise ValueError('Latest changed during channel verification')
+        if args.manifest is None and public_manifest() != manifest:
+            raise ValueError('Public channel changed during verification')
         args.output.mkdir(parents=True, exist_ok=True)
         (args.output/'channel-verification.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
         (args.output/'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n')

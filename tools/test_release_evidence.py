@@ -45,9 +45,13 @@ class EvidenceTest(unittest.TestCase):
             (directory/'report.xml').write_text('<testsuite tests="1" failures="0"/>')
             directory=ci/f'Update-delivery-API-{api}';directory.mkdir()
             (directory/'result.json').write_text(json.dumps({'api':api,'to':1433,'sha256':'a'*64,
-                'system_installer':True,'private_marker_preserved':True}))
+                'system_installer':True,'private_marker_preserved':True,'process_restart':True,'offline_restore':True}))
         (ci/'Android-reports').mkdir();(ci/'Android-reports/unit.xml').write_text('<testsuite/>')
         with patch.dict(os.environ,{'GITHUB_ACTIONS':'true'}):
             with zipfile.ZipFile(self.build()) as z: self.assertIn('ci/Update-delivery-API-37/result.json',z.namelist())
             proof=ci/'Update-delivery-API-37/result.json';value=json.loads(proof.read_text());value['sha256']='b'*64;proof.write_text(json.dumps(value))
             with self.assertRaisesRegex(ValueError,'Inconsistent updater evidence API 37'): self.build()
+    def test_equivalent_downloaded_files_produce_same_archive_despite_mtime(self):
+        original=self.build().read_bytes()
+        for name in CORE: os.utime(self.root/name,(1_000_000_000,1_000_000_000))
+        self.assertEqual(original,self.build().read_bytes())

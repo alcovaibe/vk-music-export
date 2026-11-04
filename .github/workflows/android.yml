@@ -248,7 +248,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/check-update-channel.py --verify-apk --output channel-evidence/public
+        run: python3 tools/check-update-channel.py --verify-apk --public-retries 6 --output channel-evidence/public
       - name: Prepare real signed updater fixtures and isolated test host
         if: needs.changes.outputs.run_android == 'true'
         run: |

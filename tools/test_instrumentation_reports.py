@@ -53,10 +53,12 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="invalidSignaturesAndMissingAudioNeverCommitReceipts"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="receiptWritesAndReadsScaleFor1004500And20000"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="walReaderCompletesWhileAnotherConnectionHoldsTheWriter"/>'
-        return f'<testsuites tests="153" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.UpdateCheckpointDeviceTest" name="malformedCheckpointAndOutOfDirectoryPathNeverDeleteAnUnrelatedFile"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.UpdateCheckpointDeviceTest" name="corruptOwnedApkIsRemovedAndCanNeverRestoreReady"/>'
+        return f'<testsuites tests="155" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 153)
+        self.assertEqual(self.check([self.successful_report()], '0'), 155)
 
     def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
         report = self.successful_report()
@@ -65,9 +67,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 153)
+            self.assertEqual(self.check([executed], '0', api_level=api), 155)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 153)
+        self.assertEqual(self.check([report], '0', api_level=34), 155)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

@@ -27,8 +27,13 @@ adb shell "mkdir -p $appdata/files; cp /data/local/tmp/updater-protected.bin $ap
 adb install channel-evidence/host.apk
 adb install channel-evidence/tests.apk
 # No user/account sign-in, real release key or live VK calls are involved.
+adb shell appops set "$host" REQUEST_INSTALL_PACKAGES deny
 adb logcat -c
-adb shell am instrument -w -r -e class app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest "$host.test/androidx.test.runner.AndroidJUnitRunner" | tee update-delivery-results/instrumentation.txt
+adb shell am instrument -w -r -e phase prepare -e class app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest "$host.test/androidx.test.runner.AndroidJUnitRunner" | tee update-delivery-results/prepare-instrumentation.txt
+grep -F 'OK (1 test)' update-delivery-results/prepare-instrumentation.txt
+adb shell am force-stop "$host"
+adb shell appops set "$host" REQUEST_INSTALL_PACKAGES allow
+adb shell am instrument -w -r -e phase install -e class app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest "$host.test/androidx.test.runner.AndroidJUnitRunner" | tee update-delivery-results/instrumentation.txt
 adb pull "$appdata/files/updater-protected.bin" update-delivery-results/protected-after.bin
 cmp update-delivery-results/protected.bin update-delivery-results/protected-after.bin
 adb shell dumpsys package "$package" > update-delivery-results/installed-package.txt
@@ -37,13 +42,14 @@ python3 - "$expected_api" <<'PY'
 import hashlib,json,re,sys
 from pathlib import Path
 out=Path('update-delivery-results')
-log=(out/'instrumentation.txt').read_text()
-assert re.search(r'OK \(1 test\)',log), 'Integration test did not complete exactly one passing test'
+log=(out/'prepare-instrumentation.txt').read_text()+'\n'+(out/'instrumentation.txt').read_text()
+assert len(re.findall(r'OK \(1 test\)',log))==2, 'Integration test did not complete exactly one passing test'
 assert not any(s in log for s in ['FAILURES!!!','INSTRUMENTATION_FAILED','Process crashed','INSTRUMENTATION_ABORTED'])
 proof=json.loads((out/'updater-proof.json').read_text())
 manifest=json.loads(Path('channel-evidence/manifest.json').read_text())['release']
 assert proof['api']==int(sys.argv[1]) and proof['from']==1343 and proof['to']==manifest['versionCode']
 assert proof['sha256']==manifest['sha256'] and proof['system_installer'] is True
+assert proof['process_restart'] is True and proof['offline_restore'] is True
 assert re.search(r'versionCode='+str(proof['to'])+r'\b',(out/'installed-package.txt').read_text())
 assert (out/'protected.bin').read_bytes()==(out/'protected-after.bin').read_bytes()
 proof['private_marker_preserved']=True
