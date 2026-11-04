@@ -72,6 +72,9 @@ jobs:
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: CI and release automation regression tests
         run: python3 -m unittest discover -s tools -p 'test_*.py'
+      - name: Resolve Gradle configuration before compilation
+        timeout-minutes: 5
+        run: python3 tools/gradle_preflight.py
       - name: Test, lint and R8 with committed dependency verification
         run: |
           test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
@@ -182,6 +185,9 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet
           df -h /home/runner
+      - name: Resolve Gradle configuration before compilation
+        timeout-minutes: 5
+        run: python3 tools/gradle_preflight.py
       - name: Compile interface APKs before booting the emulator
         run: ./gradlew --dependency-verification strict assembleDebug assembleDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
       - name: Build API 29–33 compatible debug upgrade pair
@@ -249,6 +255,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 tools/check-update-channel.py --verify-apk --public-retries 6 --output channel-evidence/public
+      - name: Resolve Gradle configuration before compilation
+        if: needs.changes.outputs.run_android == 'true'
+        timeout-minutes: 5
+        run: python3 tools/gradle_preflight.py
       - name: Prepare real signed updater fixtures and isolated test host
         if: needs.changes.outputs.run_android == 'true'
         run: |
@@ -419,6 +429,9 @@ jobs:
       - name: Check exact owner request and pinned build inputs
         if: github.event_name == 'push'
         run: python3 tools/promote-owner-release.py --check
+      - name: Resolve Gradle configuration before compilation
+        timeout-minutes: 5
+        run: python3 tools/gradle_preflight.py
       - name: Restore permanent signing key
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
