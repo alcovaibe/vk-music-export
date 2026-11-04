@@ -1,4 +1,4 @@
-name: Inspect updater API 36 evidence
+name: Collect update channel verification
 on:
   push:
     branches: [audit/update-channel-diagnostics-20261104]
@@ -7,28 +7,88 @@ permissions:
   contents: read
   actions: read
 jobs:
-  inspect:
+  collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Download the existing failing test evidence without changing an APK or release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh run download 41897414632 --repo alcovaibe/vk-music-export --name Update-delivery-API-36 --dir evidence
-      - name: Print relevant emulator events
+      - name: Wait for the exact reviewed client revision
         run: |
           python3 - <<'PY'
+          import json,subprocess,time
           from pathlib import Path
-          import re
-          for file in Path('evidence').rglob('logcat.txt'):
-              lines=file.read_text(errors='replace').splitlines()
-              selected=[line for line in lines if re.search('ANR|not responding|PackageInstaller|packageinstaller|Harness|[Bb]ackground|BAL_|[Dd]enied|SecurityException|VKUpdate',line)]
-              print('\n'.join(selected[-350:]))
+          end=time.monotonic()+1500
+          while time.monotonic()<end:
+              run=json.loads(subprocess.check_output(['gh','api','repos/alcovaibe/vk-music-export/actions/runs/41899539434']))
+              assert run['head_sha']=='c82228112194e46798e21a0d0c4abae2b7082222'
+              if run['status']=='completed':
+                  Path('run.json').write_text(json.dumps(run))
+                  print('Final client workflow result:',run['conclusion'])
+                  break
+              time.sleep(20)
+          else: raise SystemExit('Exact client checks did not complete in time')
           PY
-      - name: Read the actual failing screen
+      - name: Read the final reports without publishing or modifying a branch
         run: |
-          if ! command -v tesseract >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y tesseract-ocr
-          fi
-          tesseract evidence/final.png stdout 2>/dev/null
+          gh api repos/alcovaibe/vk-music-export/actions/runs/41899539434/jobs?per_page=100 > jobs.json
+          gh run download 41899539434 --repo alcovaibe/vk-music-export --name Android-reports --dir evidence/Android-reports
+          gh run download 41899539434 --repo alcovaibe/vk-music-export --name Dependency-evidence --dir evidence/Dependency-evidence
+          gh run download 41899539434 --repo alcovaibe/vk-music-export --name Update-channel-fixtures --dir evidence/Update-channel-fixtures
+          gh run download 41899539434 --repo alcovaibe/vk-music-export --pattern 'Update-delivery-API-*' --dir evidence
+          gh run download 41899539434 --repo alcovaibe/vk-music-export --pattern 'Android-interface-API-*' --dir evidence
+      - name: Check and print exact evidence
+        run: |
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          root=Path('evidence')
+          jobs=json.loads(Path('jobs.json').read_text())['jobs']
+          run=json.loads(Path('run.json').read_text())
+          required=['build','channel-delivery','interface']+[f'updater (API {api})' for api in range(29,38)]+[f'interface (API {api})' for api in range(29,38)]
+          failed=[name for name in required if not any(j['name']==name and j['conclusion']=='success' for j in jobs)]
+          def cases(path):
+              items={}
+              for report in path.rglob('TEST-*.xml'):
+                  for case in ET.parse(report).getroot().iter('testcase'):
+                      key=(case.get('classname'),case.get('name'))
+                      assert None not in key
+                      items[key]={'failed':any(case.find(t) is not None for t in ('failure','error')),'skipped':case.find('skipped') is not None}
+              assert items,'No JUnit cases'
+              return items
+          unit=cases(root/'Android-reports')
+          assert not any(c['failed'] for c in unit.values())
+          skipped=[name+'.'+method for (name,method),case in unit.items() if case['skipped']]
+          android={}
+          updater={}
+          for api in range(29,38):
+              results=cases(root/f'Android-interface-API-{api}')
+              assert not any(c['failed'] or c['skipped'] for c in results.values())
+              android[str(api)]={'executed':len(results),'failures':0,'skipped':0}
+              directory=root/f'Update-delivery-API-{api}'
+              proof=json.loads((directory/'result.json').read_text())
+              assert proof['api']==api and proof['to']==1433 and proof['from']==1343
+              for field in ('system_installer','private_marker_preserved','process_restart','offline_restore'): assert proof[field] is True
+              assert type(proof['emulator_framework_dialogs']) is int and 0<=proof['emulator_framework_dialogs']<=3
+              for name in ('prepare-instrumentation.txt','instrumentation.txt'):
+                  log=(directory/name).read_text()
+                  assert re.search(r'OK \(1 test\)',log) and 'FAILURES!!!' not in log and 'Process crashed' not in log
+              proof['prepare_seconds']=float(re.search(r'Time:\s*([0-9.]+)',(directory/'prepare-instrumentation.txt').read_text())[1])
+              proof['install_seconds']=float(re.search(r'Time:\s*([0-9.]+)',(directory/'instrumentation.txt').read_text())[1])
+              updater[str(api)]=proof
+          verification=json.loads((root/'Update-channel-fixtures/channel-verification.json').read_text())
+          assert verification['state']=='candidate_verified'
+          expected=verification['manifest']['release']['sha256']
+          assert all(p['sha256']==expected for p in updater.values())
+          osv_file=next((root/'Dependency-evidence').rglob('osv.json'))
+          osv=json.loads(osv_file.read_text())
+          assert osv['findings']==[]
+          result={'source_sha':run['head_sha'],'run_id':run['id'],'conclusion':run['conclusion'],'required_checks_failed':failed,
+                  'unit':{'executed':len(unit),'passed':sum(not c['skipped'] for c in unit.values()),'skipped':skipped},
+                  'android':android,'updater':updater,'public_apk_verification':verification,
+                  'osv':{'components':osv['components'],'findings':0},
+                  'scope':'Isolated debug updater host using real signed public APKs 1343 to 1433; no new production APK published.'}
+          print('CHANNEL_VERIFICATION_RESULT='+json.dumps(result,ensure_ascii=False))
+          assert not failed and run['conclusion']=='success'
+          PY
