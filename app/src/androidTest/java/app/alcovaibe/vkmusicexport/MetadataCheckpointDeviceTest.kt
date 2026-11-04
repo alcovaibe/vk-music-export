@@ -224,10 +224,12 @@ class MetadataCheckpointDeviceTest {
             put("byte_metric","UTF-8 SQL payload sizes observed by triggers, not physical WAL/device writes")
             put("results",JsonArray(results))
         }
-        val file=File(inst.targetContext.getExternalFilesDir(null),"metadata-benchmarks/api-${Build.VERSION.SDK_INT}.json").apply{parentFile!!.mkdirs();writeText(report.toString())}
-        // executeShellCommand runs one command, without shell operators such as &&.
+        val file=File(inst.targetContext.filesDir,"metadata-benchmarks/api-${Build.VERSION.SDK_INT}.json").apply{parentFile!!.mkdirs();writeText(report.toString())}
+        // Shell cannot directly read app-owned storage on every API. run-as reads
+        // the debuggable test target's private file; sh owns the output redirection.
         val destination="/data/local/tmp/vk-music-export-benchmarks"
-        for(command in listOf("mkdir -p $destination","cp ${file.absolutePath} $destination/")) {
+        val copy="sh -c 'run-as ${inst.targetContext.packageName} cat ${file.absolutePath} > $destination/${file.name} 2>&1'"
+        for(command in listOf("mkdir -p $destination",copy)) {
             ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
         }
         val copied=ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand("cat $destination/${file.name}")).use{it.readBytes().toString(Charsets.UTF_8)}

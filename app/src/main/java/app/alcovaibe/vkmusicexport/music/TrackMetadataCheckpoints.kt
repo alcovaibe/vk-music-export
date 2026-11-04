@@ -31,7 +31,16 @@ internal class TrackMetadataCheckpoints(private val db: SQLiteDatabase) {
         catch(_: Exception){throw MusicFailure(MusicError.STORAGE)}
     private inline fun <T> atomic(block:()->T): T {
         db.beginTransaction()
-        try{val result=block();db.setTransactionSuccessful();return result}finally{db.endTransaction()}
+        var failure: Throwable?=null
+        try{val result=block();db.setTransactionSuccessful();return result}
+        catch(e: Throwable){failure=e;throw e}
+        finally {
+            try{db.endTransaction()}catch(cleanup: Throwable) {
+                // SQLITE_FULL can already have rolled back SQLite's native transaction.
+                // Android's cleanup must not hide the failure that stopped the write.
+                if(failure!=null)failure.addSuppressed(cleanup)else throw cleanup
+            }
+        }
     }
     private fun validate(run: TrackMetadataRun) {
         musicCheck(run.owner>0&&run.next in 0..run.targets.size&&idPattern.matches(run.runId)&&
