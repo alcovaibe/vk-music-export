@@ -67,6 +67,10 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
         raise ValueError('Required friends music profile, access and queue tests did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.PlaybackDeviceTest' for name, _ in executed) < 6:
         raise ValueError('Required background playback, controls and player interface tests did not execute')
+    required = ('app.alcovaibe.vkmusicexport.ArtworkLookupViewModelDeviceTest',
+                'verifiedRenewalKeepsArtworkChoiceWhileLoginAndLogoutCannotWrite')
+    if required not in executed:
+        raise ValueError('Required artwork lookup session integration test did not execute')
     return len(executed)
 
 

@@ -36,10 +36,11 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.ArtistFailureDeviceTest" name="diagnostics"/>'
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest" name="friends{i}"/>' for i in range(6))
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.PlaybackDeviceTest" name="playback{i}"/>' for i in range(6))
-        return f'<testsuites tests="136" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.ArtworkLookupViewModelDeviceTest" name="verifiedRenewalKeepsArtworkChoiceWhileLoginAndLogoutCannotWrite"/>'
+        return f'<testsuites tests="137" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 136)
+        self.assertEqual(self.check([self.successful_report()], '0'), 137)
 
     def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
         report = self.successful_report()
@@ -48,9 +49,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 136)
+            self.assertEqual(self.check([executed], '0', api_level=api), 137)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 136)
+        self.assertEqual(self.check([report], '0', api_level=34), 137)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -125,6 +126,11 @@ class InstrumentationReportTest(unittest.TestCase):
     def test_missing_playback_coverage_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'Required background playback'):
             self.check([self.successful_report().replace('app.alcovaibe.vkmusicexport.PlaybackDeviceTest', 'OtherTest')])
+
+    def test_missing_artwork_session_integration_cannot_be_hidden_by_other_tests(self):
+        report = self.successful_report().replace('verifiedRenewalKeepsArtworkChoiceWhileLoginAndLogoutCannotWrite', 'anotherTest')
+        with self.assertRaisesRegex(ValueError, 'Required artwork lookup session'):
+            self.check([report])
 
 
 if __name__ == '__main__':

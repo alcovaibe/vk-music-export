@@ -77,6 +77,14 @@ internal interface MusicCredentialStore {
 }
 internal interface MusicRenewer { suspend fun renew(access: MusicAccess): MusicAccess }
 internal class MusicReadChanged: MusicFailure(MusicError.ACCESS)
+/** Identity only, never a token. Verified renewal preserves it; independent login does not. */
+internal data class MusicReadIdentity(val readSessionId: String,val accountId: Long?) {
+    constructor(access: MusicAccess):this(access.readSessionId,access.accountId)
+    fun require(access: MusicAccess) {
+        if(access.readSessionId!=readSessionId||accountId?.let{it!=access.accountId}==true)throw MusicReadChanged()
+    }
+    override fun toString()="MusicReadIdentity([redacted])"
+}
 
 /** Reissues through the very same fixed web_token exchange used during pairing. No guessed OAuth grant. */
 internal class VkMusicRenewer(private val base: OkHttpClient=NetworkClients.api(),
@@ -117,8 +125,7 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     private var attemptedId: String?=null;private var attemptedAt=0L
     private var lastFailure: MusicFailure?=null
     private fun requireSameRead(supplied: MusicAccess,current: MusicAccess) {
-        if(current.readSessionId!=supplied.readSessionId ||
-            supplied.accountId?.let{it!=current.accountId}==true)throw MusicReadChanged()
+        MusicReadIdentity(supplied).require(current)
         if(current.credentialId!=supplied.credentialId&&current.token!=supplied.token) {
             musicCheck(supplied.renewal?.owner!=null&&supplied.renewal.owner==current.renewal?.owner,MusicError.ACCESS)
         }

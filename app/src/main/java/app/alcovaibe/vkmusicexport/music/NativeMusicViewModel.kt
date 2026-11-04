@@ -447,7 +447,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun dismissArtworkLookup(){if(_artworkLookup.value.busy)cancel();_artworkLookup.value=ArtworkLookupState()}
     fun artworkLookupQuery(value: String) {
         if(_artworkLookup.value.busy)return
-        _artworkLookup.update{it.copy(query=value.take(500),results=null,choice=null,credentialId="",phase=LookupPhase.READY,message=null)}
+        _artworkLookup.update{it.copy(query=value.take(500),results=null,choice=null,session=null,phase=LookupPhase.READY,message=null)}
+    }
+    private suspend fun artworkAccess(initial: MusicAccess,session: MusicReadIdentity,g: Int): MusicAccess {
+        active(g);session.require(initial)
+        val current=sessions?.continueRead(initial)?:access()
+        session.require(current);active(g)
+        return current
     }
     fun findArtworkReplacement(offset: Int=0) {
         val s=_artworkLookup.value
@@ -455,10 +461,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _artworkLookup.update{it.copy(phase=LookupPhase.SEARCHING,choice=null,message=null)}
         lookupWork("search",s.id){g->
             val a=sessions?.current()?:access()
-            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)}
+            val session=MusicReadIdentity(a)
+            suspend fun guard(){artworkAccess(a,session,g);Unit}
             val service=ArtworkLookup(api,source={error("Search never loads images")},guard=::guard)
             val page=service.find(a,s.query,offset)
-            lookupUpdate(s.id){it.copy(phase=LookupPhase.READY,results=page,resultsAt=lookupNow(),credentialId=a.credentialId,
+            lookupUpdate(s.id){it.copy(phase=LookupPhase.READY,results=page,resultsAt=lookupNow(),session=session,
                 message=if(page.matches.isEmpty())if(page.byLink)"ВК не вернул запись по этой ссылке." else "ВК не нашёл вариантов. Измени запрос или вставь ссылку на отдельную песню." else "Выбери запись и посмотри её обложку перед подтверждением.")}
             Diagnostics.event("audio_artwork_lookup",mapOf("operation_id" to s.id,"phase" to "results","by_link" to page.byLink,"count" to page.matches.size,"offset" to page.offset))
         }
@@ -469,7 +476,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _artworkLookup.update{it.copy(phase=LookupPhase.PREVIEWING,choice=null,message=null)}
         lookupWork("preview",s.id){g->
             val a=sessions?.current()?:access()
-            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId&&s.credentialId==a.credentialId,MusicError.ACCESS)
+            val session=s.session?:throw MusicFailure(MusicError.ACCESS)
+            suspend fun guard(){artworkAccess(a,session,g)
                 if(lookupNow()-s.resultsAt>=10*60*1000)throw ArtworkLookupFailure(LookupReason.EXPIRED)}
             val service=ArtworkLookup(api,source={selected->
                 lookupImages?.invoke(selected)?:ArtworkLoader(object: MusicApi by api {override suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack)=selected.candidates},
@@ -487,7 +495,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _artworkLookup.update{it.copy(phase=LookupPhase.APPLYING,message=null)}
         lookupWork("apply",s.id){g->
             val a=sessions?.current()?:access()
-            suspend fun guard(){active(g);musicCheck(authForeground.value&&vault.read()?.credentialId==a.credentialId&&a.credentialId==choice.credentialId,MusicError.ACCESS)}
+            suspend fun guard(){active(g);musicCheck(authForeground.value,MusicError.ACCESS);artworkAccess(a,choice.session,g);Unit}
             val service=ArtworkLookup(api,source={error("Confirmed image already loaded")},guard=::guard)
             val changed=service.apply(a,choice){row,image->
                 AudioExportRuntime.editSaved(getApplication()) {
