@@ -1,6 +1,9 @@
 package app.alcovaibe.vkmusicexport.updates
 
 import java.io.File
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
@@ -70,5 +73,25 @@ class UpdateControllerTest {
         withTimeout(5000){while(progress==null)yield()};c.defer();progress!!(99,100)
         assertEquals(UpdateStatus.IDLE,c.state.value.status);assertEquals(0L,c.state.value.received)
         assertNull(c.state.value.release);c.close()
+    }
+    @Test fun cancelledTransferDeletesAFileReturnedByANonCooperativeService()=runBlocking {
+        var completion: Continuation<File>?=null
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
+        val file=File.createTempFile("late-update",".apk")
+        val c=UpdateController(scope,Preferences(),service(download={suspendCoroutine{completion=it}}),1048,37,{100_000_000L},{1000L})
+        try {
+            c.ready();c.resume();c.check();c.waitFor(UpdateStatus.AVAILABLE);c.download()
+            withTimeout(5000){while(completion==null)yield()}
+            c.cancel();completion!!.resume(file)
+            withTimeout(5000){while(file.exists())delay(5)}
+            assertEquals(UpdateStatus.IDLE,c.state.value.status);assertNull(c.state.value.apk)
+        }finally{c.close();scope.cancel();file.delete()}
+    }
+    @Test fun internalDownloadTimeoutLeavesAnActionableError()=runBlocking {
+        val c=UpdateController(this,Preferences(),service(download={withTimeout(1){awaitCancellation()}}),1048,37,{100_000_000L},{1000L})
+        try {
+            c.ready();c.resume();c.check();c.waitFor(UpdateStatus.AVAILABLE);c.download()
+            c.waitFor(UpdateStatus.ERROR);assertNull(c.state.value.apk)
+        }finally{c.close()}
     }
 }

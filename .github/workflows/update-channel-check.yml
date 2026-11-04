@@ -13,15 +13,33 @@ concurrency:
 jobs:
   channel-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Release automation regression tests
         run: python3 -m unittest discover -s tools -p 'test_*.py'
       - name: Validate this revision's channel schema
         run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --schema-only
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        with:
+          cmdline-tools-version: '15859902'
+          packages: build-tools;36.0.0
+          log-accepted-android-sdk-licenses: false
       - name: Compare live public main channel with Latest (read only)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/check-update-channel.py
+        run: python3 tools/check-update-channel.py --verify-apk
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        with:
+          name: Public-update-channel-verification
+          path: channel-evidence/
+          if-no-files-found: warn
+          retention-days: 30

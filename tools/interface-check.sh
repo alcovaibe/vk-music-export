@@ -49,7 +49,7 @@ rm -rf app/build/outputs/androidTest-results/connected app/build/reports/android
 adb logcat -v raw -s VKMetadataBench:I VKReceiptBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
 benchmark_logcat_pid=$!
 trap 'kill "$benchmark_logcat_pid" 2>/dev/null || true' EXIT
-./gradlew --dependency-verification strict connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+./gradlew --dependency-verification strict connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
 result=$?
 kill "$benchmark_logcat_pid" 2>/dev/null || true
 wait "$benchmark_logcat_pid" 2>/dev/null || true

@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The isolated updater harness must see the separately installed production baseline. -->
+    <queries><package android:name="app.alcovaibe.vkmusicexport" /></queries>
+</manifest>

@@ -85,8 +85,9 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
             try {
                 val file=service.download(release){received,total->mutable.update{if(gen==generation&&it.status==UpdateStatus.DOWNLOADING&&it.release===release)it.copy(received=received,total=total)else it}}
                 if(gen==generation){mutable.update{it.copy(status=UpdateStatus.READY,apk=file)};record("download_verified")}
-                else withContext(Dispatchers.IO){file.delete()}
-            }catch(e: CancellationException){throw e}
+                else withContext(NonCancellable+Dispatchers.IO){file.delete()}
+            }catch(e: TimeoutCancellationException){if(gen==generation){mutable.update{it.copy(status=UpdateStatus.ERROR)};record("download_failed")}}
+            catch(e: CancellationException){throw e}
             catch(e: Exception){if(gen==generation){mutable.update{it.copy(status=problem(e))};record("download_failed")}}
         }
     }
