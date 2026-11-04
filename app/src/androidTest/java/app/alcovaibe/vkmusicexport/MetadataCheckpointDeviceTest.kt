@@ -36,7 +36,7 @@ class MetadataCheckpointDeviceTest {
         val(context,dir)=isolated("v3");var store=AudioExportStore(context);val shared=SharedAudioStore(context)
         var row: PublishedAudio?=null
         try {
-            val task=ExportLayout.task(NativeTrack("12_870001","Legacy checkpoint","CI",1),listOf("CI metadata migration"),1)
+            val task=ExportLayout.task(NativeTrack("12_870001","Legacy checkpoint","CI",1),listOf("CI metadata migration"),1,ExportSource(12,"library","migration"))
             store.replace(listOf(task),account=12)
             val input=File(dir,"tone.mp3").apply{writeBytes(inst.context.assets.open("native-audio/tone.mp3").use{it.readBytes()})}
             val saved=shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){}
@@ -113,12 +113,21 @@ class MetadataCheckpointDeviceTest {
         val(context,dir)=isolated("full");var store=AudioExportStore(context)
         try {
             val before=run(2);store.metadataRun(before)
-            val maximum=number(store,"PRAGMA max_page_count")
+            // PRAGMA through a cursor can use a read connection in the WAL pool.
+            // Pin a separate setup transaction to the primary/write connection.
+            // The checkpoint below still runs in its own real transaction.
+            fun primary(sql: String): Long {
+                val db=store.writableDatabase;db.beginTransaction()
+                try {
+                    val value=number(store,sql);db.setTransactionSuccessful();return value
+                }finally{db.endTransaction()}
+            }
+            val maximum=primary("PRAGMA max_page_count")
             val pages=number(store,"PRAGMA page_count")
-            assertEquals(pages,number(store,"PRAGMA max_page_count=$pages"))
+            assertEquals(pages,primary("PRAGMA max_page_count=$pages"))
             val after=before.copy(next=1,failed=1,issues=listOf(TrackMetadataIssue("x".repeat(60000),"Synthetic storage pressure")))
             try{store.metadataProgress(before,after);fail("Expected actual SQLiteFullException")}catch(_: SQLiteFullException){}
-            number(store,"PRAGMA max_page_count=$maximum")
+            primary("PRAGMA max_page_count=$maximum")
             store.close();store=AudioExportStore(context)
             assertEquals(before,store.metadataRun(12));assertEquals(0,count(store,"metadata_issues"))
         }finally{store.close();dir.deleteRecursively()}
@@ -170,10 +179,14 @@ class MetadataCheckpointDeviceTest {
                 var cursor=run(size)
                 val begin=SystemClock.elapsedRealtimeNanos();store.metadataRun(cursor)
                 val snapshotMs=(SystemClock.elapsedRealtimeNanos()-begin)/1_000_000.0
+                val checkpointNanos=LongArray(size)
                 val started=SystemClock.elapsedRealtimeNanos()
                 repeat(size) {
                     val after=cursor.copy(next=cursor.next+1,current=cursor.current+1)
-                    store.metadataProgress(cursor,after);cursor=after
+                    val checkpointStart=SystemClock.elapsedRealtimeNanos()
+                    store.metadataProgress(cursor,after)
+                    checkpointNanos[it]=SystemClock.elapsedRealtimeNanos()-checkpointStart
+                    cursor=after
                 }
                 val writeMs=(SystemClock.elapsedRealtimeNanos()-started)/1_000_000.0
                 val targets=number(store,"SELECT target_writes FROM checkpoint_metrics")
@@ -186,8 +199,10 @@ class MetadataCheckpointDeviceTest {
                 val read=SystemClock.elapsedRealtimeNanos();val restored=store.metadataRun(12)!!
                 val restoreMs=(SystemClock.elapsedRealtimeNanos()-read)/1_000_000.0
                 assertEquals(cursor,restored)
+                checkpointNanos.sort()
                 results+=buildJsonObject {
                     put("targets",size);put("snapshot_ms",snapshotMs);put("checkpoint_ms",writeMs);put("restore_ms",restoreMs)
+                    put("checkpoint_p95_ms",checkpointNanos[(size*95+99)/100-1]/1_000_000.0)
                     put("target_writes",targets);put("target_payload_bytes",targetBytes);put("progress_writes",progressWrites);put("progress_payload_bytes",progressBytes)
                     put("legacy_targets_min_bytes_estimate",targetBytes*(size+1));put("issues_in_workload",0)
                 }
@@ -208,8 +223,12 @@ class MetadataCheckpointDeviceTest {
             put("results",JsonArray(results))
         }
         val file=File(inst.targetContext.getExternalFilesDir(null),"metadata-benchmarks/api-${Build.VERSION.SDK_INT}.json").apply{parentFile!!.mkdirs();writeText(report.toString())}
-        val command="mkdir -p /data/local/tmp/vk-music-export-benchmarks && cp ${file.absolutePath} /data/local/tmp/vk-music-export-benchmarks/ && echo COPIED"
-        val output=ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(command)).use{it.readBytes().toString(Charsets.UTF_8)}
-        assertTrue(output.contains("COPIED"))
+        // executeShellCommand runs one command, without shell operators such as &&.
+        val destination="/data/local/tmp/vk-music-export-benchmarks"
+        for(command in listOf("mkdir -p $destination","cp ${file.absolutePath} $destination/")) {
+            ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(command)).use{it.readBytes()}
+        }
+        val copied=ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand("cat $destination/${file.name}")).use{it.readBytes().toString(Charsets.UTF_8)}
+        assertEquals(report.toString(),copied)
     }
 }
