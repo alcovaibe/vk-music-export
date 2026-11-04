@@ -41,18 +41,18 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
     fun restore() {
         if(state.value.scanId.isNotEmpty())return
         val request=read()
-        val saved=DuplicateScanCache(context).count()
+        val saved=DuplicateScanCache(context).use{it.count()}
         if(request!=null||saved>0)state.update{it.copy(scanId=request?.id?:"",savedChecks=saved,phase=DuplicatePhase.BLOCKED,
             message="Сохранённые проверки доступны. Продолжи поиск; старые согласия на удаление не восстанавливаются.")}
     }
-    fun discard(){scheduledAccess=null;file.delete();DuplicateScanCache(context).clear();state.value=DuplicatesState()}
+    fun discard(){scheduledAccess=null;file.delete();DuplicateScanCache(context).use{it.clear()};state.value=DuplicatesState()}
     suspend fun prepare(): String {
         musicCheck(!state.value.busy,MusicError.BUSY)
         val access=sessions?.current()?:credentials.read()?:throw MusicFailure(MusicError.ACCESS)
         val id=UUID.randomUUID().toString()
         scheduledAccess=access
         write(Request(id,access.credentialId,"QUEUED"))
-        state.value=DuplicatesState(visible=true,phase=DuplicatePhase.QUEUED,scanId=id,savedChecks=DuplicateScanCache(context).count(),
+        state.value=DuplicatesState(visible=true,phase=DuplicatePhase.QUEUED,scanId=id,savedChecks=DuplicateScanCache(context).use{it.count()},
             progress=DuplicateProgress("Ожидаем сеть и запуск Android"))
         return id
     }
@@ -103,7 +103,7 @@ internal class DuplicateCheckTask(private val context: Context,private val api: 
             pause(id,"Проверка приостановлена: "+(if(code==MusicError.ACCESS)"Не удалось подтвердить доступ ВК. Проверь вход." else code.label)+" Готовые проверки сохранены.")
             Diagnostics.event("audio_duplicates_failure",mapOf("scan_id" to id,"code" to code.name,"vk_code" to failure?.remoteCode,
                 "stage" to stage,"saved_checks" to cache.count(),"reused" to reused,"background" to true,"mutation_started" to false))
-        }finally{state.update{if(it.scanId==id)it.copy(savedChecks=cache.count())else it}}
+        }finally{try{state.update{if(it.scanId==id)it.copy(savedChecks=cache.count())else it}}finally{cache.close()}}
     }
     private companion object {val lock=Any()}
 }

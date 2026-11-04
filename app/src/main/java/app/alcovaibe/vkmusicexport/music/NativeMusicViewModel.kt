@@ -541,7 +541,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _duplicates.update{it.copy(visible=true)}
         if(_duplicates.value.busy)return
         viewModelScope.launch {
-            val saved=withContext(Dispatchers.IO){runCatching{DuplicateScanCache(getApplication()).count()}.getOrDefault(0)}
+            val saved=withContext(Dispatchers.IO){runCatching{DuplicateScanCache(getApplication()).use{it.count()}}.getOrDefault(0)}
             _duplicates.update{it.copy(savedChecks=saved)}
         }
     }

@@ -75,6 +75,10 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
     for method in metadata_required:
         if ('app.alcovaibe.vkmusicexport.MetadataCheckpointDeviceTest', method) not in executed:
             raise ValueError(f'Required metadata checkpoint integration test did not execute: {method}')
+    receipt_required = ('legacyBackupAndAlbumKeysMigrateOnceAndSurviveReopen', 'failedLegacyImportRetainsOriginalAndRetriesWithoutPartialRows', 'malformedLegacyAndCorruptRowsNeverBecomeMatches', 'accountExpiryAndSnapshotChangesFenceStaleInstances', 'abortAndActualSQLiteFullKeepThePreviousReceiptAndCount', 'clearInvalidatesOtherInstancesWithoutTouchingExportQueueOrMedia', 'invalidSignaturesAndMissingAudioNeverCommitReceipts', 'receiptWritesAndReadsScaleFor1004500And20000')
+    for method in receipt_required:
+        if ('app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest', method) not in executed:
+            raise ValueError(f'Required duplicate receipt integration test did not execute: {method}')
     return len(executed)
 
 

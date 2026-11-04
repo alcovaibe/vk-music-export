@@ -112,16 +112,17 @@ class DownloadContinuityDeviceTest {
         val dir=File(app.cacheDir,"receipts-per-record").apply{deleteRecursively();mkdirs()};val context=context(dir)
         val tracks=(1..3).map(::track);val signature=DuplicateSignature("mp3","a".repeat(64))
         val audio=File(context.cacheDir,"verified.output").apply{writeBytes(ByteArray(16))}
+        var cache=DuplicateScanCache(context)
         try {
-            var cache=DuplicateScanCache(context);cache.begin(12,tracks)
+            cache.begin(12,tracks)
             tracks.forEach{cache.save(it,signature,audio)}
-            cache=DuplicateScanCache(context);cache.begin(12,listOf(track(4))+tracks.reversed())
+            cache.close();cache=DuplicateScanCache(context);cache.begin(12,listOf(track(4))+tracks.reversed())
             tracks.forEach{assertEquals(signature,cache.get(it))};assertNull(cache.get(track(4)));assertEquals(3,cache.count())
             val edited=tracks[0].copy(duration=2)
             cache.begin(12,listOf(edited,tracks[1],track(4)))
             assertEquals(1,cache.count());assertNull(cache.get(tracks[0]));assertNull(cache.get(edited))
             assertNull(cache.get(tracks[2]));assertEquals(signature,cache.get(tracks[1]))
-        }finally{dir.deleteRecursively()}
+        }finally{cache.close();dir.deleteRecursively()}
     }
 
     @Test fun changingLibraryFinishesTaskOnceAndExplicitNextSearchDownloadsOnlyNewCandidates()=runBlocking<Unit>(Dispatchers.IO) {

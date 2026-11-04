@@ -44,10 +44,18 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.MetadataCheckpointDeviceTest" name="immutableTargetsAndManualIssueResolutionSurviveAccountScopedReopen"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.MetadataCheckpointDeviceTest" name="maintenanceJournalUsesDatabaseIssuesAndRestoresThemAfterReload"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.MetadataCheckpointDeviceTest" name="checkpointPayloadScalesLinearlyFor1004500And20000Targets"/>'
-        return f'<testsuites tests="144" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="legacyBackupAndAlbumKeysMigrateOnceAndSurviveReopen"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="failedLegacyImportRetainsOriginalAndRetriesWithoutPartialRows"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="malformedLegacyAndCorruptRowsNeverBecomeMatches"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="accountExpiryAndSnapshotChangesFenceStaleInstances"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="abortAndActualSQLiteFullKeepThePreviousReceiptAndCount"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="clearInvalidatesOtherInstancesWithoutTouchingExportQueueOrMedia"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="invalidSignaturesAndMissingAudioNeverCommitReceipts"/>'
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="receiptWritesAndReadsScaleFor1004500And20000"/>'
+        return f'<testsuites tests="152" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 144)
+        self.assertEqual(self.check([self.successful_report()], '0'), 152)
 
     def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
         report = self.successful_report()
@@ -56,9 +64,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 144)
+            self.assertEqual(self.check([executed], '0', api_level=api), 152)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 144)
+        self.assertEqual(self.check([report], '0', api_level=34), 152)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -143,6 +151,11 @@ class InstrumentationReportTest(unittest.TestCase):
         for method in ('v3MigrationRetainsQueueAudioAndLegacyCursorAcrossReopen', 'failedLegacyImportRollsBackAndKeepsItsOnlyOriginalCopy', 'cursorAndIssuesRollbackTogetherAndStaleWritersCannotReplaceANewRun', 'sqliteFullLeavesThePreviousCursorAndIssueSetRecoverable', 'immutableTargetsAndManualIssueResolutionSurviveAccountScopedReopen', 'maintenanceJournalUsesDatabaseIssuesAndRestoresThemAfterReload', 'checkpointPayloadScalesLinearlyFor1004500And20000Targets'):
             with self.subTest(method=method), self.assertRaisesRegex(ValueError, 'Required metadata checkpoint'):
                 self.check([self.successful_report().replace(method, 'anotherTest')])
+
+    def test_every_receipt_migration_and_fault_case_is_required(self):
+        for method in ['legacyBackupAndAlbumKeysMigrateOnceAndSurviveReopen', 'failedLegacyImportRetainsOriginalAndRetriesWithoutPartialRows', 'malformedLegacyAndCorruptRowsNeverBecomeMatches', 'accountExpiryAndSnapshotChangesFenceStaleInstances', 'abortAndActualSQLiteFullKeepThePreviousReceiptAndCount', 'clearInvalidatesOtherInstancesWithoutTouchingExportQueueOrMedia', 'invalidSignaturesAndMissingAudioNeverCommitReceipts', 'receiptWritesAndReadsScaleFor1004500And20000']:
+            with self.subTest(method=method), self.assertRaisesRegex(ValueError, 'Required duplicate receipt'):
+                self.check([self.successful_report().replace(f'name="{method}"', 'name="missing_case"')], '0')
 
 
 if __name__ == '__main__':
