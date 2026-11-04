@@ -9,6 +9,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class UpdateProtocolTest {
+    @Test fun checkpointSerializationUsesTheSameStrictPublicContract() {
+        val release=UpdateRelease("0.12.1",1433,29,UpdateAsset(5969335,"a".repeat(64)))
+        assertEquals(release,UpdateProtocol.latest(UpdateProtocol.manifest(release).toByteArray()))
+    }
+
     private val hash="a".repeat(64)
     private fun raw(code: Int=1048)="""{"schemaVersion":1,"platform":"android","channel":"stable","applicationId":"app.alcovaibe.vkmusicexport","release":{"versionName":"0.6.0","versionCode":$code,"minSdk":36,"tag":"v0.6.0-build.$code","apk":"VK-Music-Export-0.6.0-$code.apk","size":100,"sha256":"$hash"}}""".toByteArray()
     @Test fun strictPublicManifestRequiresMatchingPackageTagApkAndDigest() {

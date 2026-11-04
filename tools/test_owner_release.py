@@ -122,3 +122,77 @@ class OwnerReleaseTest(unittest.TestCase):
         with patch.object(owner,'api') as api:
             with self.assertRaises(AssertionError): owner.delete_requested_branches(dict(request,branches_to_delete={'main':'a'*40}))
             self.assertFalse(any(len(call.args)>1 and call.args[1]=='DELETE' for call in api.call_args_list))
+
+
+class OwnerChannelDeliveryTest(unittest.TestCase):
+    """Run promotion orchestration, including its real manifest/asset checks."""
+    def run_promotion(self, fail_delivery=False):
+        import json
+        import os
+        from contextlib import ExitStack
+        from update_channel import PACKAGE
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            root = Path(directory)
+            previous = Path.cwd()
+            os.chdir(root)
+            stack.callback(os.chdir, previous)
+            out = root / 'release-output'
+            out.mkdir()
+            apk_name = 'VK-Music-Export-0.12.1-1433.apk'
+            apk = out / apk_name
+            apk.write_bytes(b'fixture')
+            digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+            info = dict(versionName='0.12.1', versionCode=1433, minSdk=owner.configured_min_sdk(),
+                        applicationId=PACKAGE, tag='v0.12.1-build.1433', apk=apk_name,
+                        commit='a' * 40, buildRun='5000')
+            (out / 'build-info.json').write_text(json.dumps(info))
+            (out / 'upgrade-check.txt').write_text('PASS: synthetic fixture, not device evidence')
+            (out / 'SHA256SUMS.txt').write_text(digest + '  ' + apk_name)
+            (root / 'version.properties').write_text('versionName=0.12.1\n')
+            request = dict(authorization='owner_requested_latest', manual_acceptance='pending',
+                           repository='alcovaibe/vk-music-export', branch='main', pull_request=64,
+                           version_name='0.12.1', expires_at='9999-01-01T00:00:00Z', build_inputs={'app': 'b' * 40})
+            request_file = root / 'request.json'
+            request_file.write_text(json.dumps(request))
+            event_file = root / 'event.json'
+            event_file.write_text(json.dumps({'head_commit': {'message': '[publish-main-0.12.1]'}}))
+            env = dict(GITHUB_REPOSITORY=request['repository'], GITHUB_REF='refs/heads/main',
+                       GITHUB_EVENT_NAME='push', GITHUB_SHA=info['commit'], GITHUB_RUN_ID='5000',
+                       GITHUB_RUN_NUMBER='433', GITHUB_EVENT_PATH=str(event_file), ANDROID_HOME=directory)
+            cert = b'synthetic certificate'
+            def command(args, **kwargs):
+                if args[0] == 'git':
+                    return 'b' * 40
+                if args[0] == 'openssl':
+                    return cert
+                return 'Signer #1 certificate SHA-256 digest: ' + hashlib.sha256(cert).hexdigest()
+            asset = dict(name=apk_name, state='uploaded', size=7, digest='sha256:' + digest)
+            rc = dict(id=7, target_commitish=info['commit'], assets=[asset, {'name': 'SHA256SUMS.txt'}],
+                      body='Для RC ручная приёмка реального аккаунта и фоновой работы ещё обязательна перед stable.')
+            stable = dict(rc, tag_name=info['tag'], draft=False, prerelease=False,
+                          html_url='https://github.com/alcovaibe/vk-music-export/releases/tag/' + info['tag'])
+            stack.enter_context(patch.dict(os.environ, env, clear=True))
+            stack.enter_context(patch.object(owner, 'request_path', return_value=request_file))
+            stack.enter_context(patch('subprocess.check_output', side_effect=command))
+            api = stack.enter_context(patch.object(owner, 'api', side_effect=[
+                rc, {'tag_name': 'v0.12.0-build.1343'}, None, stable, stable]))
+            delivery = stack.enter_context(patch('update_channel.publish_channel',
+                side_effect=RuntimeError('PR creation denied') if fail_delivery else None))
+            if fail_delivery:
+                with self.assertRaisesRegex(RuntimeError, 'PR creation denied'):
+                    owner.main(True)
+            else:
+                owner.main(True)
+            delivery.assert_called_once_with(info, Path('release-output') / apk_name)
+            saved = json.loads((out / 'public-update-channel.json').read_text())
+            self.assertEqual(saved['release']['minSdk'], info['minSdk'])
+            self.assertEqual(saved['release']['sha256'], digest)
+            self.assertEqual(json.loads(request_file.read_text())['manual_acceptance'], 'pending')
+            patch_call = next(c for c in api.call_args_list if len(c.args) > 1 and c.args[1] == 'PATCH')
+            self.assertIn('пока не подтверждена', patch_call.args[2]['body'])
+
+    def test_owner_latest_prepares_reviewed_channel_for_exact_apk(self):
+        self.run_promotion()
+
+    def test_channel_failure_fails_run_and_keeps_prepared_manifest_without_faking_acceptance(self):
+        self.run_promotion(fail_delivery=True)

@@ -102,7 +102,7 @@ class BackgroundCheckDeviceTest {
             credentials.value=MusicAccess("b".repeat(64),"Synthetic")
             scheduled.execute(stale);assertEquals(DuplicatePhase.BLOCKED,scheduled.state.value.phase);assertEquals(2,downloads.get())
             scheduled.discard();assertEquals(DuplicatePhase.INTRO,scheduled.state.value.phase)
-            assertEquals(0,DuplicateScanCache(context).count());assertFalse(File(context.noBackupFilesDir,"duplicate-job.json").exists())
+            assertEquals(0,DuplicateScanCache(context).use{it.count()});assertFalse(File(context.noBackupFilesDir,"duplicate-job.json").exists())
             // A verified renewal while the accepted job waits for network is still the same read.
             val now=1_800_000_000_000L;var clock=now
             val renewal=WebRenewal("p".repeat(64),12,emptyList())

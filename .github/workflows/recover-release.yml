@@ -77,6 +77,20 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: bash tools/upgrade-check-all.sh
+      - name: Preserve full Android reports in permanent public release evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: Android-*
+          path: release-evidence-input/
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+      - name: Preserve updater integration reports in permanent public release evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: Update-*
+          path: release-evidence-input/
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
       - name: Publish tested APK with original build and verified release commits
         run: python3 tools/publish-release.py
       - name: Save release and upgrade evidence

@@ -19,7 +19,7 @@ class PublisherTest(unittest.TestCase):
                 self.release_notes = Path(args[args.index('--notes-file') + 1]).read_text()
                 return subprocess.CompletedProcess(args, 0)
             if '--json' in args and args[-1] == 'targetCommitish,assets,prerelease':
-                value = {'targetCommitish': 'a' * 40, 'assets': [{'name': apk}], 'prerelease':channel == 'rc'}
+                value = {'targetCommitish': 'a' * 40, 'assets': [{'name': name} for name in (apk, 'SHA256SUMS.txt', 'release-evidence.zip')], 'prerelease':channel == 'rc'}
                 return subprocess.CompletedProcess(args, 0 if existing else 1, json.dumps(value), '')
             return subprocess.CompletedProcess(args, 0 if latest else 1, json.dumps({'tagName': latest}), '')
         with tempfile.TemporaryDirectory() as td:
@@ -58,7 +58,7 @@ class PublisherTest(unittest.TestCase):
         calls = self.publish('v0.3.0-build.1023')
         self.assertIn('--latest=true', calls[-1])
         self.assertEqual(calls[-1][4:calls[-1].index('--target')],
-                         ['release-output/VK-Music-Export-0.3.0-1024.apk', 'release-output/SHA256SUMS.txt'])
+                         ['release-output/VK-Music-Export-0.3.0-1024.apk', 'release-output/SHA256SUMS.txt', 'release-output/release-evidence.zip'])
         self.assertIn('/actions/runs/2000', self.release_notes)
 
     def test_rc_never_becomes_latest_or_changes_stable_channel(self):
@@ -67,7 +67,7 @@ class PublisherTest(unittest.TestCase):
         self.assertIn('--latest=false', calls[-1])
         self.assertIn('v0.3.0-build.1024-rc', calls[-1])
         self.assertEqual(calls[-1][4:calls[-1].index('--target')],
-                         ['release-output/VK-Music-Export-0.3.0-1024.apk', 'release-output/SHA256SUMS.txt'])
+                         ['release-output/VK-Music-Export-0.3.0-1024.apk', 'release-output/SHA256SUMS.txt', 'release-output/release-evidence.zip'])
 
     def test_old_recovery_cannot_downgrade_latest(self):
         calls = self.publish('v0.3.0-build.1025')

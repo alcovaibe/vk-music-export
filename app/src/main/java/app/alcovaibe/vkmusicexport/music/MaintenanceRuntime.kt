@@ -17,7 +17,8 @@ import java.io.File
 }
 @Serializable internal data class MaintenanceCheckpoint(val status: MaintenanceStatus=MaintenanceStatus(),val owner: Long=0,
     val targets: List<PublishedAudio> = emptyList(),val next: Int=0,val search: Boolean=false,val queueToken: String="",
-    val metadata: TrackMetadataState=TrackMetadataState(),val artwork: ArtworkState=ArtworkState(),val files: SavedFilesState=SavedFilesState())
+    val metadata: TrackMetadataState=TrackMetadataState(),val artwork: ArtworkState=ArtworkState(),val files: SavedFilesState=SavedFilesState(),
+    val metadataOwner: Long=0)
 @Serializable private data class MaintenanceTargets(val token: String,val stage: String,val owner: Long,val rows: List<PublishedAudio>)
 internal data class MaintenanceBatch(val rows: List<PublishedAudio>,val next: Int,val resumed: Boolean)
 
@@ -60,7 +61,7 @@ internal object MaintenanceRuntime {
                 }
                 loaded.also {
                     require(it.status.stage.isEmpty()||it.status.stage in stages)
-                    require(it.next in 0..it.targets.size&&it.targets.size<=20000&&it.owner>=0)
+                    require(it.next in 0..it.targets.size&&it.targets.size<=20000&&it.owner>=0&&it.metadataOwner>=0)
                 }
             }
         }catch(_: Exception){MaintenanceCheckpoint()}
@@ -68,15 +69,29 @@ internal object MaintenanceRuntime {
         val restored=if(old.busy)old.copy(phase=MaintenancePhase.PAUSED)else old
         snapshot=snapshot.copy(status=restored)
         status.value=restored
-        metadata.value=snapshot.metadata.copy(visible=false,running=false,name=null)
+        val restoredMetadata=if(snapshot.metadataOwner==0L)snapshot.metadata else try {
+            AudioExportStore(context).use{it.metadataRunState(snapshot.metadataOwner)}?.copy(message=snapshot.metadata.message)
+                ?:TrackMetadataState(message="Сохранённая проверка недоступна. Открой раздел повторно.")
+        }catch(_: Exception){TrackMetadataState(message="Не удалось прочитать сохранённую проверку. Открой раздел повторно.")}
+        metadata.value=restoredMetadata.copy(visible=false,running=false,name=null)
         artwork.value=snapshot.artwork.copy(visible=false,running=false,current=null,resumable=snapshot.status.stage=="artwork"&&snapshot.next<snapshot.targets.size)
         files.value=snapshot.files.copy(visible=false,running=false,selecting=null,preview=null,forget=null,resumable=snapshot.status.stage=="saved_files_background"&&snapshot.next<snapshot.targets.size)
+    }
+    /** Keep the durable owner reference and its UI projection consistent. IO callers only. */
+    fun updateMetadata(owner: Long,update:(TrackMetadataState)->TrackMetadataState)=synchronized(lock) {
+        musicCheck(owner>0,MusicError.STORAGE)
+        var replaced=false
+        metadata.update{previous->update(previous).also{replaced=it!==previous}}
+        // A screen load may deliberately keep an active task's state. Keep its
+        // durable account reference too, including when the caller saw another account.
+        if(replaced)snapshot=snapshot.copy(metadataOwner=owner)
     }
     fun checkpoint()=synchronized(lock) {
         snapshot=snapshot.copy(status=status.value,metadata=metadata.value.copy(visible=false),
             artwork=artwork.value.copy(visible=false),files=files.value.copy(visible=false))
         // The immutable queue is written once, rather than rewriting thousands of full file records per item.
-        val disk=if(snapshot.queueToken.isNotEmpty())snapshot.copy(targets=emptyList())else snapshot
+        val disk=snapshot.copy(targets=if(snapshot.queueToken.isNotEmpty())emptyList()else snapshot.targets,
+            metadata=if(snapshot.metadataOwner>0)snapshot.metadata.copy(issues=emptyList())else snapshot.metadata)
         val bytes=json.encodeToString(disk).toByteArray()
         musicCheck(bytes.size<=MAX_BYTES,MusicError.STORAGE)
         val file=journal?:throw MusicFailure(MusicError.STORAGE)
@@ -108,7 +123,7 @@ internal object MaintenanceRuntime {
     fun launch(context: Context,stage: String,id: String,launcher: ((Job)->Unit)?=null,block:suspend()->Unit): Job {
         require(stage in stages);musicCheck(!busy,MusicError.BUSY)
         synchronized(lock){
-            if(snapshot.status.stage!=stage)snapshot=MaintenanceCheckpoint(status=MaintenanceStatus(stage,id))
+            if(snapshot.status.stage!=stage)snapshot=MaintenanceCheckpoint(status=MaintenanceStatus(stage,id),metadataOwner=snapshot.metadataOwner)
             status.value=MaintenanceStatus(stage,id,MaintenancePhase.QUEUED)
         }
         pausedOutcome=false

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -21,6 +22,8 @@ internal interface UpdateService {
     suspend fun latest(): UpdateRelease
     suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit): File
     suspend fun verify(file: File,release: UpdateRelease)
+    suspend fun restore(): Pair<UpdateRelease,File>? = null
+    suspend fun discard(file: File) { withContext(Dispatchers.IO){file.delete()} }
 }
 
 internal class GithubUpdates(private val context: Context?, private val client: OkHttpClient=newClient()) : UpdateService, AutoCloseable {
@@ -28,10 +31,39 @@ internal class GithubUpdates(private val context: Context?, private val client: 
     private var cached: UpdateRelease?=null
     private var etag: String?=null
     private val own=java.util.concurrent.ConcurrentHashMap.newKeySet<File>()
-    fun purgeOrphans()=synchronized(filesLock) {
+    private fun journal()=context?.getSharedPreferences("updates-transfer",Context.MODE_PRIVATE)
+    private fun checkpoint(): Pair<UpdateRelease,File>? { return try {
+        val context=context ?: return null
+        val values=journal()!!.all
+        val name=values["file"] as? String ?: return null
+        val raw=values["manifest"] as? String ?: return null
+        if(!Regex("vkm-[A-Za-z0-9_-]{3,160}\\.apk").matches(name))return null
+        val directory=File(context.cacheDir,"updates")
+        val file=File(directory,name)
+        if(file.canonicalFile.parentFile!=directory.canonicalFile)return null
+        UpdateProtocol.latest(raw.toByteArray(Charsets.UTF_8)) to file
+    } catch (_: Exception){null} }
+    private fun purgeOrphans(keep: File?)=synchronized(filesLock) {
         val directory=File((context ?: return@synchronized).cacheDir,"updates")
         owned.removeIf{!it.exists()}
-        directory.listFiles()?.filter{it !in owned}?.forEach{it.delete()}
+        directory.listFiles()?.filter{it !in owned&&it!=keep}?.forEach{it.delete()}
+    }
+    override suspend fun restore(): Pair<UpdateRelease,File>? = withContext(Dispatchers.IO) {
+        val saved=checkpoint()
+        purgeOrphans(saved?.second)
+        if(saved==null){journal()?.edit()?.clear()?.apply();return@withContext null}
+        val (release,file)=saved
+        synchronized(filesLock){owned.add(file);own.add(file)}
+        try {verify(file,release);saved}
+        catch(e: CancellationException){throw e}
+        catch (_: Exception){discard(file);null}
+    }
+    override suspend fun discard(file: File) = withContext(Dispatchers.IO) {
+        synchronized(filesLock) {
+            if(journal()?.all?.get("file")==file.name)journal()?.edit()?.clear()?.commit()
+            file.delete();owned.remove(file);own.remove(file)
+        }
+        Unit
     }
     private suspend fun <T> response(url: String,accept: String,cacheTag: String?=null,cleanup: ()->Unit={},handler: (Response)->T): T = suspendCancellableCoroutine { cont ->
         val request=request(url,accept,cacheTag)
@@ -113,7 +145,14 @@ internal class GithubUpdates(private val context: Context?, private val client: 
             File.createTempFile("vkm-",".apk",directory).also{owned.add(it);own.add(it)}
         }
         var complete=false
-        try {transfer(release,file,progress);verify(file,release);complete=true;file}
+        try {
+            transfer(release,file,progress);verify(file,release)
+            synchronized(filesLock) {
+                if(journal()?.edit()?.putString("file",file.name)?.putString("manifest",UpdateProtocol.manifest(release))?.commit()!=true)
+                    throw UpdateProblem("LOCAL_STORAGE")
+            }
+            complete=true;file
+        }
         finally {if(!complete){file.delete();owned.remove(file);own.remove(file)}}
     }
     override suspend fun verify(file: File,release: UpdateRelease) = withContext(Dispatchers.IO) {
@@ -123,7 +162,12 @@ internal class GithubUpdates(private val context: Context?, private val client: 
         if(digest.digest().joinToString(""){"%02x".format(it)}!=release.apk.hash)throw UpdateProblem("INVALID_APK")
         val context=context ?: throw UpdateProblem("INVALID_APK")
         val pm=context.packageManager
-        val apk=pm.getPackageArchiveInfo(file.absolutePath,PackageManager.GET_SIGNING_CERTIFICATES) ?: throw UpdateProblem("INVALID_APK")
+        // Android 10's archive parser only calls collectCertificates(skipVerify=false)
+        // when GET_SIGNATURES is present. Still compare SigningInfo's current signers;
+        // never fall back to an unverified or historical certificate.
+        @Suppress("DEPRECATION")
+        val archiveFlags=PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+        val apk=pm.getPackageArchiveInfo(file.absolutePath,archiveFlags) ?: throw UpdateProblem("INVALID_APK")
         val installed=pm.getPackageInfo(context.packageName,PackageManager.GET_SIGNING_CERTIFICATES)
         val app=apk.applicationInfo ?: throw UpdateProblem("INVALID_APK")
         if(context.packageName!=UpdateProtocol.PACKAGE)throw UpdateProblem("INVALID_APK")
@@ -135,7 +179,10 @@ internal class GithubUpdates(private val context: Context?, private val client: 
     override fun close() {
         client.dispatcher.cancelAll()
         client.dispatcher.executorService.execute {
-            try{client.connectionPool.evictAll();synchronized(filesLock){own.forEach{it.delete();owned.remove(it)};own.clear()}}
+            try{client.connectionPool.evictAll();synchronized(filesLock){
+                val keep=checkpoint()?.second
+                own.forEach{if(it!=keep){it.delete();owned.remove(it)}};own.clear()
+            }}
             finally{client.dispatcher.executorService.shutdown()}
         }
     }

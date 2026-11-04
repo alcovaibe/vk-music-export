@@ -77,6 +77,14 @@ internal interface MusicCredentialStore {
 }
 internal interface MusicRenewer { suspend fun renew(access: MusicAccess): MusicAccess }
 internal class MusicReadChanged: MusicFailure(MusicError.ACCESS)
+/** Identity only, never a token. Verified renewal preserves it; independent login does not. */
+internal data class MusicReadIdentity(val readSessionId: String,val accountId: Long?) {
+    constructor(access: MusicAccess):this(access.readSessionId,access.accountId)
+    fun require(access: MusicAccess) {
+        if(access.readSessionId!=readSessionId||accountId?.let{it!=access.accountId}==true)throw MusicReadChanged()
+    }
+    override fun toString()="MusicReadIdentity([redacted])"
+}
 
 /** Reissues through the very same fixed web_token exchange used during pairing. No guessed OAuth grant. */
 internal class VkMusicRenewer(private val base: OkHttpClient=NetworkClients.api(),
@@ -116,13 +124,19 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     private val mutable=MutableStateFlow(MusicSessionState());val state=mutable.asStateFlow()
     private var attemptedId: String?=null;private var attemptedAt=0L
     private var lastFailure: MusicFailure?=null
+    private fun requireSameRead(supplied: MusicAccess,current: MusicAccess) {
+        MusicReadIdentity(supplied).require(current)
+        if(current.credentialId!=supplied.credentialId&&current.token!=supplied.token) {
+            musicCheck(supplied.renewal?.owner!=null&&supplied.renewal.owner==current.renewal?.owner,MusicError.ACCESS)
+        }
+    }
     // A verified renewal retains the read session; a new login receives a new one.
     // Unlike a bounded chain of old credential IDs this works across any number of short-lived tokens.
     suspend fun continueRead(supplied: MusicAccess): MusicAccess=mutex.withLock {
         val stored=withContext(io){store.read()}?:throw MusicFailure(MusicError.ACCESS)
-        if(stored.readSessionId!=supplied.readSessionId)throw MusicReadChanged()
-        val current=resolve(false,null)
-        if(current.readSessionId!=supplied.readSessionId)throw MusicReadChanged()
+        requireSameRead(supplied,stored)
+        val current=resolve(false,null,supplied)
+        requireSameRead(supplied,current)
         current
     }
     private fun publish(a: MusicAccess?,status: SessionStatus?=null) {
@@ -132,13 +146,16 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
     }
     suspend fun reload(){publish(withContext(io){store.read()})}
     suspend fun current(): MusicAccess=mutex.withLock {resolve(false,null)}
-    private suspend fun resolve(force: Boolean,failed: MusicAccess?): MusicAccess {
+    private suspend fun resolve(force: Boolean,failed: MusicAccess?,expected: MusicAccess?=failed): MusicAccess {
         val old=withContext(io){store.read()}?:run{publish(null);throw MusicFailure(MusicError.ACCESS)}
+        // Vault writes use an independent lock. Check every read, including the
+        // recursive path when another request has already rotated the token.
+        expected?.let{requireSameRead(it,old)}
         // Another request already refreshed the rejected token. Use that result, never refresh twice.
         if(force&&failed!=null&&old.credentialId!=failed.credentialId) {
             if(old.readSessionId!=failed.readSessionId)throw MusicReadChanged()
             musicCheck(failed.renewal?.owner!=null&&failed.renewal.owner==old.renewal?.owner,MusicError.ACCESS)
-            return resolve(false,null)
+            return resolve(false,null,expected)
         }
         if(old.rejected){publish(old,SessionStatus.LOGIN_REQUIRED);throw MusicFailure(MusicError.ACCESS)}
         val now=wall();val expired=old.expiresAtMs?.let{it<=now}==true
@@ -191,18 +208,12 @@ internal class MusicSessionManager(private val store: MusicCredentialStore,priva
             val saved=withContext(io){runCatching{store.read()}.getOrNull()}
             if(saved==null||saved.credentialId!=supplied.credentialId)return block(supplied)
         }
-        val stored=withContext(io){store.read()}
-        // Initial pairing is verified before saving. It must never be substituted by an old account.
-        if(!supplied.persisted&&(stored==null||stored.credentialId!=supplied.credentialId))return block(supplied)
-        if(stored==null)throw MusicFailure(MusicError.ACCESS)
-        if(stored.credentialId!=supplied.credentialId&&stored.token!=supplied.token) {
-            if(stored.readSessionId!=supplied.readSessionId)throw MusicReadChanged()
-            musicCheck(supplied.renewal?.owner!=null&&supplied.renewal.owner==stored.renewal?.owner,MusicError.ACCESS)
-        }
-        val access=current()
+        // Resolve under the same read boundary as long-running operations. A
+        // matching token alone never authorizes a new independent login.
+        val access=continueRead(supplied)
         try{return block(access)}catch(e: MusicFailure) {
             if(e.code!=MusicError.ACCESS||e.remoteCode!=null&&e.remoteCode!=5)throw e
-            val renewed=mutex.withLock{resolve(true,access)}
+            val renewed=mutex.withLock{resolve(true,access).also{requireSameRead(supplied,it)}}
             try{return block(renewed)}catch(second: MusicFailure) {
                 if(second.code==MusicError.ACCESS&&(second.remoteCode==null||second.remoteCode==5)) {
                     val rejected=renewed.withSession(blocked=true,rejected=true)

@@ -1,6 +1,9 @@
 package app.alcovaibe.vkmusicexport.updates
 
 import java.io.File
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
@@ -14,10 +17,11 @@ class UpdateControllerTest {
     }
     private suspend fun UpdateController.waitFor(status: UpdateStatus)=withTimeout(5000){state.first{it.initialized&&it.status==status}}
     private suspend fun UpdateController.ready(){withTimeout(5000){state.first{it.initialized}}}
-    private fun service(check: suspend ()->UpdateRelease={release},download: suspend ((Long,Long)->Unit)->File={error("No transfer")},verify: suspend ()->Unit={})=object: UpdateService {
+    private fun service(check: suspend ()->UpdateRelease={release},download: suspend ((Long,Long)->Unit)->File={error("No transfer")},verify: suspend ()->Unit={},restoring: suspend ()->Pair<UpdateRelease,File>?={null})=object: UpdateService {
         override suspend fun latest()=check()
         override suspend fun download(release: UpdateRelease,progress: (Long,Long)->Unit)=download(progress)
         override suspend fun verify(file: File,release: UpdateRelease)=verify()
+        override suspend fun restore()=restoring()
     }
     @Test fun automaticIntervalManualCooldownAndRollback()=runBlocking {
         val prefs=Preferences().apply{lastAttempt=0};var wall=100_000_000L;var elapsed=1000L;var calls=0
@@ -71,4 +75,43 @@ class UpdateControllerTest {
         assertEquals(UpdateStatus.IDLE,c.state.value.status);assertEquals(0L,c.state.value.received)
         assertNull(c.state.value.release);c.close()
     }
+    @Test fun cancelledTransferDeletesAFileReturnedByANonCooperativeService()=runBlocking {
+        var completion: Continuation<File>?=null
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
+        val file=File.createTempFile("late-update",".apk")
+        val c=UpdateController(scope,Preferences(),service(download={suspendCoroutine{completion=it}}),1048,37,{100_000_000L},{1000L})
+        try {
+            c.ready();c.resume();c.check();c.waitFor(UpdateStatus.AVAILABLE);c.download()
+            withTimeout(5000){while(completion==null)yield()}
+            c.cancel();completion!!.resume(file)
+            withTimeout(5000){while(file.exists())delay(5)}
+            assertEquals(UpdateStatus.IDLE,c.state.value.status);assertNull(c.state.value.apk)
+        }finally{c.close();scope.cancel();file.delete()}
+    }
+    @Test fun internalDownloadTimeoutLeavesAnActionableError()=runBlocking {
+        val c=UpdateController(this,Preferences(),service(download={withTimeout(1){awaitCancellation()}}),1048,37,{100_000_000L},{1000L})
+        try {
+            c.ready();c.resume();c.check();c.waitFor(UpdateStatus.AVAILABLE);c.download()
+            c.waitFor(UpdateStatus.ERROR);assertNull(c.state.value.apk)
+        }finally{c.close()}
+    }
+    @Test fun verifiedCheckpointRestoresReadyWithoutMetadataOrAnotherDownload()=runBlocking {
+        val file=File.createTempFile("restored-update",".apk");var requests=0;var verified=0
+        val c=UpdateController(this,Preferences(),service(check={requests++;release},verify={verified++},restoring={release to file}),1048,37)
+        try {
+            c.ready();c.resume();c.waitFor(UpdateStatus.READY)
+            assertEquals(file,c.verifiedApk());assertEquals(0,requests);assertEquals(1,verified)
+            c.close();assertTrue(file.exists())
+        }finally{c.close();file.delete()}
+    }
+    @Test fun cancellingDuringRestoreCannotResurrectTheDownloadedApk()=runBlocking {
+        val entered=CompletableDeferred<Unit>();val complete=CompletableDeferred<Pair<UpdateRelease,File>?>()
+        val file=File.createTempFile("cancelled-restore",".apk")
+        val c=UpdateController(this,Preferences(),service(restoring={entered.complete(Unit);complete.await()}),1048,37)
+        try {
+            entered.await();c.cancel();complete.complete(release to file)
+            c.ready();assertEquals(UpdateStatus.IDLE,c.state.value.status);assertFalse(file.exists())
+        }finally{c.close();file.delete()}
+    }
+
 }

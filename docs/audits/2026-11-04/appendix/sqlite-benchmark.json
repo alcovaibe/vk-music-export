@@ -1,0 +1,137 @@
+{
+  "scope": "Synthetic host-side benchmark, same tasks/files/meta DDL and relevant SQL; Python JSON decoder, no Android, no Kotlin, no MediaStore; warm page cache.",
+  "python": "3.12.14",
+  "sqlite": "3.53.1",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "runs": [
+    {
+      "tracks": 100,
+      "insert_tasks_and_files_one_transaction_ms": 1.166,
+      "failed_snapshot_subset": {
+        "median_ms": 0.534,
+        "min_ms": 0.402,
+        "max_ms": 0.696,
+        "samples": 7
+      },
+      "failed_snapshot_subset_sql_statements": 102,
+      "savedFiles_read_and_python_decode": {
+        "median_ms": 0.43,
+        "min_ms": 0.386,
+        "max_ms": 0.835,
+        "samples": 7
+      },
+      "taskRows_read_and_python_decode": {
+        "median_ms": 0.372,
+        "min_ms": 0.3,
+        "max_ms": 0.801,
+        "samples": 7
+      },
+      "failure_query_plan": [
+        [
+          4,
+          0,
+          62,
+          "SEARCH tasks USING INDEX task_states (state=?)"
+        ]
+      ],
+      "lookup_query_plan": [
+        [
+          3,
+          0,
+          62,
+          "SEARCH files USING INDEX file_tracks (track_id=?)"
+        ]
+      ],
+      "metadata_run_serialized_bytes": 16806,
+      "metadata_run_serialized_bytes_times_items_estimate": 1680600,
+      "receipt_entry_bytes": 158,
+      "receipt_entries_cumulative_bytes_estimate": 802850
+    },
+    {
+      "tracks": 4500,
+      "insert_tasks_and_files_one_transaction_ms": 37.254,
+      "failed_snapshot_subset": {
+        "median_ms": 23.264,
+        "min_ms": 21.201,
+        "max_ms": 25.103,
+        "samples": 7
+      },
+      "failed_snapshot_subset_sql_statements": 4502,
+      "savedFiles_read_and_python_decode": {
+        "median_ms": 32.452,
+        "min_ms": 29.508,
+        "max_ms": 33.84,
+        "samples": 7
+      },
+      "taskRows_read_and_python_decode": {
+        "median_ms": 23.344,
+        "min_ms": 20.615,
+        "max_ms": 25.615,
+        "samples": 7
+      },
+      "failure_query_plan": [
+        [
+          4,
+          0,
+          62,
+          "SEARCH tasks USING INDEX task_states (state=?)"
+        ]
+      ],
+      "lookup_query_plan": [
+        [
+          3,
+          0,
+          62,
+          "SEARCH files USING INDEX file_tracks (track_id=?)"
+        ]
+      ],
+      "metadata_run_serialized_bytes": 779708,
+      "metadata_run_serialized_bytes_times_items_estimate": 3508686000,
+      "receipt_entry_bytes": 158,
+      "receipt_entries_cumulative_bytes_estimate": 1610228250
+    },
+    {
+      "tracks": 20000,
+      "insert_tasks_and_files_one_transaction_ms": 282.525,
+      "failed_snapshot_subset": {
+        "median_ms": 93.941,
+        "min_ms": 91.656,
+        "max_ms": 104.388,
+        "samples": 7
+      },
+      "failed_snapshot_subset_sql_statements": 20002,
+      "savedFiles_read_and_python_decode": {
+        "median_ms": 142.347,
+        "min_ms": 129.679,
+        "max_ms": 336.563,
+        "samples": 7
+      },
+      "taskRows_read_and_python_decode": {
+        "median_ms": 107.776,
+        "min_ms": 103.547,
+        "max_ms": 117.579,
+        "samples": 7
+      },
+      "failure_query_plan": [
+        [
+          4,
+          0,
+          62,
+          "SEARCH tasks USING INDEX task_states (state=?)"
+        ]
+      ],
+      "lookup_query_plan": [
+        [
+          3,
+          0,
+          62,
+          "SEARCH files USING INDEX file_tracks (track_id=?)"
+        ]
+      ],
+      "metadata_run_serialized_bytes": 3506710,
+      "metadata_run_serialized_bytes_times_items_estimate": 70134200000,
+      "receipt_entry_bytes": 158,
+      "receipt_entries_cumulative_bytes_estimate": 31801570000
+    }
+  ]
+}

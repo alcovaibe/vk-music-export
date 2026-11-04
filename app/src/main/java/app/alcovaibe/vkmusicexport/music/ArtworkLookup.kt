@@ -39,7 +39,7 @@ internal object ArtworkQuery {
         return "${match.groupValues[1]}_${match.groupValues[2]}"
     }
 }
-internal class ArtworkChoice(val target: PublishedAudio,val credentialId: String,val match: ArtworkMatch,val image: CoverImage,val expiresAt: Long) {
+internal class ArtworkChoice(val target: PublishedAudio,val session: MusicReadIdentity,val match: ArtworkMatch,val image: CoverImage,val expiresAt: Long) {
     val id=UUID.randomUUID().toString()
     private val claimed=AtomicBoolean()
     fun claim()=claimed.compareAndSet(false,true)
@@ -68,11 +68,11 @@ internal class ArtworkLookup(private val api: MusicApi,private val source:(Artwo
         guard();currentCoroutineContext().ensureActive()
         val image=source(match).load(access,match.track)?:throw ArtworkLookupFailure(LookupReason.NO_COVER)
         guard();currentCoroutineContext().ensureActive()
-        return ArtworkChoice(target,access.credentialId,match,image,clock()+5*60*1000)
+        return ArtworkChoice(target,MusicReadIdentity(access),match,image,clock()+5*60*1000)
     }
     suspend fun apply(access: MusicAccess,choice: ArtworkChoice,write:suspend(PublishedAudio,CoverImage)->Boolean): Boolean {
         musicCheck(choice.claim(),MusicError.BUSY)
-        musicCheck(access.credentialId==choice.credentialId,MusicError.ACCESS)
+        choice.session.require(access)
         if(clock()>=choice.expiresAt)throw ArtworkLookupFailure(LookupReason.EXPIRED)
         guard();currentCoroutineContext().ensureActive()
         // The writer receives the old saved record, never the candidate's track/ID.
@@ -82,6 +82,6 @@ internal class ArtworkLookup(private val api: MusicApi,private val source:(Artwo
 internal enum class LookupPhase { OPENING,READY,SEARCHING,PREVIEWING,CONFIRM,APPLYING,DONE }
 internal data class ArtworkLookupState(val visible: Boolean=false,val id: String="",val phase: LookupPhase=LookupPhase.READY,
     val target: PublishedAudio?=null,val query: String="",val results: ArtworkMatches?=null,val resultsAt: Long=0,
-    val credentialId: String="",val choice: ArtworkChoice?=null,val message: String?=null) {
+    val session: MusicReadIdentity?=null,val choice: ArtworkChoice?=null,val message: String?=null) {
     val busy get()=phase in setOf(LookupPhase.OPENING,LookupPhase.SEARCHING,LookupPhase.PREVIEWING,LookupPhase.APPLYING)
 }

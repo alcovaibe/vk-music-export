@@ -6,11 +6,10 @@ import kotlinx.serialization.Serializable
 @Serializable internal data class TrackMetadataTarget(val taskKey: String,val uri: String,val trackId: String,val name: String)
 @Serializable internal data class TrackMetadataRun(val owner: Long,val targets: List<TrackMetadataTarget>,val next: Int=0,
     val updated: Int=0,val current: Int=0,val unavailable: Int=0,val skipped: Int=0,val failed: Int=0,
-    val issues: List<TrackMetadataIssue> = emptyList(),val error: MusicError?=null) {
+    val issues: List<TrackMetadataIssue> = emptyList(),val error: MusicError?=null,
+    val runId: String=java.util.UUID.randomUUID().toString()) {
     val unfinished get()=next<targets.size
-    fun state(visible: Boolean=true,running: Boolean=false)=TrackMetadataState(visible=visible,running=running,total=targets.size,
-        processed=next,updated=updated,current=current,unavailable=unavailable,skipped=skipped,failed=failed,
-        issues=issues,resumable=unfinished,message=if(unfinished)"Проверка сохранена. Можно продолжить с необработанной записи." else "Проверка завершена. Звук и обложки сохранены.")
+    fun state(visible: Boolean=true,running: Boolean=false)=TrackMetadataProgress.of(this).state(targets.size,issues,visible,running)
     companion object {
         fun start(owner: Long,files: List<PublishedAudio>)=TrackMetadataRun(owner,files.distinctBy{it.uri}.map{
             TrackMetadataTarget(it.taskKey,it.uri,it.track.id,it.displayName)
@@ -23,13 +22,18 @@ internal class TrackMetadataBatch(private val api: MusicApi,private val access:s
     private val find:(TrackMetadataTarget)->PublishedAudio?,private val verify:suspend(PublishedAudio)->Unit,
     private val update:suspend(PublishedAudio,NativeTrack)->Boolean,private val recover:suspend()->Unit,
     private val save:(TrackMetadataRun)->Unit,private val progress:(TrackMetadataRun,String?)->Unit={_,_->},
-    private val metadataSource:(PublishedAudio)->String?={null},private val beforeItem:suspend(Int)->Unit={}) {
+    private val metadataSource:(PublishedAudio)->String?={null},private val beforeItem:suspend(Int)->Unit={},
+    private val checkpoint:((TrackMetadataRun,TrackMetadataRun)->Unit)?=null) {
+    private fun persist(before: TrackMetadataRun,after: TrackMetadataRun) {
+        if(checkpoint!=null)checkpoint.invoke(before,after)else save(after)
+    }
     suspend fun run(initial: TrackMetadataRun): TrackMetadataRun {
         musicCheck(initial.owner>0&&initial.next in 0..initial.targets.size,MusicError.STORAGE)
         var run=initial.copy(error=null)
         save(run);progress(run,null)
         val metadata=mutableMapOf<String,NativeTrack?>()
         while(run.unfinished) {
+            val before=run
             val target=run.targets[run.next]
             try {
                 beforeItem(run.next)
@@ -64,11 +68,11 @@ internal class TrackMetadataBatch(private val api: MusicApi,private val access:s
                 val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
                 if(code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.ACCOUNT_CHANGED,MusicError.METHOD,MusicError.CAPTCHA,MusicError.VALIDATION,
                         MusicError.RATE_LIMIT,MusicError.STORAGE,MusicError.NETWORK,MusicError.HTTP,MusicError.TLS,MusicError.TIMEOUT)||e is java.io.IOException) {
-                    run=run.copy(error=code);save(run);progress(run,target.name);throw e
+                    run=run.copy(error=code);persist(before,run);progress(run,target.name);throw e
                 }
                 run=run.copy(failed=run.failed+1,issues=run.issues+TrackMetadataIssue(target.name,code.label))
             }
-            run=run.copy(next=run.next+1);save(run);progress(run,null)
+            run=run.copy(next=run.next+1);persist(before,run);progress(run,null)
         }
         return run
     }

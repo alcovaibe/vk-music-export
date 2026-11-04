@@ -1,0 +1,29 @@
+{
+  "downloaded_at": "2026-11-04",
+  "tag": "v0.12.1-build.1433",
+  "apk": "VK-Music-Export-0.12.1-1433.apk",
+  "size": 5969335,
+  "sha256": "3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889",
+  "binary_manifest": {
+    "versionCode": 1433,
+    "versionName": "0.12.1",
+    "package": "app.alcovaibe.vkmusicexport",
+    "minSdkVersion": 29
+  },
+  "signature_reverified_locally": false,
+  "baseline_commit": "90e6848257e93d82b3a6b8af09cc58ef067a7703",
+  "release_id": 432907850,
+  "asset_digest_matched": true,
+  "prepared_channel_matches_latest_metadata": true,
+  "main_channel_mismatch_detected": true,
+  "python_tests": {
+    "count": 95,
+    "seconds": 2.729,
+    "result": "passed",
+    "command": "python3 -m unittest discover -s tools -p 'test_*.py'"
+  },
+  "android_tests_run": false,
+  "new_release_published": false,
+  "manual_acceptance": "pending",
+  "main_modified": false
+}

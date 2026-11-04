@@ -167,8 +167,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val owner=vault.read()?.accountId?:return@launch
-                val saved=AudioExportStore(getApplication()).use{it.metadataRun(owner)}?:return@launch
-                _trackMetadata.update{if(it.visible&&!it.running&&!_state.value.busy)saved.state()else it}
+                val saved=AudioExportStore(getApplication()).use{it.metadataRunState(owner)}?:return@launch
+                MaintenanceRuntime.updateMetadata(owner){if(it.visible&&!it.running&&!_state.value.busy)saved.copy(visible=true)else it}
             }catch(_: Exception){_trackMetadata.update{it.copy(message="Не удалось прочитать сохранённую проверку.")}}
         }
     }
@@ -183,7 +183,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                         AudioExportStore(getApplication()).use{store->
                             val shared=SharedAudioStore(getApplication())
                             vault.read()?.accountId?.let{owner->store.metadataRun(owner)}?.let{saved->
-                                _trackMetadata.update{saved.state(it.visible,running=true).copy(message=null)}
+                                MaintenanceRuntime.updateMetadata(saved.owner){saved.state(it.visible,running=true).copy(message=null)}
                             }
                             ArtworkRepair(getApplication(),store,shared).recover()
                             val initial=sessions?.current()?:access()
@@ -202,15 +202,15 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                             val files=store.savedFiles()
                             val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
                             val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
-                                verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},
+                                verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},checkpoint=store::metadataProgress,
                                 metadataSource={store.metadataReplacement(owner,it)?.referenceId},beforeItem={maintenanceBeforeItem("track_metadata",it)},
                                 progress={snapshot,name->
-                                    _trackMetadata.update{snapshot.state(it.visible,running=true).copy(name=name,message=null)}
+                                    MaintenanceRuntime.updateMetadata(owner){snapshot.state(it.visible,running=true).copy(name=name,message=null)}
                                     MaintenanceRuntime.checkpoint();AudioExportRuntime.refresh()
                                 })
                             try {
                                 val result=batch.run(pending)
-                                _trackMetadata.update{result.state(it.visible,running=true)}
+                                MaintenanceRuntime.updateMetadata(owner){result.state(it.visible,running=true)}
                             }finally {
                                 withContext(NonCancellable+Dispatchers.IO) {
                                     SharedPlaylistStore(getApplication(),store).repairLocations()
@@ -393,7 +393,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                                     updated=run.updated+if(written)count else 0,current=run.current+if(written)0 else count,
                                     issues=run.issues.map{if(it.target?.uri==row.uri&&it.target.trackId==row.track.id)
                                         it.copy(resolved=true,selectedId=reference,reason="Название и версия проверены по выбранной записи ВК.")else it})
-                                store.metadataRun(updated);_trackMetadata.update{updated.state(it.visible)}
+                                store.metadataRun(updated);MaintenanceRuntime.updateMetadata(s.owner){updated.state(it.visible)}
                             }
                             written
                         }finally {withContext(NonCancellable+Dispatchers.IO){SharedPlaylistStore(getApplication(),store).repairLocations();AudioExportRuntime.refresh()}}
@@ -447,7 +447,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun dismissArtworkLookup(){if(_artworkLookup.value.busy)cancel();_artworkLookup.value=ArtworkLookupState()}
     fun artworkLookupQuery(value: String) {
         if(_artworkLookup.value.busy)return
-        _artworkLookup.update{it.copy(query=value.take(500),results=null,choice=null,credentialId="",phase=LookupPhase.READY,message=null)}
+        _artworkLookup.update{it.copy(query=value.take(500),results=null,choice=null,session=null,phase=LookupPhase.READY,message=null)}
+    }
+    private suspend fun artworkAccess(initial: MusicAccess,session: MusicReadIdentity,g: Int): MusicAccess {
+        active(g);session.require(initial)
+        val current=sessions?.continueRead(initial)?:access()
+        session.require(current);active(g)
+        return current
     }
     fun findArtworkReplacement(offset: Int=0) {
         val s=_artworkLookup.value
@@ -455,10 +461,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _artworkLookup.update{it.copy(phase=LookupPhase.SEARCHING,choice=null,message=null)}
         lookupWork("search",s.id){g->
             val a=sessions?.current()?:access()
-            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)}
+            val session=MusicReadIdentity(a)
+            suspend fun guard(){artworkAccess(a,session,g);Unit}
             val service=ArtworkLookup(api,source={error("Search never loads images")},guard=::guard)
             val page=service.find(a,s.query,offset)
-            lookupUpdate(s.id){it.copy(phase=LookupPhase.READY,results=page,resultsAt=lookupNow(),credentialId=a.credentialId,
+            lookupUpdate(s.id){it.copy(phase=LookupPhase.READY,results=page,resultsAt=lookupNow(),session=session,
                 message=if(page.matches.isEmpty())if(page.byLink)"ВК не вернул запись по этой ссылке." else "ВК не нашёл вариантов. Измени запрос или вставь ссылку на отдельную песню." else "Выбери запись и посмотри её обложку перед подтверждением.")}
             Diagnostics.event("audio_artwork_lookup",mapOf("operation_id" to s.id,"phase" to "results","by_link" to page.byLink,"count" to page.matches.size,"offset" to page.offset))
         }
@@ -469,7 +476,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _artworkLookup.update{it.copy(phase=LookupPhase.PREVIEWING,choice=null,message=null)}
         lookupWork("preview",s.id){g->
             val a=sessions?.current()?:access()
-            suspend fun guard(){active(g);musicCheck(vault.read()?.credentialId==a.credentialId&&s.credentialId==a.credentialId,MusicError.ACCESS)
+            val session=s.session?:throw MusicFailure(MusicError.ACCESS)
+            suspend fun guard(){artworkAccess(a,session,g)
                 if(lookupNow()-s.resultsAt>=10*60*1000)throw ArtworkLookupFailure(LookupReason.EXPIRED)}
             val service=ArtworkLookup(api,source={selected->
                 lookupImages?.invoke(selected)?:ArtworkLoader(object: MusicApi by api {override suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack)=selected.candidates},
@@ -487,7 +495,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _artworkLookup.update{it.copy(phase=LookupPhase.APPLYING,message=null)}
         lookupWork("apply",s.id){g->
             val a=sessions?.current()?:access()
-            suspend fun guard(){active(g);musicCheck(authForeground.value&&vault.read()?.credentialId==a.credentialId&&a.credentialId==choice.credentialId,MusicError.ACCESS)}
+            suspend fun guard(){active(g);musicCheck(authForeground.value,MusicError.ACCESS);artworkAccess(a,choice.session,g);Unit}
             val service=ArtworkLookup(api,source={error("Confirmed image already loaded")},guard=::guard)
             val changed=service.apply(a,choice){row,image->
                 AudioExportRuntime.editSaved(getApplication()) {
@@ -533,7 +541,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _duplicates.update{it.copy(visible=true)}
         if(_duplicates.value.busy)return
         viewModelScope.launch {
-            val saved=withContext(Dispatchers.IO){runCatching{DuplicateScanCache(getApplication()).count()}.getOrDefault(0)}
+            val saved=withContext(Dispatchers.IO){runCatching{DuplicateScanCache(getApplication()).use{it.count()}}.getOrDefault(0)}
             _duplicates.update{it.copy(savedChecks=saved)}
         }
     }

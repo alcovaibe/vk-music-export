@@ -7,6 +7,7 @@ from pathlib import Path
 from release_gate import verify_stable
 from release_notes import notes_for
 from update_channel import publish_channel
+from release_evidence import bundle
 
 info = json.loads(Path('release-output/build-info.json').read_text())
 channel = os.environ['RELEASE_CHANNEL']
@@ -27,7 +28,7 @@ if existing.returncode == 0:
     release = json.loads(existing.stdout)
     assert release['targetCommitish'] == release_commit, 'Tag points to another source revision'
     assert release['prerelease'] == (channel == 'rc'), 'Existing release has another channel'
-    assert info['apk'] in [a['name'] for a in release['assets']], 'Existing release is incomplete; inspect it manually'
+    assert {info['apk'], 'SHA256SUMS.txt', 'release-evidence.zip'} <= {a['name'] for a in release['assets']}, 'Existing release is incomplete; inspect it manually'
     print(f'Release {tag} already exists; assets were not replaced.')
 else:
     notes = Path(os.environ['RUNNER_TEMP']) / 'release-notes.md'
@@ -40,7 +41,7 @@ else:
         f"[Отчёты CI](https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/"
         f"{info.get('verificationRun', os.environ.get('GITHUB_RUN_ID', info.get('buildRun', '')))}): "
         'build-info, проверка обновления, SBOM, OSV, публичный сертификат и лицензии '
-        'сохраняются в артефакте VK-Music-Export-release или Verified-release. '
+        'публикуются в release-evidence.zip рядом с APK (включая отчёты CI и внутренние SHA-256). '
         'Для RC ручная приёмка реального аккаунта и фоновой работы ещё обязательна перед stable.\n')
     make_latest = channel == 'stable'
     if make_latest:
@@ -51,8 +52,8 @@ else:
             make_latest = info['versionCode'] > int(match[1])
     names = (info['apk'], 'SHA256SUMS.txt', 'release-certificate.pem', 'build-info.json', 'upgrade-check.txt', 'sbom.cdx.json', 'osv.json', 'LICENSE', 'NOTICE')
     assert all((Path('release-output') / name).is_file() for name in names), 'Release evidence is incomplete'
-    # Preserve complete CI evidence; expose only installation and integrity files.
-    assets = [str(apk), str(Path('release-output') / 'SHA256SUMS.txt')]
+    evidence = bundle(info, apk)
+    assets = [str(apk), str(Path('release-output') / 'SHA256SUMS.txt'), str(evidence)]
     command = ['gh', 'release', 'create', tag, *assets, '--target', release_commit,
         '--title', f"VK Music Export {info['versionName']} · {info['versionCode']}" + (' RC' if channel == 'rc' else ''),
         '--notes-file', str(notes), '--latest=' + str(make_latest).lower()]

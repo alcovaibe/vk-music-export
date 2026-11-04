@@ -37,9 +37,12 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
     private var checkGeneration=0L
     private var lastManual: Long?=null
     init {
+        val gen=generation
         scope.launch {
-            withContext(Dispatchers.IO){try{prepare()}catch(e: CancellationException){throw e}catch(_: Exception){record("prepare_failed")}}
-            mutable.value=UpdateState(initialized=true)
+            var saved=withContext(Dispatchers.IO){try{prepare();service.restore()}catch(e: CancellationException){throw e}catch(_: Exception){record("prepare_failed");null}}
+            if(gen!=generation){saved?.second?.let{withContext(NonCancellable+Dispatchers.IO){service.discard(it)}};saved=null}
+            mutable.value=if(saved==null)UpdateState(initialized=true) else UpdateState(initialized=true,status=UpdateStatus.READY,
+                release=saved.first,received=saved.first.apk.size,total=saved.first.apk.size,apk=saved.second)
             automaticCheck()
         }
     }
@@ -85,8 +88,9 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
             try {
                 val file=service.download(release){received,total->mutable.update{if(gen==generation&&it.status==UpdateStatus.DOWNLOADING&&it.release===release)it.copy(received=received,total=total)else it}}
                 if(gen==generation){mutable.update{it.copy(status=UpdateStatus.READY,apk=file)};record("download_verified")}
-                else withContext(Dispatchers.IO){file.delete()}
-            }catch(e: CancellationException){throw e}
+                else withContext(NonCancellable+Dispatchers.IO){service.discard(file)}
+            }catch(e: TimeoutCancellationException){if(gen==generation){mutable.update{it.copy(status=UpdateStatus.ERROR)};record("download_failed")}}
+            catch(e: CancellationException){throw e}
             catch(e: Exception){if(gen==generation){mutable.update{it.copy(status=problem(e))};record("download_failed")}}
         }
     }
@@ -95,17 +99,17 @@ internal class UpdateController(private val scope: CoroutineScope,private val pr
         if(!active)return null
         try{service.verify(file,release);return file.takeIf{active&&mutable.value==s}}
         catch(e: CancellationException){throw e}
-        catch (_: Exception){withContext(Dispatchers.IO){file.delete()};if(mutable.value==s)mutable.update{it.copy(status=UpdateStatus.INVALID_APK,apk=null)};record("apk_rejected");return null}
+        catch (_: Exception){withContext(NonCancellable+Dispatchers.IO){service.discard(file)};if(mutable.value==s)mutable.update{it.copy(status=UpdateStatus.INVALID_APK,apk=null)};record("apk_rejected");return null}
     }
     fun installFailed(){mutable.update{it.copy(status=UpdateStatus.INSTALL_ERROR)};record("install_failed")}
     fun defer(){mutable.value.release?.let{preferences.deferred=maxOf(preferences.deferred,it.code)};cancel()}
     fun cancel() {
         generation++;checkGeneration++;checkJob?.cancel();transfer?.cancel()
         val file=mutable.value.apk
-        if(file!=null)scope.launch(Dispatchers.IO){file.delete()}
+        if(file!=null)scope.launch(NonCancellable+Dispatchers.IO){service.discard(file)}
         mutable.update{it.copy(status=UpdateStatus.IDLE,release=null,received=0,total=0,apk=null)}
     }
-    fun close(){active=false;cancel()}
+    fun close(){active=false;generation++;checkGeneration++;checkJob?.cancel();transfer?.cancel()}
     private companion object {
         val requests=Mutex()
         val transfers=setOf(UpdateStatus.DOWNLOADING,UpdateStatus.READY,UpdateStatus.INVALID_APK,UpdateStatus.INSTALL_ERROR)
@@ -124,6 +128,6 @@ internal class UpdateViewModel(app: Application): AndroidViewModel(app) {
             set(v){preferences.edit().putInt("deferred",v).apply()}
 
     },service,BuildConfig.VERSION_CODE.toLong(),Build.VERSION.SDK_INT,record={Diagnostics.event("updater",mapOf("stage" to it))},
-        prepare={service.purgeOrphans();LegacyUpdateAccess.cleanup(app);preferences.edit().remove("automatic").apply()})
+        prepare={LegacyUpdateAccess.cleanup(app);preferences.edit().remove("automatic").apply()})
     override fun onCleared(){controller.close();service.close()}
 }

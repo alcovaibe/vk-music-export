@@ -47,7 +47,7 @@ class ArtworkLookupUiDeviceTest {
         awaitTestWindowFocus(ui.activity)
         ui.setContent{MusicTheme{ArtworkLookupSheet(state,onQuery={state=state.copy(query=it,results=null,choice=null)},
             onSearch={searches++;state=state.copy(results=ArtworkMatches(listOf(match),1))},
-            onPreview={previews++;state=state.copy(phase=LookupPhase.CONFIRM,choice=ArtworkChoice(target,lookupAccess.credentialId,it,lookupImage(),Long.MAX_VALUE))},
+            onPreview={previews++;state=state.copy(phase=LookupPhase.CONFIRM,choice=ArtworkChoice(target,MusicReadIdentity(lookupAccess),it,lookupImage(),Long.MAX_VALUE))},
             onConfirm={writes++;state=state.copy(phase=LookupPhase.DONE,choice=null,message="Done")},
             onBack={state=state.copy(phase=LookupPhase.READY,choice=null)},onStop={},onDismiss={})}}
         ui.runOnIdle{assertEquals(0,searches);assertEquals(0,previews);assertEquals(0,writes)}
@@ -131,6 +131,86 @@ class ArtworkLookupStorageDeviceTest {
 
 @RunWith(AndroidJUnit4::class)
 class ArtworkLookupViewModelDeviceTest {
+    @Test fun verifiedRenewalKeepsArtworkChoiceWhileLoginAndLogoutCannotWrite()=runBlocking<Unit> {
+        val inst=InstrumentationRegistry.getInstrumentation();val real=inst.targetContext.applicationContext as Application
+        withContext(Dispatchers.IO){AudioExportRuntime.initialize(real);AudioExportRuntime.clear(real)}
+        val dir=File(real.cacheDir,"lookup-renewal-viewmodel").apply{deleteRecursively();mkdirs()}
+        val app=object: Application(){init{attachBaseContext(real)}
+            override fun getNoBackupFilesDir()=File(dir,"private").apply{mkdirs()}
+            override fun getFilesDir()=File(dir,"files").apply{mkdirs()}
+            override fun getCacheDir()=File(dir,"cache").apply{mkdirs()}
+        }
+        val vault=MusicAccessStore(app);val store=AudioExportStore(app);val holder=ViewModelStore()
+        var saved: PublishedAudio?=null;lateinit var model: NativeMusicViewModel
+        var clock=System.currentTimeMillis();var renewals=0
+        val parent="vk1.a."+"parent".repeat(32)
+        val original=MusicAccess("vk1.a."+"original".repeat(16),"Synthetic agent",clock+600_000,
+            WebRenewal(parent,12,emptyList()),lastVerifiedAtMs=clock,credentialId="artwork-original",persisted=true)
+        val sessions=MusicSessionManager(vault,object: MusicRenewer {
+            override suspend fun renew(access: MusicAccess): MusicAccess {
+                renewals++
+                return MusicAccess("vk1.a."+"rotation-$renewals-".repeat(8),"Synthetic agent",clock+600_000,
+                    WebRenewal(parent,12,emptyList()),credentialId="artwork-rotation-$renewals")
+            }
+        },{NativeProbe(12,NativePage(emptyList(),0))},{clock})
+        suspend fun await(predicate:()->Boolean){withTimeout(15000){while(!predicate())delay(25)}}
+        try {
+            val row=withContext(Dispatchers.IO){
+                val task=ExportLayout.task(lookupTrack(5),listOf("Моя музыка","Artwork renewal VM CI"),1)
+                val input=File(dir,"input.mp3").apply{inst.context.assets.open("native-audio/tone.mp3").use{writeBytes(it.readBytes())}}
+                SharedAudioStore(app).publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1200))){}.also{store.done(task,it)}
+            };saved=row;val match=lookupMatch(row.track)
+            withContext(Dispatchers.IO){vault.save(original)}
+            inst.runOnMainSync{model=ViewModelProvider(holder,object: ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=
+                    NativeMusicViewModel(app,lookupApi(match),maintenanceLauncher={},lookupImages={ArtworkSource{_,_->lookupImage()}}) as T
+            })[NativeMusicViewModel::class.java]}
+            await{model.state.value.initialized}
+            inst.runOnMainSync{model.setForeground(true);model.showArtwork();model.addSavedArtwork()}
+            await{!model.state.value.busy&&model.artwork.value.unavailable==1}
+            suspend fun search(){
+                inst.runOnMainSync{model.showArtworkLookup(row.taskKey)}
+                await{!model.state.value.busy&&model.artworkLookup.value.target!=null}
+                inst.runOnMainSync{model.findArtworkReplacement()}
+                await{!model.state.value.busy&&model.artworkLookup.value.results!=null}
+            }
+            suspend fun preview(){
+                inst.runOnMainSync{model.previewArtworkReplacement(model.artworkLookup.value.results!!.matches.single())}
+                await{!model.state.value.busy&&model.artworkLookup.value.phase==LookupPhase.CONFIRM}
+            }
+            suspend fun assertBlocked(){
+                inst.runOnMainSync{model.confirmArtworkReplacement()}
+                await{!model.state.value.busy&&model.artworkLookup.value.phase==LookupPhase.READY}
+                assertNull(model.artworkLookup.value.choice)
+                assertEquals(row,store.existing(row.taskKey));assertTrue(SharedAudioStore(app).valid(row))
+            }
+            // The same token and account do not authorize a new independent login.
+            search();preview()
+            withContext(Dispatchers.IO){vault.save(MusicAccess(original.token,original.agent,accountId=12))}
+            assertBlocked()
+            // A stale access object/choice must not survive logout either.
+            withContext(Dispatchers.IO){vault.save(original)}
+            search();preview();withContext(Dispatchers.IO){vault.delete()};assertBlocked()
+            // Rotate via the real manager, owner verification, Keystore vault and CAS.
+            withContext(Dispatchers.IO){vault.save(original)}
+            search();withContext(Dispatchers.IO){clock+=500_000;sessions.current()}
+            preview();withContext(Dispatchers.IO){clock+=500_000;sessions.current()}
+            assertEquals(2,renewals)
+            val current=withContext(Dispatchers.IO){vault.read()!!}
+            assertNotEquals(original.credentialId,current.credentialId)
+            assertEquals(original.readSessionId,current.readSessionId)
+            inst.runOnMainSync{model.confirmArtworkReplacement()}
+            await{!model.state.value.busy&&model.artworkLookup.value.phase==LookupPhase.DONE}
+            val updated=store.existing(row.taskKey)!!
+            assertTrue(updated.coverEmbedded);assertTrue(SharedAudioStore(app).valid(updated))
+            assertEquals(row.track,updated.track);assertEquals(row.uri,updated.uri)
+            assertEquals(row.displayName,updated.displayName);assertEquals(row.relativePath,updated.relativePath)
+            assertEquals(1,model.artwork.value.added)
+        }finally{
+            inst.runOnMainSync{holder.clear()}
+            saved?.let{real.contentResolver.delete(Uri.parse(it.uri),null,null)};store.close();dir.deleteRecursively()
+        }
+    }
     @Test fun backgroundDropsPreviewAndFreshExplicitChoiceUpdatesOnlyTheSavedFile()=runBlocking<Unit> {
         val inst=InstrumentationRegistry.getInstrumentation();val real=inst.targetContext.applicationContext as Application
         withContext(Dispatchers.IO){AudioExportRuntime.initialize(real);AudioExportRuntime.clear(real)}

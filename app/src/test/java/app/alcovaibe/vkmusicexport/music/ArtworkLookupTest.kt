@@ -62,6 +62,85 @@ class ArtworkLookupTest {
         val changed=service.preview(access,row,match())
         fails(MusicError.ACCESS){service.apply(MusicAccess("c".repeat(64),"Synthetic"),changed){_,_->error("Wrong credentials")}}
     }
+    @Test fun searchPreviewAndConfirmationSurviveTwoVerifiedTokenRotations()=runBlocking {
+        var now=1_800_000_000_000L;var renewals=0;var writes=0
+        val parent="vk1.a."+"parent".repeat(32)
+        val original=MusicAccess("vk1.a."+"old".repeat(32),"Synthetic",now+600_000,
+            WebRenewal(parent,12,emptyList()),lastVerifiedAtMs=now,credentialId="original",persisted=true)
+        val store=object: MusicCredentialStore {
+            var value=original
+            override fun read()=value
+            override fun replace(expected: MusicAccess,next: MusicAccess): Boolean {
+                if(value.credentialId!=expected.credentialId)return false
+                value=next;return true
+            }
+        }
+        val sessions=MusicSessionManager(store,object: MusicRenewer {
+            override suspend fun renew(access: MusicAccess): MusicAccess {
+                renewals++
+                return MusicAccess("vk1.a."+"rotated-$renewals".repeat(16),"Synthetic",now+600_000,
+                    WebRenewal(parent,12,emptyList()),credentialId="rotated-$renewals",persisted=true)
+            }
+        },{NativeProbe(12,NativePage(emptyList(),0))},{now},io=Dispatchers.Unconfined)
+        val candidate=match()
+        val api=object: MusicApi by Api(listOf(candidate)) {
+            override suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches {
+                now+=500_000;sessions.current()
+                return ArtworkMatches(listOf(candidate),1,offset)
+            }
+        }
+        val service=ArtworkLookup(api,{ArtworkSource{_,_->now+=500_000;sessions.current();image}},
+            clock={now},guard={sessions.continueRead(original);Unit})
+        assertEquals(listOf(candidate),service.find(original,"Artist song").matches)
+        val choice=service.preview(original,row,candidate)
+        val current=sessions.current()
+        assertEquals(2,renewals);assertNotEquals(original.credentialId,current.credentialId)
+        assertTrue(service.apply(current,choice){target,cover->writes++;assertEquals(row,target);assertSame(image,cover);true})
+        fails(MusicError.BUSY){service.apply(current,choice){_,_->writes++;true}}
+        assertEquals(1,writes)
+    }
+    @Test fun independentLoginOrChangedOwnerCannotReuseAnArtworkChoiceEvenWithTheSameToken()=runBlocking {
+        val original=MusicAccess("a".repeat(64),"Synthetic",credentialId="original",accountId=12,readSessionId="read-A")
+        val service=ArtworkLookup(Api(listOf(match())),{ArtworkSource{_,_->image}})
+        for(replacement in listOf(
+            MusicAccess(original.token,"Synthetic",credentialId="new-login",accountId=12,readSessionId="read-B"),
+            MusicAccess(original.token,"Synthetic",credentialId=original.credentialId,accountId=99,readSessionId=original.readSessionId)
+        )) {
+            val choice=service.preview(original,row,match())
+            fails(MusicError.ACCESS){service.apply(replacement,choice){_,_->error("Wrong session must not write")}}
+        }
+        assertFalse(MusicReadIdentity(original).toString().contains(original.readSessionId))
+        assertFalse(MusicReadIdentity(original).toString().contains(original.token))
+    }
+    @Test fun logoutOrLoginAfterPreviewCannotWriteThroughAStaleAccessObject()=runBlocking {
+        val original=MusicAccess("a".repeat(64),"Synthetic",credentialId="original",persisted=true,accountId=12)
+        var saved: MusicAccess?=original;var writes=0
+        val store=object: MusicCredentialStore {
+            override fun read()=saved
+            override fun replace(expected: MusicAccess,next: MusicAccess): Boolean=error("No renewal")
+        }
+        val sessions=MusicSessionManager(store,object: MusicRenewer {
+            override suspend fun renew(access: MusicAccess): MusicAccess=error("No renewal")
+        },{error("No verification")},io=Dispatchers.Unconfined)
+        val service=ArtworkLookup(Api(listOf(match())),{ArtworkSource{_,_->image}},guard={sessions.continueRead(original);Unit})
+        for(replacement in listOf(null,MusicAccess(original.token,"Synthetic",accountId=12))) {
+            saved=original
+            val choice=service.preview(original,row,match())
+            saved=replacement
+            fails(MusicError.ACCESS){service.apply(original,choice){_,_->writes++;true}}
+        }
+        assertEquals(0,writes)
+    }
+    @Test fun tokenRotationDoesNotExtendChoiceExpiryOrAllowAnotherConfirmation()=runBlocking {
+        var now=100L
+        val original=MusicAccess("a".repeat(64),"Synthetic",accountId=12)
+        val renewed=MusicAccess("b".repeat(64),"Synthetic",accountId=12,readSessionId=original.readSessionId)
+        val service=ArtworkLookup(Api(listOf(match())),{ArtworkSource{_,_->image}},clock={now})
+        val choice=service.preview(original,row,match())
+        now=choice.expiresAt
+        fails(MusicError.INCOMPLETE){service.apply(renewed,choice){_,_->error("Expired write")}}
+        fails(MusicError.BUSY){service.apply(renewed,choice){_,_->error("Second confirmation")}}
+    }
     @Test fun cancellationAfterImageAndBeforeWriteLeavesNoApplicableChoice()=runBlocking {
         var allowed=true;val api=Api(listOf(match()));var writes=0
         val service=ArtworkLookup(api,{ArtworkSource{_,_->allowed=false;image}},guard={if(!allowed)throw CancellationException("Synthetic")})

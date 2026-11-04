@@ -103,4 +103,37 @@ class TrackMetadataBatchTest {
         assertEquals(saved.uri,missing.issues.single().target!!.uri)
     }
 
+    @Test fun batchWritesOneFullSnapshotThenOnlyAppendOnlyCursorDeltas()=runTest {
+        val rows=(1..5).map{row(it)};var full=0;var disk: TrackMetadataRun?=null;var deltas=0
+        val batch=TrackMetadataBatch(api{_,_->null},{credential},{t->rows.single{it.taskKey==t.taskKey}},verify={},
+            update={_,_->error("No file edit")},recover={},save={full++;disk=it},checkpoint={before,after->
+                assertEquals(disk,before);assertSame(before.targets,after.targets)
+                assertEquals(before.next+1,after.next);assertEquals(before.issues.size+1,after.issues.size)
+                disk=after;deltas++
+            })
+        val result=batch.run(TrackMetadataRun.start(12,rows))
+        assertEquals(1,full);assertEquals(5,deltas);assertEquals(result,disk);assertEquals(5,result.unavailable)
+    }
+    @Test fun failedDeltaCommitLeavesTheLastDurableItemForTheNextRunner()=runTest {
+        val rows=(1..3).map{row(it)};var disk=TrackMetadataRun.start(12,rows);var failCheckpoint=true
+        val fetched=mutableListOf<String>()
+        fun runner()=TrackMetadataBatch(api{_,id->fetched.add(id);rows.single{it.track.id==id}.track},{credential},
+            {t->rows.single{it.taskKey==t.taskKey}},verify={},update={_,_->false},recover={},save={disk=it},
+            checkpoint={before,after->assertEquals(disk,before)
+                if(after.next==2&&failCheckpoint)throw java.io.IOException("Injected durable write failure")
+                disk=after
+            })
+        try{runner().run(disk);fail("Checkpoint must fail")}catch(_: java.io.IOException){}
+        assertEquals(1,disk.next);failCheckpoint=false
+        val done=runner().run(disk)
+        assertEquals(3,done.next);assertEquals(listOf("12_1","12_2","12_2","12_3"),fetched)
+    }
+    @Test fun oldJsonWithoutARunIdRetainsItsCursorAndReceivesAStableIdentityWhenSavedAgain() {
+        val legacy="""{"owner":12,"targets":[{"taskKey":"k","uri":"content://fixture/1","trackId":"12_1","name":"Synthetic"}],"next":1,"current":1}"""
+        val old=Json.decodeFromString<TrackMetadataRun>(legacy)
+        assertEquals(1,old.next);assertEquals(1,old.current);assertFalse(old.unfinished)
+        assertEquals(old,Json.decodeFromString<TrackMetadataRun>(Json.encodeToString(old)))
+        assertEquals(old.runId,old.copy(error=MusicError.NETWORK).runId)
+    }
+
 }

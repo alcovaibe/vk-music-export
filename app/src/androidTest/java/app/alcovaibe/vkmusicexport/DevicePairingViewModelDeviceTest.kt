@@ -155,12 +155,18 @@ class DevicePairingViewModelDeviceTest {
             instrumentation.runOnMainSync{first.setForeground(true);first.authenticate()}
             await("first owner acquired gate"){entered.isCompleted}
             instrumentation.runOnMainSync{first.cancel();first.authenticate()}
-            assertTrue(first.state.value.busy);assertTrue(first.state.value.stopping)
+            await("first owner publishes stopping state"){first.state.value.busy&&first.state.value.stopping}
             await("first owner entered non-cancellable cleanup"){cleanupEntered.isCompleted}
             second=create(secondStore,FixtureMusicApi(),secondAuth);secondCreated=true
             await("second viewmodel initialization"){second.state.value.initialized}
             instrumentation.runOnMainSync{second.setForeground(true);second.authenticate()}
-            assertTrue(second.state.value.busy);assertTrue(second.state.value.waitingForSlot)
+            // state is a combined UI StateFlow, not the synchronous internal state.
+            // Keep the first owner blocked until the actual waiting state appears;
+            // runOnMainSync does not guarantee that its collector has resumed yet.
+            await("second owner publishes waiting state while cleanup holds the gate"){
+                assertNull(second.state.value.error);assertEquals(0,secondBegins.get())
+                second.state.value.busy&&second.state.value.waitingForSlot
+            }
             assertNull(second.state.value.error);assertEquals(0,secondBegins.get())
             releaseCleanup.complete(Unit)
             // Wait for each causal milestone, not a combined state predicate.

@@ -135,10 +135,14 @@ def main(promote):
         'name': f"VK Music Export {info['versionName']} · {info['versionCode']}", 'body': notes, 'make_latest': 'true'})
     assert not updated['prerelease'] and not updated['draft'] and updated['tag_name'] == stable_tag
     assert api(repo + '/releases/latest')['id'] == updated['id']
-    from update_channel import channel_manifest
+    from update_channel import channel_manifest, publish_channel
     manifest = channel_manifest(info, updated, apk)
     Path('release-output/public-update-channel.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
     print('OWNER_REQUESTED_LATEST=' + updated['html_url'])
+    # Latest alone is not delivery: installed apps discover stable through the
+    # reviewed channel JSON. Failure here leaves an explicit failed workflow and
+    # the prepared manifest in evidence; it must never write/merge main directly.
+    publish_channel(info, apk)
     delete_requested_branches(request)
 
 

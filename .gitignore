@@ -28,3 +28,8 @@ cookies*
 # Local Python checks
 __pycache__/
 /tools/node_modules/
+
+# Generated public APK fixtures and updater evidence
+/app/src/androidTest/assets/update-fixtures/
+/channel-evidence/
+/update-delivery-results/

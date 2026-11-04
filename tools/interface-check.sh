@@ -44,8 +44,16 @@ if [[ "$expected_api" -le 33 ]]; then
 fi
 # Do not let an old report satisfy this run if instrumentation never starts.
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
-./gradlew --dependency-verification strict connectedDebugAndroidTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+# Preserve benchmark evidence continuously; app-owned directories are not shell
+# readable on every API, and AGP removes app data after instrumentation.
+adb logcat -v raw -s VKMetadataBench:I VKReceiptBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
+benchmark_logcat_pid=$!
+trap 'kill "$benchmark_logcat_pid" 2>/dev/null || true' EXIT
+./gradlew --dependency-verification strict connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
 result=$?
+kill "$benchmark_logcat_pid" 2>/dev/null || true
+wait "$benchmark_logcat_pid" 2>/dev/null || true
+trap - EXIT
 python3 - <<'PYFAILURES'
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -71,4 +79,8 @@ if [[ "$result" != 0 ]]; then
   timeout 15 adb logcat -d -b events | python3 -c 'import sys; print("".join(x for x in sys.stdin if "am_anr" in x or "am_crash" in x)[-12000:])' || true
 fi
 timeout 15 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
+if [[ "$result" == 0 ]]; then
+  python3 tools/extract-checkpoint-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
+  result=$?
+fi
 exit "$result"

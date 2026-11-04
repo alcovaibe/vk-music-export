@@ -33,6 +33,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (providers.gradleProperty("updaterTestHost").orNull == "true") {
+                applicationIdSuffix = ".updatecheck"
+            }
+        }
         release {
             if (releaseKeystore != null) signingConfig = signingConfigs.getByName("releaseKey")
             isMinifyEnabled = true

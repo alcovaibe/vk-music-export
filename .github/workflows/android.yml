@@ -1,7 +1,7 @@
 name: Android checks and APK
 on:
   push:
-    branches: [main, codex/music-library-redesign, codex/music-followups]
+    branches: [main, 'fix/**', codex/music-library-redesign, codex/music-followups]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -10,6 +10,10 @@ on:
         type: choice
         options: [checks, rc]
         default: checks
+      expected_sha:
+        description: Optional inspected channel PR head; fail if the branch moved before dispatch
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -29,6 +33,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Require the inspected dispatch head
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          python3 - <<'PYHEAD'
+          import os, re
+          expected = os.environ.get('EXPECTED_SHA', '')
+          if expected and (not re.fullmatch(r'[0-9a-f]{40}', expected) or expected != os.environ['GITHUB_SHA']):
+              raise SystemExit('Channel branch moved after inspection; checks refuse another head')
+          PYHEAD
+      - name: Validate channel even when Android binaries are unchanged
+        run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --schema-only
       - name: Classify changed files, failing open
         id: scope
         run: python3 tools/ci-change-scope.py
@@ -200,15 +216,148 @@ jobs:
           path: |
             interface-screenshots/
             interface-diagnostics/
+            interface-benchmarks/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           retention-days: 7
+
+  channel-delivery:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: '15859902'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: Verify candidate public APK, signature and actual manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --verify-apk
+      - name: Verify actual public channel after a main update
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/check-update-channel.py --verify-apk --public-retries 6 --output channel-evidence/public
+      - name: Prepare real signed updater fixtures and isolated test host
+        if: needs.changes.outputs.run_android == 'true'
+        run: |
+          python3 tools/prepare-update-fixtures.py
+          ./gradlew --dependency-verification strict assembleDebug assembleDebugAndroidTest -PupdaterTestHost=true -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk channel-evidence/host.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk channel-evidence/tests.apk
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: Update-channel-fixtures
+          path: channel-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  updater-tests:
+    name: updater (API ${{ matrix.api-level }})
+    needs: [changes, channel-delivery]
+    if: needs.changes.outputs.run_android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api-level: 29
+            sdk-level: '29'
+            target: default
+            ram-size: 2048M
+          - api-level: 30
+            sdk-level: '30'
+            target: default
+            ram-size: 2048M
+          - api-level: 31
+            sdk-level: '31'
+            target: default
+            ram-size: 2048M
+          - api-level: 32
+            sdk-level: '32'
+            target: default
+            ram-size: 2048M
+          - api-level: 33
+            sdk-level: '33'
+            target: default
+            ram-size: 2048M
+          - api-level: 34
+            sdk-level: '34'
+            target: default
+            ram-size: 2048M
+          - api-level: 35
+            sdk-level: '35'
+            target: default
+            ram-size: 2048M
+          - api-level: 36
+            sdk-level: '36'
+            target: default
+            ram-size: 2048M
+          - api-level: 37
+            sdk-level: '37.0'
+            target: google_apis
+            ram-size: 4096M
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: '15859902'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Pin canonical emulator SDK tools
+        run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: Update-channel-fixtures
+          path: channel-evidence/
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify real signed APK through updater and system installer
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: ${{ matrix.sdk-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_6
+          ram-size: ${{ matrix.ram-size }}
+          disk-size: 8G
+          pre-emulator-launch-script: grep -E '^target=android-${{ matrix.api-level }}([.]0)?$' "$ANDROID_AVD_HOME/test.ini"
+          disable-animations: true
+          script: bash tools/update-delivery-check.sh ${{ matrix.api-level }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: Update-delivery-API-${{ matrix.api-level }}
+          path: update-delivery-results/
+          if-no-files-found: error
+          retention-days: 30
 
   # Preserve the required stable check. On docs-only main pushes it records
   # the intentional, independently verified skip; on every code/PR run it
   # succeeds only when all nine Android API jobs succeed.
   interface:
-    needs: [changes, interface-tests]
+    needs: [changes, interface-tests, channel-delivery, updater-tests]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -217,14 +366,19 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           RUN_ANDROID: ${{ needs.changes.outputs.run_android }}
           MATRIX_RESULT: ${{ needs.interface-tests.result }}
+          CHANNEL_RESULT: ${{ needs.channel-delivery.result }}
+          UPDATER_RESULT: ${{ needs.updater-tests.result }}
         run: |
           test "$CHANGES_RESULT" = success
+          test "$CHANNEL_RESULT" = success
           if [[ "$RUN_ANDROID" == true ]]; then
             test "$MATRIX_RESULT" = success
+            test "$UPDATER_RESULT" = success
             echo 'Interface checks passed on API 29, 30, 31, 32, 33, 34, 35, 36 and 37.'
           else
             test "$RUN_ANDROID" = false
             test "$MATRIX_RESULT" = skipped
+            test "$UPDATER_RESULT" = skipped
             echo 'Generated update-channel JSON only: Android binaries and sources unchanged.'
           fi
 
@@ -239,7 +393,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: write
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
@@ -291,6 +447,16 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: bash tools/upgrade-check-all.sh
+      - name: Preserve full Android reports in permanent public release evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: Android-*
+          path: release-evidence-input/
+      - name: Preserve updater integration reports in permanent public release evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: Update-*
+          path: release-evidence-input/
       - name: Generate public dependency evidence
         run: |
           ./gradlew --dependency-verification strict writeDependencyInventory

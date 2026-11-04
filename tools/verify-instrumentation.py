@@ -67,6 +67,21 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
         raise ValueError('Required friends music profile, access and queue tests did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.PlaybackDeviceTest' for name, _ in executed) < 6:
         raise ValueError('Required background playback, controls and player interface tests did not execute')
+    required = ('app.alcovaibe.vkmusicexport.ArtworkLookupViewModelDeviceTest',
+                'verifiedRenewalKeepsArtworkChoiceWhileLoginAndLogoutCannotWrite')
+    if required not in executed:
+        raise ValueError('Required artwork lookup session integration test did not execute')
+    metadata_required = ('v3MigrationRetainsQueueAudioAndLegacyCursorAcrossReopen', 'failedLegacyImportRollsBackAndKeepsItsOnlyOriginalCopy', 'cursorAndIssuesRollbackTogetherAndStaleWritersCannotReplaceANewRun', 'sqliteFullLeavesThePreviousCursorAndIssueSetRecoverable', 'immutableTargetsAndManualIssueResolutionSurviveAccountScopedReopen', 'maintenanceJournalUsesDatabaseIssuesAndRestoresThemAfterReload', 'checkpointPayloadScalesLinearlyFor1004500And20000Targets')
+    for method in metadata_required:
+        if ('app.alcovaibe.vkmusicexport.MetadataCheckpointDeviceTest', method) not in executed:
+            raise ValueError(f'Required metadata checkpoint integration test did not execute: {method}')
+    receipt_required = ('legacyBackupAndAlbumKeysMigrateOnceAndSurviveReopen', 'failedLegacyImportRetainsOriginalAndRetriesWithoutPartialRows', 'malformedLegacyAndCorruptRowsNeverBecomeMatches', 'accountExpiryAndSnapshotChangesFenceStaleInstances', 'abortAndActualSQLiteFullKeepThePreviousReceiptAndCount', 'clearInvalidatesOtherInstancesWithoutTouchingExportQueueOrMedia', 'invalidSignaturesAndMissingAudioNeverCommitReceipts', 'receiptWritesAndReadsScaleFor1004500And20000', 'walReaderCompletesWhileAnotherConnectionHoldsTheWriter')
+    for method in receipt_required:
+        if ('app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest', method) not in executed:
+            raise ValueError(f'Required duplicate receipt integration test did not execute: {method}')
+    for method in ('malformedCheckpointAndOutOfDirectoryPathNeverDeleteAnUnrelatedFile', 'corruptOwnedApkIsRemovedAndCanNeverRestoreReady'):
+        if ('app.alcovaibe.vkmusicexport.UpdateCheckpointDeviceTest', method) not in executed:
+            raise ValueError(f'Required updater checkpoint test did not execute: {method}')
     return len(executed)
 
 
