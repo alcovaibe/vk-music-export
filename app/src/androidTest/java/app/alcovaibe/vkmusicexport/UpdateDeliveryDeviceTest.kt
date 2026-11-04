@@ -124,11 +124,40 @@ class UpdateDeliveryDeviceTest {
                 for(i in 0 until node.childCount)if(clickInstall(node.getChild(i)))return true
                 return false
             }
+            // Only known emulator framework ANRs may be dismissed; an app ANR remains a failure.
+            val frameworkActions=mapOf("System UI isn't responding" to "Wait", "Quickstep isn't responding" to "Close app")
+            fun frameworkAction(node: AccessibilityNodeInfo?): String? {
+                if(node==null)return null
+                if(node.viewIdResourceName=="android:id/alertTitle")frameworkActions[node.text?.toString()]?.let{return it}
+                for(i in 0 until node.childCount)frameworkAction(node.getChild(i))?.let{return it}
+                return null
+            }
+            fun clickFrameworkAction(node: AccessibilityNodeInfo?, action: String): Boolean {
+                if(node==null)return false
+                if(node.packageName?.toString()=="android" && node.text?.toString()==action && node.isEnabled && node.isClickable)
+                    return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                for(i in 0 until node.childCount)if(clickFrameworkAction(node.getChild(i),action))return true
+                return false
+            }
             val until=System.currentTimeMillis()+90000
             var confirmed=false
+            var frameworkDialogs=0
             while(System.currentTimeMillis()<until) {
                 if(pm.getPackageInfo(production,0).longVersionCode==release.code.toLong())break
-                if(!confirmed)confirmed=clickInstall(automation.rootInActiveWindow) || automation.windows.any{clickInstall(it.root)}
+                val roots=(listOf(automation.rootInActiveWindow)+automation.windows.map{it.root}).filterNotNull()
+                var frameworkHandled=false
+                for(root in roots) {
+                    val action=frameworkAction(root) ?: continue
+                    assertTrue("Repeated emulator framework ANR prevents a valid test",frameworkDialogs<3)
+                    if(clickFrameworkAction(root,action)) {
+                        frameworkDialogs++
+                        android.util.Log.i("VKUpdateDelivery","Handled known emulator framework dialog: "+action)
+                        frameworkHandled=true
+                        break
+                    }
+                }
+                if(frameworkHandled){Thread.sleep(500);continue}
+                if(!confirmed)confirmed=roots.any{clickInstall(it)}
                 Thread.sleep(500)
             }
             assertTrue("System installer confirmation not observed",confirmed)
@@ -138,7 +167,7 @@ class UpdateDeliveryDeviceTest {
             try{service.verify(apk,release);fail("Installed equal version was accepted again")}catch(e: UpdateProblem){assertEquals("INVALID_APK",e.code)}
             service.discard(apk)
             assertNull(service.restore())
-            File(host.filesDir,"updater-proof.json").writeText("""{"api":${Build.VERSION.SDK_INT},"from":1343,"to":${release.code},"sha256":"${release.apk.hash}","system_installer":true,"process_restart":true,"offline_restore":true}""")
+            File(host.filesDir,"updater-proof.json").writeText("""{"api":${Build.VERSION.SDK_INT},"from":1343,"to":${release.code},"sha256":"${release.apk.hash}","system_installer":true,"process_restart":true,"offline_restore":true,"emulator_framework_dialogs":$frameworkDialogs}""")
         }finally{withContext(Dispatchers.Main){controller?.close()};scope.cancel();service.close()}
     }
 }
