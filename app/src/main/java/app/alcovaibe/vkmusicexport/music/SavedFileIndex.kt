@@ -33,14 +33,14 @@ internal class SavedFileIndex(private val db: SQLiteDatabase) {
         if(old==null&&payload==null)return
         val active=db.rawQuery("SELECT 1 FROM saved_files WHERE uri=? AND payload IS NOT NULL",arrayOf(uri)).use{it.moveToFirst()}
         val sequence=if(old!=null&&(active||payload==null))old else next("saved_order")
-        db.execSQL("INSERT OR REPLACE INTO saved_files(uri,downloaded_order,revision,payload) VALUES(?,?,?,?)",arrayOf(uri,sequence,next("saved_revision"),payload))
+        db.execSQL("INSERT OR REPLACE INTO saved_files(uri,downloaded_order,revision,payload) VALUES(?,?,?,?)",arrayOf<Any?>(uri,sequence,next("saved_revision"),payload))
     }
     /** Relinking is the same physical file, not a fresh download. The old URI becomes a tombstone. */
     fun inheritOrder(before: String,after: String) {
         val original=order(before)?:return
         val target=order(after)
-        if(target==null)db.execSQL("INSERT INTO saved_files(uri,downloaded_order,revision,payload) VALUES(?,?,?,NULL)",arrayOf(after,original,next("saved_revision")))
-        else db.execSQL("UPDATE saved_files SET downloaded_order=? WHERE uri=?",arrayOf(minOf(original,target),after))
+        if(target==null)db.execSQL("INSERT INTO saved_files(uri,downloaded_order,revision,payload) VALUES(?,?,?,NULL)",arrayOf<Any>(after,original,next("saved_revision")))
+        else db.execSQL("UPDATE saved_files SET downloaded_order=? WHERE uri=?",arrayOf<Any>(minOf(original,target),after))
     }
     private fun rows(sql: String,args: Array<String>)=db.rawQuery(sql,args).use{c->buildList{
         while(c.moveToNext())add(SavedFileChange(c.getString(0),c.getLong(1),c.getLong(2),if(c.isNull(3))null else json.decodeFromString<PublishedAudio>(c.getString(3))))
