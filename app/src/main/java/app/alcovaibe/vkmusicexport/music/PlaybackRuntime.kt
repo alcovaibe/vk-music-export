@@ -28,12 +28,12 @@ internal object PlaybackRuntime {
     fun initialize(context: Context) {
         if(app!=null)return
         val application=context.applicationContext;app=application
-        history=PlaybackHistory(application,scope){failed->mutable.update{it.copy(historyError=if(failed)"Не удалось сохранить состояние плеера. Прослушивание можно продолжить." else null)}}
+        history=PlaybackHistory(application,scope,onError={failed->mutable.update{it.copy(historyError=if(failed)"Не удалось сохранить состояние плеера. Прослушивание можно продолжить." else null)}})
         val g=generation
         scope.launch {
             try {
                 val record=history!!.restore()
-                if(g==generation&&service==null&&pending==null&&record!=null){restored=record;mutable.value=record.pausedState()}
+                if(g==generation&&service?.hasQueue!=true&&pending==null&&record!=null){restored=record;mutable.value=record.pausedState()}
             }catch(e: CancellationException){throw e}catch(_: Exception) {
                 if(g==generation)mutable.update{it.copy(historyError="Не удалось восстановить прошлое прослушивание. Выбери трек заново.")}
             }finally{initialized.value=true}
@@ -86,26 +86,26 @@ internal object PlaybackRuntime {
     private fun resume(record: PlaybackCheckpoint){app?.let{enqueue(it,PlaybackSelection(record.entries,record.cursor.index),record.cursor.positionMs,record)}}
     fun toggle(context: Context) {
         val current=service
-        if(current!=null&&state.value.entries.isNotEmpty())current.toggle()
+        if(current?.hasQueue==true)current.toggle()
         else restored?.let(::resume)
     }
     fun playIndex(index: Int) {
         if(index !in state.value.entries.indices)return
-        if(service!=null)service?.playIndex(index)
+        if(service?.hasQueue==true)service?.playIndex(index)
         else restored?.let{resume(it.copy(cursor=it.cursor.copy(index=index,positionMs=0)))}
     }
-    fun next(){if(service!=null)service?.next()else restored?.let{r->r.adjacent(1)?.let{resume(r.copy(cursor=r.cursor.copy(index=it,positionMs=0)))}}}
-    fun previous(){if(service!=null)service?.previous()else restored?.let{r->
+    fun next(){if(service?.hasQueue==true)service?.next()else restored?.let{r->r.adjacent(1)?.let{resume(r.copy(cursor=r.cursor.copy(index=it,positionMs=0)))}}}
+    fun previous(){if(service?.hasQueue==true)service?.previous()else restored?.let{r->
         val at=if(r.cursor.positionMs>3000)r.cursor.index else r.adjacent(-1)?:r.cursor.index
         resume(r.copy(cursor=r.cursor.copy(index=at,positionMs=0)))
     }}
     private fun updatePaused(record: PlaybackCheckpoint){restored=record;mutable.value=record.pausedState();history?.save(record)}
     fun seek(position: Long) {
-        if(service!=null)service?.seek(position)
+        if(service?.hasQueue==true)service?.seek(position)
         else restored?.let{updatePaused(it.copy(cursor=it.cursor.copy(positionMs=position.coerceIn(0,state.value.durationMs.coerceAtLeast(0)))))}
     }
     fun shuffle() {
-        if(service!=null)service?.shuffle()
+        if(service?.hasQueue==true)service?.shuffle()
         else restored?.let{record->
             val g=generation
             scope.launch {
@@ -114,7 +114,7 @@ internal object PlaybackRuntime {
             }
         }
     }
-    fun repeat(){if(service!=null)service?.repeat()else restored?.let{updatePaused(it.copy(cursor=it.cursor.copy(repeat=when(it.cursor.repeat){0->2;2->1;else->0})))}}
+    fun repeat(){if(service?.hasQueue==true)service?.repeat()else restored?.let{updatePaused(it.copy(cursor=it.cursor.copy(repeat=when(it.cursor.repeat){0->2;2->1;else->0})))}}
     fun stop(){generation++;pending=null;restored=null;service?.stopPlayback();expanded.value=false;mutable.value=PlaybackState();history?.save(null)}
     fun stopOnline() {
         generation++ // Also fences a cold asynchronous restore during login/logout.

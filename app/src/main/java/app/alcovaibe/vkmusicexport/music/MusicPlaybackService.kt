@@ -27,6 +27,7 @@ class MusicPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var entries: List<PlaybackEntry> = emptyList()
+    internal val hasQueue get()=entries.isNotEmpty()
     private var readSession: String?=null
     private var artwork: ByteArray?=null
     private var artWork: Job?=null
@@ -93,7 +94,8 @@ class MusicPlaybackService : MediaSessionService() {
                 val index=player.currentMediaItemIndex
                 if(entries.getOrNull(index)?.offline==false&&status in setOf(401,403,404,410)&&refreshedIndex!=index) {
                     refreshedIndex=index;val at=player.currentPosition.coerceAtLeast(0);val resume=player.playWhenReady
-                    player.setMediaSources(sources(),index,at);player.prepare();player.playWhenReady=resume
+                    suppressCheckpoint=true;pendingOrder=savedOrder
+                    player.setMediaSources(sources(),index,at);player.prepare();player.playWhenReady=resume;publish(refreshOrder=true,forceCheckpoint=true)
                 }else {failure=failure?:"Не удалось воспроизвести запись. Повтори или выбери следующий трек.";publish()}
             }
         })
@@ -246,7 +248,7 @@ class MusicPlaybackService : MediaSessionService() {
         return if(ordered.size==entries.size)ordered else entries.indices.toList()
     }
     private fun publish(refreshOrder: Boolean=false,forceCheckpoint: Boolean=false) {
-        if(!::player.isInitialized)return
+        if(!::player.isInitialized||entries.isEmpty())return
         pendingOrder?.takeIf{player.mediaItemCount==entries.size}?.let {order->
             pendingOrder=null;player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order.toIntArray(),0L))
             queueOrder=emptyList();savedOrder=emptyList();suppressCheckpoint=false
@@ -274,10 +276,10 @@ class MusicPlaybackService : MediaSessionService() {
             lastCursor=cursor;lastSavedOrder=savedOrder;lastCheckpointAt=now
         }
     }
-    internal fun toggle() {failure=null;if(player.isPlaying||player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)player.pause()else{player.prepare();player.play()};publish()}
-    internal fun playIndex(index: Int){if(index in entries.indices){failure=null;player.seekTo(index,0);player.prepare();player.play()}}
-    internal fun next(){if(player.hasNextMediaItem()){failure=null;player.seekToNextMediaItem();player.prepare();player.play()}}
-    internal fun previous(){failure=null;player.seekToPrevious();player.prepare();player.play()}
+    internal fun toggle() {failure=null;if(player.isPlaying||player.playWhenReady&&player.playbackState==Player.STATE_BUFFERING)player.pause()else{player.prepare();player.play()};publish(forceCheckpoint=true)}
+    internal fun playIndex(index: Int){if(index in entries.indices){failure=null;player.seekTo(index,0);player.prepare();player.play();publish(forceCheckpoint=true)}}
+    internal fun next(){if(player.hasNextMediaItem()){failure=null;player.seekToNextMediaItem();player.prepare();player.play();publish(forceCheckpoint=true)}}
+    internal fun previous(){failure=null;player.seekToPrevious();player.prepare();player.play();publish(forceCheckpoint=true)}
     internal fun seek(position: Long){if(player.isCurrentMediaItemSeekable){player.seekTo(position.coerceIn(0,player.duration.coerceAtLeast(0)));publish(forceCheckpoint=true)}}
     internal fun shuffle(){player.shuffleModeEnabled=!player.shuffleModeEnabled;publish()}
     internal fun repeat(){player.repeatMode=when(player.repeatMode){Player.REPEAT_MODE_OFF->Player.REPEAT_MODE_ALL;Player.REPEAT_MODE_ALL->Player.REPEAT_MODE_ONE;else->Player.REPEAT_MODE_OFF};publish()}
@@ -285,7 +287,7 @@ class MusicPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         saveCheckpoint(force=true)
         scope.cancel();artWork?.cancel();mediaSession?.release();mediaSession=null;player.release()
-        if(PlaybackRuntime.service===this){PlaybackRuntime.service=null;PlaybackRuntime.publish(PlaybackRuntime.state.value.copy(playing=false,buffering=false))}
+        if(PlaybackRuntime.service===this){PlaybackRuntime.service=null;PlaybackRuntime.publish(PlaybackRuntime.state.value.copy(playing=false,buffering=false,playWhenReady=false))}
         super.onDestroy()
     }
 }
