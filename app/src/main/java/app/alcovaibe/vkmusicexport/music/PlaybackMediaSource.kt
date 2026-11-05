@@ -60,6 +60,7 @@ internal object PlaybackDataSources {
 /** Resolve only when the player prepares this item, on IO, with a fresh checked read session. */
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class PlaybackMediaSource(private var publicItem: MediaItem,private val factory: MediaSource.Factory,
+    private val localFactory: MediaSource.Factory?=null,
     private val resolve: suspend()->Uri): CompositeMediaSource<Unit>() {
     private var child: MediaSource?=null
     private var failure: IOException?=null
@@ -82,7 +83,8 @@ internal class PlaybackMediaSource(private var publicItem: MediaItem,private val
                 handler.post {
                     if(scope!==currentScope||!currentScope.isActive)return@post
                     try {
-                        val resolved=factory.createMediaSource(publicItem.buildUpon().setUri(uri).build())
+                        val selected=if(uri.scheme=="content")localFactory?:factory else factory
+                        val resolved=selected.createMediaSource(publicItem.buildUpon().setUri(uri).build())
                         child=resolved;prepareChildSource(Unit,resolved)
                     }catch(_: Exception){failure=IOException("PLAYBACK_FORMAT")}
                 }

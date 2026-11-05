@@ -1,11 +1,13 @@
 package app.alcovaibe.vkmusicexport.music
 
-internal data class PlaybackExport(val folders: List<String>,val position: Int,val source: ExportSource,val occurrence: Int) {
+import kotlinx.serialization.Serializable
+
+@Serializable internal data class PlaybackExport(val folders: List<String>,val position: Int,val source: ExportSource,val occurrence: Int) {
     fun task(track: NativeTrack)=ExportLayout.task(track,folders,position,source,occurrence)
 }
 
 /** A listening queue owns IDs and optional app-owned local files, never signed media URLs or credentials. */
-internal data class PlaybackEntry(val track: NativeTrack,val sourceLabel: String,val account: Long?=null,
+@Serializable internal data class PlaybackEntry(val track: NativeTrack,val sourceLabel: String,val account: Long?=null,
     val saved: PublishedAudio?=null,val export: PlaybackExport?=null,val readSessionId: String?=null) {
     val download: AudioExportTask? by lazy{export?.task(track)}
     val offline get()=saved!=null
@@ -51,7 +53,8 @@ internal object PlaybackLists {
 internal data class PlaybackState(val entries: List<PlaybackEntry> = emptyList(),val index: Int=0,
     val playing: Boolean=false,val buffering: Boolean=false,val playWhenReady: Boolean=false,val positionMs: Long=0,val durationMs: Long=0,
     val bufferedMs: Long=0,val seekable: Boolean=false,val shuffle: Boolean=false,val repeat: Int=0,
-    val previous: Boolean=false,val next: Boolean=false,val order: List<Int> = emptyList(),val error: String?=null,val artwork: ByteArray?=null) {
+    val previous: Boolean=false,val next: Boolean=false,val order: List<Int> = emptyList(),val error: String?=null,val artwork: ByteArray?=null,
+    val historyError: String?=null) {
     val current get()=entries.getOrNull(index)
     override fun toString()="PlaybackState(count=${entries.size}, index=$index, playing=$playing)"
 }

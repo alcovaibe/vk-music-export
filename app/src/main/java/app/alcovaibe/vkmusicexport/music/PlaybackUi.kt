@@ -244,6 +244,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                     }
                 }
                 state.error?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth().testTag("player_error"))}
+                state.historyError?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth().testTag("player_history_error"))}
                 Row(Modifier.padding(top=3.dp,bottom=18.dp).testTag("player_connection"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                     Icon(if(current?.offline==true)PlayerOfflineIcon else PlayerOnlineIcon,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(if(current?.offline==true)"Офлайн" else "Онлайн",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -258,7 +259,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=440.dp).testTag("playback_queue_list"),contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(state.order.ifEmpty{state.entries.indices.toList()},key={_,index->index}) {_,index->
                     val entry=state.entries[index]
-                    Surface(onClick={PlaybackRuntime.service?.playIndex(index);queue=false},shape=RoundedCornerShape(14.dp),
+                    Surface(onClick={PlaybackRuntime.playIndex(index);queue=false},shape=RoundedCornerShape(14.dp),
                         color=if(index==state.index)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         modifier=Modifier.fillMaxWidth().testTag("playback_queue_$index")) {
                         Column(Modifier.padding(12.dp)) {

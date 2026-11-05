@@ -297,4 +297,24 @@ class PlaybackDeviceTest {
         }
     }
 
+    @Test fun serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition()=fixture {rows->
+        start(rows)
+        ui.runOnUiThread{PlaybackRuntime.playIndex(2)}
+        ui.waitUntil(20_000){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&PlaybackRuntime.state.value.playing}
+        ui.runOnUiThread{PlaybackRuntime.toggle(app);PlaybackRuntime.shuffle();PlaybackRuntime.seek(321)}
+        ui.waitUntil(10_000){!PlaybackRuntime.state.value.playWhenReady&&PlaybackRuntime.state.value.positionMs==321L}
+        runBlocking(Dispatchers.IO){withTimeout(15_000){PlaybackRuntime.flushHistory()}}
+        val saved=PlaybackRuntime.state.value
+        ui.runOnUiThread{app.stopService(android.content.Intent(app,MusicPlaybackService::class.java))}
+        ui.waitUntil(10_000){PlaybackRuntime.service==null}
+        assertFalse(PlaybackRuntime.state.value.playing);assertEquals(2,PlaybackRuntime.state.value.index)
+        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+        ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==2}
+        assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
+        assertEquals(saved.order,PlaybackRuntime.state.value.order)
+        assertTrue(PlaybackRuntime.state.value.shuffle);assertEquals(saved.repeat,PlaybackRuntime.state.value.repeat)
+        ui.runOnUiThread{PlaybackRuntime.playIndex(1)}
+        ui.waitUntil(10_000){PlaybackRuntime.state.value.index==1&&PlaybackRuntime.state.value.playing}
+    }
+
 }

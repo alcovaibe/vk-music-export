@@ -982,6 +982,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             if(access.renewal!=null&&access.renewal.owner!=result.owner)
                 throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,musicError=MusicError.ACCESS)
             // Only a real successful audio.get may replace an already saved credential.
+            PlaybackRuntime.stopOnline()
             try{withContext(Dispatchers.IO){vault.save(access.withSession(verifiedAt=System.currentTimeMillis(),accountId=result.owner))}}
             catch(e: CancellationException){throw e}
             catch(_: Exception){throw DeviceAuthFailure(DeviceAuthIssue.STORAGE)}
@@ -1024,6 +1025,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         run("configure") {g->
             val candidate=MusicAccess(token,agent)
             val proof=api.library(candidate);active(g)
+            PlaybackRuntime.stopOnline()
             withContext(Dispatchers.IO){
                 active(g)
                 vault.save(candidate.withSession(verifiedAt=System.currentTimeMillis(),accountId=proof.owner))
