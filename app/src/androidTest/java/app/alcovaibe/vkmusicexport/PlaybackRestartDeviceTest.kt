@@ -92,7 +92,9 @@ class PlaybackRestartDeviceTest {
                 val state=PlaybackRuntime.state.value;assertEquals(2,state.index);assertEquals(saved.order,state.order);assertTrue(state.shuffle);assertEquals(1,state.repeat)
                 main {
                     assertEquals(4,controller.mediaItemCount)
-                    assertEquals("vkmusic",controller.currentMediaItem!!.localConfiguration!!.uri.scheme)
+                    val current=checkNotNull(controller.currentMediaItem)
+                    assertTrue(current.mediaId.startsWith("listen:"))
+                    current.localConfiguration?.let{assertEquals("vkmusic",it.uri.scheme)}
                 }
                 flush();saveProof(mapOf("resume_pid" to JsonPrimitive(Process.myPid()),"media_session_resumption" to JsonPrimitive(true)))
             }finally{main{controller.release()}}
