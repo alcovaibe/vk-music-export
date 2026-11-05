@@ -3,6 +3,16 @@ from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
 
+BULK_DOWNLOAD_TESTS = (
+    'analyzedLibraryAndAlbumGroupingQueueWithoutNewListRequestsAndSurviveReopen',
+    'openedPlaylistUsesItsCompleteSnapshotWithoutRecheckingTheCatalog',
+    'categoryReadsOnlyItsOwnCollectionsOnce',
+    'expiredAnalysisReadsTheChangedLibraryOnce',
+    'cancelledCategoryCannotReplaceQueueAndRetryReusesOnlyCompletedSources',
+    'aNewLoginCannotReuseAnotherSessionAnalysisOrStartAQueue',
+    'logoutDuringFreshPageReadCannotCommitThePreparedQueue',
+)
+
 
 def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
@@ -28,6 +38,9 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
             executed.add(identity)
     if len(executed) < minimum_tests:
         raise ValueError(f'Only {len(executed)} instrumentation tests executed; expected at least {minimum_tests}')
+    for method in BULK_DOWNLOAD_TESTS:
+        if ('app.alcovaibe.vkmusicexport.BulkDownloadDeviceTest', method) not in executed:
+            raise ValueError(f'Required bulk download integration test did not execute: {method}')
     if not any(name == 'app.alcovaibe.vkmusicexport.InterfaceTest' for name, _ in executed):
         raise ValueError('Required interface test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest' for name, _ in executed) < 9:

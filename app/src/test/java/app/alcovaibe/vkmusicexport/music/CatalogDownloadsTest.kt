@@ -32,4 +32,11 @@ class CatalogDownloadsTest {
         catch(_: CancellationException){cancelled=true}
         assertTrue(cancelled)
     }
+    @Test fun preparedTasksMustMatchTheObservedPageAndAccountBeforeHidingASource()=runBlocking {
+        val catalog=NativeCatalog(listOf(list),1)
+        assertEquals(setOf(list.key),CatalogDownloads.completed(catalog,12,rows,{page},{true},tasksFor={_,_->tasks}))
+        for(wrong in listOf(tasks.take(1),tasks.map{it.copy(track=song.copy(id="12_999"))},
+            tasks.map{it.copy(source=it.source!!.copy(account=99))}))
+            assertTrue(CatalogDownloads.completed(catalog,12,rows,{page},{true},tasksFor={_,_->wrong}).isEmpty())
+    }
 }
