@@ -105,6 +105,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         action()
     }
     var destination by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
+    var downloadsOrigin by rememberSaveable {mutableStateOf(MusicDestination.LIBRARY)}
+    var downloadsTab by rememberSaveable {mutableStateOf(DownloadsTab.QUEUE)}
+    var downloadsOffset by rememberSaveable {mutableIntStateOf(0)}
+    val downloadsScroll=rememberLazyListState()
     // Warm the friends list after a successful VK connection; keep the manual refresh available.
     LaunchedEffect(state.probe?.owner,state.initialized,state.configured,state.busy,friendState.friendsComplete,friendState.busy,friendState.listProblem) {
         if(state.probe!=null&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.listProblem==null)model.friends.loadFriends()
@@ -132,13 +136,26 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var sortOpen by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
     val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
+    var handledMaintenanceNavigation by rememberSaveable{mutableLongStateOf(0L)}
     LaunchedEffect(maintenanceNavigation) {
-        if(maintenanceNavigation>0){aboutOpen=false;accessOpen=false;toolsOpen=false;destination=MusicDestination.SAVED}
+        if(maintenanceNavigation>0&&maintenanceNavigation!=handledMaintenanceNavigation){handledMaintenanceNavigation=maintenanceNavigation;model.dismissDownloads();aboutOpen=false;accessOpen=false;toolsOpen=false;destination=MusicDestination.SAVED}
     }
     val downloadsOpen by model.downloadsOpen.collectAsState()
-    if(downloadsOpen)DownloadProgressSheet(queue,state.busy||duplicates.busy||friendState.preparing,state.error,
-        onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,onDismiss=model::dismissDownloads,
-        onSourceRetry=model::retrySource,onExportReport={model.shareExportReport(context)})
+    val downloadsPage by model.downloadsPage.collectAsState()
+    var presentationWasOpen by remember{mutableStateOf(downloadsOpen)}
+    LaunchedEffect(downloadsOpen) {
+        if(downloadsOpen) {
+            if(destination!=MusicDestination.DOWNLOADS)downloadsOrigin=destination
+            aboutOpen=false;accessOpen=false;destination=MusicDestination.DOWNLOADS
+        }else if(presentationWasOpen&&destination==MusicDestination.DOWNLOADS)destination=downloadsOrigin
+        presentationWasOpen=downloadsOpen
+    }
+    // rememberSaveable restores the route after process recreation, independently of a new ViewModel.
+    LaunchedEffect(Unit){if(destination==MusicDestination.DOWNLOADS&&!downloadsOpen)model.showDownloads()}
+    LaunchedEffect(downloadsTab,downloadsOffset,queue.queueId) {
+        model.selectDownloadsPage(downloadsTab,downloadsOffset)
+        downloadsScroll.scrollToItem(0)
+    }
     if(aboutOpen) {
         app.alcovaibe.vkmusicexport.AboutAppPage(onBack={aboutOpen=false})
         return
@@ -189,7 +206,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     fun back() {
         when {
             accessOpen->accessOpen=false
-            destination==MusicDestination.DOWNLOADS->destination=MusicDestination.LIBRARY
+            destination==MusicDestination.DOWNLOADS->{destination=downloadsOrigin;model.dismissDownloads()}
             destination==MusicDestination.FRIENDS&&friendState.user!=null->model.friends.back()
             destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
             category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
@@ -213,15 +230,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             MusicDestination.DOWNLOADS->"Загрузки"
             MusicDestination.FRIENDS->if(friendState.playlist!=null)when(friendState.playlist?.kind){PlaylistKind.ALBUM->"Альбом";PlaylistKind.UNKNOWN->"Подборка";else->"Плейлист"} else if(friendState.user!=null)"Профиль друга" else "Друзья"
             else->if(category==LibraryCategory.ARTISTS)artists.album?.title?:artists.selected?.name?:"Мои исполнители" else state.selected?.title?:"Библиотека"
-        },destination=destination,onDestination={destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
+        },destination=destination,onDestination={if(model.downloadsOpen.value)model.dismissDownloads();destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         prominentTitle=destination==MusicDestination.FRIENDS&&friendState.user==null,
         playback=playback,onPlayerOpen={PlaybackRuntime.expanded.value=true},
-        listIdentity=if(destination==MusicDestination.FRIENDS)"friends:${friendState.user?.id}:${friendState.playlist?.key}" else null,
-        listState=if(destination==MusicDestination.FRIENDS&&friendState.user==null)friendsRootScroll else null,
+        tag=if(destination==MusicDestination.DOWNLOADS)"downloads_screen" else "native_music_screen",
+        listIdentity=if(destination==MusicDestination.DOWNLOADS)"downloads:${queue.queueId}:$downloadsTab:$downloadsOffset" else if(destination==MusicDestination.FRIENDS)"friends:${friendState.user?.id}:${friendState.playlist?.key}" else null,
+        listState=if(destination==MusicDestination.DOWNLOADS)downloadsScroll else if(destination==MusicDestination.FRIENDS&&friendState.user==null)friendsRootScroll else null,
         onBack=::back,showBack=destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
         menuItems={closeMenu->
             DropdownMenuItem(text={Text(if(destination==MusicDestination.FRIENDS)"Обновить" else "Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck&&!friendState.busy,onClick={closeMenu();if(destination==MusicDestination.FRIENDS)model.friends.refresh()else model.checkAccess()})
-            DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();onUpdates()})
+            DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();if(destination==MusicDestination.DOWNLOADS){destination=downloadsOrigin;model.dismissDownloads()};onUpdates()})
             HorizontalDivider()
         }) {
         if(destination==MusicDestination.FRIENDS) {
@@ -229,9 +247,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
                 onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.prepare(context,index){PlaybackLists.friends(friendPlaybackSnapshot)}})
         }else if(destination==MusicDestination.DOWNLOADS) {
-            item("queue") {DownloadProgressContent(queue,state.busy||backgroundCheck,state.error,
+            downloadsItems(queue,downloadsPage,downloadsTab,state.busy||backgroundCheck||friendState.preparing,state.error,
+                onTab={downloadsTab=it;downloadsOffset=0},onPage={downloadsOffset=it},onReload=model::retryDownloadsPage,
                 onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,
-                onSourceRetry=model::retrySource,onExportReport={model.shareExportReport(context)})}
+                onReport={model.shareExportReport(context)},onSourceRetry={issue,identity->model.retrySource(issue,identity)},
+                onOpenSaved=::openFile,canOpenSaved=savedListeningAllowed)
         }else if(destination==MusicDestination.SAVED) {
             item("saved_tools") {Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
                 Text("Music/VK Music Export",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

@@ -51,7 +51,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun openMaintenanceNotification(stage: String) {
         if(stage !in MaintenanceRuntime.stages)return
         if(!_state.value.initialized){maintenanceOpen=stage;return}
-        _maintenanceNavigation.update{it+1}
+        _maintenanceNavigation.value=android.os.SystemClock.elapsedRealtimeNanos().coerceAtLeast(1L)
         when(stage){
             "track_metadata"->{_trackMetadata.update{it.copy(visible=true)};if(!MaintenanceRuntime.busy)showTrackMetadata()}
             "artwork"->_artwork.update{it.copy(visible=true)}
@@ -60,6 +60,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     val friends=FriendMusicController(application,api,viewModelScope,onDownloads=::showDownloads,blocked={_state.value.busy})
     private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
+    private val downloadsReader=DownloadsReader(viewModelScope,downloadsOpen,AudioExportRuntime.state){tab,offset->
+        AudioExportRuntime.initialize(application)
+        AudioExportStore(application).use{it.queuePage(tab,offset)}
+    }
+    val downloadsPage=downloadsReader.state
+    fun selectDownloadsPage(tab: DownloadsTab,offset: Int=0)=downloadsReader.select(tab,offset)
+    fun retryDownloadsPage()=downloadsReader.retry()
+
     private val _artists=MutableStateFlow(MusicArtistsState());val artists=_artists.asStateFlow()
     private val savedRepository=SavedLibrary(application,viewModelScope)
     val savedLibrary=savedRepository.rows.asStateFlow()
@@ -145,7 +153,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(AudioExportRuntime.state.value.status.startsWith("FINISHED")&&!_state.value.busy&&_state.value.probe!=null)refreshCatalog()
     }
     private suspend fun startDownloads(retry: Boolean=false) {
-        // Presentation state only: dismissing the sheet never controls the UIDT job.
+        // Presentation only: leaving Downloads never controls the UIDT job.
         _downloadsOpen.value=true
         queueStart?.invoke(retry)?:AudioExportRuntime.start(getApplication(),retry)
     }
@@ -1318,10 +1326,13 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             } else startDownloads(retry)
         }}
     }
-    fun retrySource(issue: ExportSourceFailure) {
+    fun retrySource(issue: ExportSourceFailure)=retrySource(issue,AudioExportRuntime.state.value.queueId)
+    fun retrySource(issue: ExportSourceFailure,expectedQueueId: String) {
         run("source_retry"){g->withContext(Dispatchers.IO){
+            musicCheck(AudioExportRuntime.state.value.queueId==expectedQueueId,MusicError.LIBRARY_CHANGED)
             if(issue.source.kind=="playlist_file") {
                 AudioExportRuntime.editSaved(getApplication()) {
+                    musicCheck(AudioExportRuntime.state.value.queueId==expectedQueueId,MusicError.LIBRARY_CHANGED)
                     AudioExportStore(getApplication()).use{SharedPlaylistStore(getApplication(),it).publishAll()}
                     AudioExportRuntime.refresh()
                 }
@@ -1346,7 +1357,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     failures.add(ExportSourceFailure(ExportSource(proof.owner,"catalog",list.key),list.title,e.code,kind))
                 }
             }
-            active(g);AudioExportRuntime.retrySource(getApplication(),issue.source,tasks,failures)
+            active(g);AudioExportRuntime.retrySource(getApplication(),issue.source,tasks,failures,expectedQueueId)
             active(g);startDownloads()
         }}
     }

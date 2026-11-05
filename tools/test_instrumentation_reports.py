@@ -59,10 +59,12 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.BulkDownloadDeviceTest" name="{name}"/>' for name in verification['BULK_DOWNLOAD_TESTS'])
         for suite, methods in verification['SAVED_PLAYBACK_TESTS'].items():
             cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
-        return f'<testsuites tests="172" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        for suite, methods in verification['QUEUE_DOWNLOADS_TESTS'].items():
+            cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
+        return f'<testsuites tests="182" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 172)
+        self.assertEqual(self.check([self.successful_report()], '0'), 182)
 
     def test_missing_bulk_download_scenario_is_rejected_even_with_enough_other_tests(self):
         name=verification['BULK_DOWNLOAD_TESTS'][0]
@@ -77,6 +79,13 @@ class InstrumentationReportTest(unittest.TestCase):
                 with self.subTest(suite=suite, name=name), self.assertRaisesRegex(ValueError, 'Required saved/playback'):
                     self.check([report], '0')
 
+    def test_each_missing_queue_downloads_case_is_rejected(self):
+        for suite, methods in verification['QUEUE_DOWNLOADS_TESTS'].items():
+            for name in methods:
+                report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>','')
+                with self.subTest(suite=suite,name=name),self.assertRaisesRegex(ValueError,'Required queue/downloads'):
+                    self.check([report],'0')
+
     def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
         report = self.successful_report()
         for api in range(29, 34):
@@ -84,9 +93,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 172)
+            self.assertEqual(self.check([executed], '0', api_level=api), 182)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 172)
+        self.assertEqual(self.check([report], '0', api_level=34), 182)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

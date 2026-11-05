@@ -246,7 +246,6 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
 private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,selected: Boolean,onToggle:()->Unit,photo: String?,saved: PublishedAudio?,
     enabled: Boolean,onDownload:()->Unit,queue: ExportSnapshot,taskKey: String?,taskState: String?,onPause:()->Unit,onPlay:()->Unit,playable: Boolean) {
     val current=taskKey!=null&&queue.currentTask?.key==taskKey&&queue.status=="RUNNING"
-    val failure=queue.failures.firstOrNull{it.task.key==taskKey}
     Surface(
         shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
         modifier=Modifier.fillMaxWidth().testTag("friend_track_$position").combinedClickable(enabled=selecting||playable,onClick={if(selecting)onToggle()else onPlay()},onLongClick=onToggle)) {
@@ -267,8 +266,8 @@ private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,s
                 }
                 saved!=null->FriendRowStatus(Icons.Default.CheckCircle,"Скачано",MaterialTheme.colorScheme.tertiary)
                 track.metadataError!=null->FriendRowStatus(FriendErrorIcon,"Ошибка данных",MaterialTheme.colorScheme.error)
-                failure!=null||track.restricted||track.duration==0->FriendRowStatus(FriendErrorIcon,
-                    if(failure!=null&&failure.error !in setOf(MusicError.UNAVAILABLE,MusicError.DENIED))"Ошибка" else "Недоступно",MaterialTheme.colorScheme.error)
+                track.restricted||track.duration==0->FriendRowStatus(FriendErrorIcon,"Недоступно",MaterialTheme.colorScheme.error)
+                taskState=="FAILED"->FriendRowStatus(FriendErrorIcon,"Не скачано",MaterialTheme.colorScheme.error)
                 taskState in setOf("PENDING","RUNNING")->FriendRowStatus(FriendQueueIcon,if(queue.status=="PAUSED")"На паузе" else "В очереди",MaterialTheme.colorScheme.primary)
                 else->IconButton(onClick=onDownload,enabled=enabled,modifier=Modifier.testTag("friend_download_$position")){Icon(DownloadIcon,"Скачать этот трек")}
             }

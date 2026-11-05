@@ -21,7 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
-private fun captureDownloads(name: String) {
+internal fun captureDownloads(name: String) {
     val instrumentation=InstrumentationRegistry.getInstrumentation()
     instrumentation.waitForIdleSync();instrumentation.uiAutomation.waitForIdle(200,5000)
     val image=instrumentation.uiAutomation.takeScreenshot()
@@ -85,15 +85,15 @@ class DownloadProgressEntryDeviceTest {
         try {
             ui.onNodeWithTag("open_home_downloads").assertDoesNotExist()
             ui.onNodeWithTag("open_music_downloads").performClick()
-            ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
+            ui.onNodeWithTag("downloads_screen").assertIsDisplayed()
             ui.activityRule.scenario.recreate()
-            ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
+            ui.onNodeWithTag("downloads_screen").assertIsDisplayed()
             ui.runOnUiThread{model=ViewModelProvider(ui.activity)[NativeMusicViewModel::class.java]}
-            ui.onNodeWithTag("downloads_dismiss").performClick()
-            ui.onNodeWithTag("open_music_downloads").assertIsDisplayed().performClick()
-            ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
             androidx.test.espresso.Espresso.pressBack()
-            ui.onNodeWithTag("downloads_sheet").assertDoesNotExist()
+            ui.onNodeWithTag("open_music_downloads").assertIsDisplayed().performClick()
+            ui.onNodeWithTag("downloads_screen").assertIsDisplayed()
+            androidx.test.espresso.Espresso.pressBack()
+            ui.onNodeWithTag("downloads_screen").assertDoesNotExist()
             ui.onNodeWithTag("native_music_screen").assertExists()
             // A synthetic formerly-restricted item exercises UIDT. Without credentials a fresh
             // resolution must pause before any VK request, rather than silently skip the old flag.
@@ -106,15 +106,15 @@ class DownloadProgressEntryDeviceTest {
             }
             ui.runOnUiThread{model.resumeQueue()}
             ui.waitUntil(10000){model.downloadsOpen.value&&!model.state.value.busy}
-            ui.onNodeWithTag("downloads_sheet").assertIsDisplayed()
-            ui.onNodeWithTag("downloads_dismiss").performClick()
+            ui.onNodeWithTag("downloads_screen").assertIsDisplayed()
+            androidx.test.espresso.Espresso.pressBack()
             withTimeout(20000){while(AudioExportRuntime.state.value.status!="PAUSED"||AudioExportRuntime.active.get())delay(50)}
             assertEquals(MusicError.ACCESS,AudioExportRuntime.state.value.error)
             assertEquals(0,AudioExportRuntime.state.value.failed);assertEquals(1,AudioExportRuntime.state.value.pending)
             assertFalse(model.downloadsOpen.value)
             ui.onNodeWithTag("open_music_downloads").performClick()
             ui.onNodeWithTag("downloads_status").assertTextEquals("Приостановлено")
-            ui.onNodeWithTag("downloads_dismiss").performClick()
+            androidx.test.espresso.Espresso.pressBack()
         }finally {
             ui.runOnUiThread{model.dismissDownloads()}
             withContext(Dispatchers.IO){AudioExportRuntime.pause(context);withTimeout(20000){while(AudioExportRuntime.active.get())delay(50)};AudioExportRuntime.clear(context)}

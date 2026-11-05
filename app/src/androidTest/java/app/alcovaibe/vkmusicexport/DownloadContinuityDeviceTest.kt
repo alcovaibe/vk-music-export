@@ -78,7 +78,7 @@ class DownloadContinuityDeviceTest {
             for(i in listOf(0,3,5))assertTrue(shared.valid(store.existing(tasks[i].key)!!))
             assertTrue(File(dir,"tmp").listFiles().orEmpty().isEmpty())
             store.close();store=AudioExportStore(context)
-            assertEquals(result.failures,store.snapshot().failures);assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status)
+            assertEquals(result.failures,store.queuePage(DownloadsTab.ERRORS).failures);assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status)
         }finally{store.close();cleanup(directory);dir.deleteRecursively()}
     }
 

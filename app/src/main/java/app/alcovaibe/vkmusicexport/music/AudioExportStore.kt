@@ -12,13 +12,13 @@ import java.util.Locale
 internal data class ExportFailure(val task: AudioExportTask,val error: MusicError,val details: ExportFailureDetails?=null)
 internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,val done: Int=0,val pending: Int=0,
     val failed: Int=0,val sourceIssues: Int=0,val error: MusicError?=null,val recent: List<PublishedAudio> = emptyList(),
-    val covered: Int=0,val failures: List<ExportFailure> = emptyList(),val progress: AudioProgress?=null,val currentTask: AudioExportTask?=null,
-    val account: Long=0,val sourceFailures: List<ExportSourceFailure> = emptyList()) {
+    val covered: Int=0,val progress: AudioProgress?=null,val currentTask: AudioExportTask?=null,
+    val account: Long=0,val queueId: String="",val revision: Long=0) {
     val unfinished get()=pending>0
 }
 
 /** SQLite checkpoints each item. Only canonical track/folder metadata and local media URIs; no VK secrets. IO only. */
-internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,5) {
+internal class AudioExportStore(context: Context,private val queueQuery: ((String)->Unit)?=null): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,6) {
     private val json=Json{encodeDefaults=true}
     init{setWriteAheadLoggingEnabled(true)}
     override fun onConfigure(db: SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
@@ -32,6 +32,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         createSourceFailures(db)
         TrackMetadataCheckpoints.create(db)
         SavedFileIndex.create(db)
+        QueueReadSchema.create(db)
     }
     private fun createDirectories(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE directories(identity TEXT PRIMARY KEY,relative_path TEXT NOT NULL,comparison_key TEXT NOT NULL UNIQUE)")
@@ -40,10 +41,11 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         db.execSQL("CREATE TABLE source_failures(source_key TEXT PRIMARY KEY,payload TEXT NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase,oldVersion: Int,newVersion: Int) {
-        check(oldVersion in 1..4&&newVersion==5){"Unsupported export schema"}
+        check(oldVersion in 1..5&&newVersion==6){"Unsupported export schema"}
         if(oldVersion<2)createDirectories(db)
         if(oldVersion<3)createSourceFailures(db)
         if(oldVersion<4)TrackMetadataCheckpoints.create(db) // Preserve tasks/files and old checkpoints.
+        if(oldVersion<5) {
         SavedFileIndex.create(db)
         db.rawQuery("SELECT task_key,payload FROM files ORDER BY rowid",null).use{c->
             while(c.moveToNext()) {
@@ -54,6 +56,8 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         db.rawQuery("SELECT uri FROM files GROUP BY uri ORDER BY MIN(rowid)",null).use{c->
             while(c.moveToNext())SavedFileIndex(db).sync(c.getString(0))
         }
+        }
+        QueueReadSchema.create(db)
     }
     private fun put(name: String,value: String){writableDatabase.execSQL("INSERT OR REPLACE INTO meta(name,value) VALUES(?,?)",arrayOf(name,value))}
     private fun get(name: String)=readableDatabase.rawQuery("SELECT value FROM meta WHERE name=?",arrayOf(name)).use{if(it.moveToFirst())it.getString(0)else null}
@@ -174,6 +178,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         musicCheck(!snapshot().unfinished,MusicError.BUSY)
         musicCheck(account>=0&&tasks.all{it.source==null||it.source.account==account},MusicError.ACCOUNT_CHANGED)
         writableDatabase.delete("tasks",null,null)
+        put("queue_identity",java.util.UUID.randomUUID().toString())
         writableDatabase.execSQL("DELETE FROM meta WHERE name GLOB 'failure_detail:*'")
         writableDatabase.delete("source_failures",null,null)
         for(task in tasks)writableDatabase.insertOrThrow("tasks",null,ContentValues().apply{
@@ -185,24 +190,12 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             if(sourceIssues>0||sources.isNotEmpty())"FINISHED_WITH_ERRORS" else "FINISHED"
         } else "READY");put("source_issues",sourceIssues.toString());put("error","")
     }
-    @Synchronized fun snapshot(): ExportSnapshot {
-        val counts=mutableMapOf<String,Int>()
-        readableDatabase.rawQuery("SELECT state,COUNT(*) FROM tasks GROUP BY state",null).use{while(it.moveToNext())counts[it.getString(0)]=it.getInt(1)}
-        val recent=recentFiles()
-        val failures=readableDatabase.rawQuery("SELECT payload,error FROM tasks WHERE state='FAILED' ORDER BY ordinal",null).use{c->buildList{while(c.moveToNext()) {
-            val task=json.decodeFromString<AudioExportTask>(c.getString(0))
-            val details=get("failure_detail:"+task.key)?.let{runCatching{json.decodeFromString<ExportFailureDetails>(it)}.getOrNull()}
-            add(ExportFailure(task,parseError(c.getString(1))?:MusicError.RESPONSE,details))
-        }}}
-        val current=readableDatabase.rawQuery("SELECT payload FROM tasks WHERE state='RUNNING' ORDER BY ordinal LIMIT 1",null).use{
-            if(it.moveToFirst())json.decodeFromString<AudioExportTask>(it.getString(0))else null
-        }
-        return ExportSnapshot(get("status")?:"EMPTY",counts.values.sum(),counts["DONE"]?:0,
-            (counts["PENDING"]?:0)+(counts["RUNNING"]?:0),counts["FAILED"]?:0,
-            (get("source_issues")?.toIntOrNull()?:0)+sourceFailures().size,parseError(get("error")),recent,
-            (get("covered_count")?.toIntOrNull()?:0).coerceIn(0,counts["DONE"]?:0),failures,currentTask=current,
-            account=account(),sourceFailures=sourceFailures())
+    @Synchronized fun snapshot(): ExportSnapshot=transaction {QueueReadIndex(readableDatabase,queueQuery).snapshot()}
+    @Synchronized fun queuePage(tab: DownloadsTab,offset: Int=0,limit: Int=50): ExportQueuePage=transaction {
+        QueueReadIndex(readableDatabase,queueQuery).page(tab,offset,limit)
     }
+    @Synchronized fun forEachReportRow(consume:(ExportQueueRow)->Unit)=QueueReadIndex(readableDatabase,queueQuery).forEachReportRow(consume)
+    @Synchronized fun forEachReportSource(consume:(ExportSourceFailure)->Unit)=QueueReadIndex(readableDatabase,queueQuery).forEachSource(consume)
     @Synchronized fun taskStates(): Map<String,String> = readableDatabase.rawQuery("SELECT task_key,state FROM tasks",null).use{c->
         buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}
     }
@@ -216,9 +209,10 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         "SELECT payload FROM source_failures ORDER BY rowid",null).use{c->buildList{
             while(c.moveToNext())add(json.decodeFromString<ExportSourceFailure>(c.getString(0)))
         }}
-    @Synchronized fun sourceFailure(value: ExportSourceFailure) {
-        writableDatabase.execSQL("INSERT OR REPLACE INTO source_failures(source_key,payload) VALUES(?,?)",
-            arrayOf(value.source.key,json.encodeToString(value)))
+    @Synchronized fun sourceFailure(value: ExportSourceFailure)=transaction {
+        val key=value.source.key;val payload=json.encodeToString(value)
+        val changed=writableDatabase.update("source_failures",ContentValues().apply{put("payload",payload)},"source_key=?",arrayOf(key))
+        if(changed==0)writableDatabase.execSQL("INSERT INTO source_failures(source_key,payload) VALUES(?,?)",arrayOf(key,payload))
     }
     @Synchronized fun clearSourceFailure(source: ExportSource){writableDatabase.delete("source_failures","source_key=?",arrayOf(source.key))}
     @Synchronized fun retrySource(source: ExportSource,tasks: List<AudioExportTask>)=transaction {
@@ -267,7 +261,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             while(c.moveToNext())add(c.getString(0) to c.getString(1))
         }}
     @Synchronized fun removeCheckpoint(name: String){writableDatabase.delete("meta","name=?",arrayOf(name))}
-    @Synchronized fun status(status: String,error: MusicError?=null){put("status",status);put("error",error?.name?:"")}
+    @Synchronized fun status(status: String,error: MusicError?=null)=transaction {put("status",status);put("error",error?.name?:"")}
     @Synchronized fun beginRun(): Boolean=transaction {if(get("status")!="QUEUED")false else{status("RUNNING");true}}
     @Synchronized fun running()=get("status")=="RUNNING"
     @Synchronized fun recoverItems()=transaction {
@@ -460,6 +454,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     }
     @Synchronized fun clearQueue()=transaction {
         writableDatabase.delete("tasks",null,null);writableDatabase.delete("source_failures",null,null)
+        put("queue_identity",java.util.UUID.randomUUID().toString())
         status("EMPTY");put("source_issues","0");put("covered_count","0");put("queue_account","0")
     }
     @Synchronized fun catalogKinds(account: Long): Map<String,PlaylistKind> {

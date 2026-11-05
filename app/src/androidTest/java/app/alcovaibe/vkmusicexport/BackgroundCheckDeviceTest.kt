@@ -169,7 +169,7 @@ class BackgroundCheckDeviceTest {
             engine.run{}
             saved=store.existing(tasks[0].key)
             assertEquals(1,store.snapshot().done);assertEquals(1,store.snapshot().failed);assertEquals(1,downloads.get())
-            assertEquals(MusicError.UNAVAILABLE,store.snapshot().failures.single().error)
+            assertEquals(MusicError.UNAVAILABLE,store.queuePage(DownloadsTab.ERRORS).failures.single().error)
             assertTrue(shared.valid(saved!!));assertEquals(tasks[0].track.id,saved!!.track.id)
             assertEquals(1,saved!!.track.duration);assertFalse(saved!!.track.restricted)
             assertEquals(listOf(tasks[1].track),store.unavailableTracks())

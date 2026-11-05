@@ -135,6 +135,18 @@ class PlaybackDeviceTest {
             assertEquals(2,PlaybackRuntime.state.value.index);assertEquals(3,PlaybackRuntime.state.value.entries.size)
         }finally{release.countDown()}
     }
+    @Test fun realOfflinePlaybackContinuesThroughDownloadsAndBack()=fixture {rows->
+        start(rows)
+        ui.onNodeWithTag("music_nav_SAVED").performClick()
+        ui.onNodeWithTag("open_music_downloads").performClick()
+        ui.waitUntil(10000){ui.onAllNodesWithTag("downloads_screen").fetchSemanticsNodes().isNotEmpty()}
+        ui.onNodeWithTag("music_mini_player").assertIsDisplayed()
+        assertTrue(PlaybackRuntime.state.value.playing)
+        shot("downloads-with-real-mini-player")
+        androidx.test.espresso.Espresso.pressBack()
+        ui.onNodeWithTag("music_nav_SAVED").assertIsSelected()
+        assertTrue(PlaybackRuntime.state.value.playing)
+    }
     @Test fun localPlaybackSurvivesStoppedActivityAndPublishesMediaNotification()=fixture {rows->
         start(rows)
         val manager=app.getSystemService(NotificationManager::class.java)

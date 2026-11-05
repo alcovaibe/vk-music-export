@@ -5,10 +5,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,9 +52,6 @@ internal fun DownloadProgressContent(queue: ExportSnapshot,busy: Boolean=false,a
     onPause: ()->Unit,onResume: ()->Unit,onRetry: ()->Unit,onClear: ()->Unit,
     onSourceRetry: (ExportSourceFailure)->Unit={},onExportReport: (()->Unit)?=null,scrollable: Boolean=false) {
     val working=queue.status in setOf("RUNNING","QUEUED")
-    var problemPage by rememberSaveable{mutableIntStateOf(0)}
-    val pages=(maxOf(queue.failures.size,queue.sourceFailures.size)+49)/50
-    val page=problemPage.coerceIn(0,(pages-1).coerceAtLeast(0))
     Column(if(scrollable)Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState())else Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("Скачивание музыки",style=MaterialTheme.typography.titleLarge)
         if(queue.account>0)Text("Аккаунт ВК: ${queue.account}",style=MaterialTheme.typography.bodySmall)
@@ -107,19 +100,6 @@ internal fun DownloadProgressContent(queue: ExportSnapshot,busy: Boolean=false,a
             if(queue.unfinished)Button(enabled=!busy,onClick=onResume,modifier=Modifier.fillMaxWidth().testTag("downloads_resume")){Text("Продолжить скачивание")}
             if(queue.failed>0)OutlinedButton(enabled=!busy,onClick=onRetry,modifier=Modifier.fillMaxWidth().testTag("downloads_retry")){Text("Повторить пропущенные треки")}
             TextButton(enabled=!busy,onClick=onClear,modifier=Modifier.fillMaxWidth().testTag("downloads_clear")){Text("Очистить очередь · файлы останутся")}
-        }
-        if(pages>1)Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled=page>0,onClick={problemPage=page-1}){Text("Предыдущие проблемы")}
-            Text("${page+1}/$pages",style=MaterialTheme.typography.bodySmall)
-            TextButton(enabled=page+1<pages,onClick={problemPage=page+1}){Text("Следующие проблемы")}
-        }
-        queue.sourceFailures.drop(page*50).take(50).forEach{issue->
-            Text("Источник: ${issue.title}\n${issue.error.label}",style=MaterialTheme.typography.bodySmall)
-            OutlinedButton(enabled=!busy&&!working,onClick={onSourceRetry(issue)}){Text("Перечитать этот источник")}
-        }
-        queue.failures.drop(page*50).take(50).forEach{
-            Text("${it.task.track.artist} — ${it.task.track.displayTitle}: ${it.error.label}",style=MaterialTheme.typography.bodySmall)
-            it.details?.let{details->Text(details.label,style=MaterialTheme.typography.bodySmall)}
         }
         onExportReport?.let{export->if(queue.total>0||queue.sourceIssues>0) {
             OutlinedButton(onClick=export){Text("Поделиться полным отчётом")}
