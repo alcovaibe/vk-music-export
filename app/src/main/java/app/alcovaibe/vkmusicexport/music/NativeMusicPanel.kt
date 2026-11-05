@@ -124,7 +124,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             }.distinctUntilChanged().collect{model.friends.prioritizeVisible(it)}
         }else model.friends.prioritizeVisible(emptyList())
     }
-    val friendQueueItems by produceState<Map<String,String>>(emptyMap(),destination,queue.total,queue.done,queue.failed,queue.pending,queue.status) {
+    val friendQueueItems by produceState<Map<String,String>>(emptyMap(),destination,queue.queueId,queue.total,queue.done,queue.failed,queue.pending,queue.status) {
         if(destination==MusicDestination.FRIENDS)value=withContext(Dispatchers.IO){runCatching{AudioExportRuntime.taskStates(context)}.getOrDefault(emptyMap())}
     }
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}

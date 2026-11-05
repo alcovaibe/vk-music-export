@@ -59,7 +59,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
-                IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
+                if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
                     BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
                 }
                 LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
