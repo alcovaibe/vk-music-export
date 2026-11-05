@@ -189,7 +189,7 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
     enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,onPlay:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
     var menu by remember{mutableStateOf(false)}
     val play=onPlay?:onOpen
-    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(play!=null)Modifier.clickable(onClick=play)else Modifier)) {
+    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(play!=null)Modifier.clickable(onClickLabel="Воспроизвести ${track.displayTitle}",role=androidx.compose.ui.semantics.Role.Button,onClick=play)else Modifier)) {
         Row(Modifier.padding(start=12.dp,end=4.dp,top=10.dp,bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {

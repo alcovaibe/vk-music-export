@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -92,16 +93,28 @@ class SavedLibraryDeviceTest {
             assertEquals(SavedAvailability.CHANGED,shared.presence(listOf(published[0].copy(bytes=published[0].bytes+1)))[published[0].uri])
             assertEquals(SavedAvailability.CHANGED,shared.presence(listOf(published[0].copy(uri="https://example.org/file")))["https://example.org/file"])
             assertFalse(shared.valid(published[0].copy(sha256="b".repeat(64))))
-            context.contentResolver.delete(android.net.Uri.parse(published[1].uri),null,null)
-            assertEquals(SavedAvailability.MISSING,shared.presence(published)[published[1].uri])
+            val removed=published.removeAt(1)
+            assertEquals(1,context.contentResolver.delete(android.net.Uri.parse(removed.uri),null,null))
+            assertEquals(SavedAvailability.MISSING,shared.presence(listOf(removed))[removed.uri])
         }finally{published.forEach{context.contentResolver.delete(android.net.Uri.parse(it.uri),null,null)}}
     }
-    @Test fun indexedPagesAndAliasesScaleFor1004500And20000PhysicalFiles()=fixture{_,store->
+    @Test fun indexedPagesAndAliasesScaleFor1004500And20000PhysicalFiles()=fixture{context,store->
+        val results=mutableListOf<JsonObject>()
         for(size in listOf(100,4500,20000)) {
             val writeStart=SystemClock.elapsedRealtimeNanos()
             val db=store.writableDatabase;db.beginTransaction()
             try{for(i in 1..size)store.imported(row(i));db.setTransactionSuccessful()}finally{db.endTransaction()}
             val writeMs=(SystemClock.elapsedRealtimeNanos()-writeStart)/1_000_000
+            val firstStart=SystemClock.elapsedRealtimeNanos();assertEquals(20,store.savedPage(limit=20).size)
+            val firstMs=(SystemClock.elapsedRealtimeNanos()-firstStart).toDouble()/1_000_000
+            val reopenStart=SystemClock.elapsedRealtimeNanos()
+            AudioExportStore(context).use{assertEquals(store.savedPage(limit=20),it.savedPage(limit=20))}
+            val reopenMs=(SystemClock.elapsedRealtimeNanos()-reopenStart).toDouble()/1_000_000
+            val prefix=NativePage((1..size).map{NativeTrack("12_$it","Track $it","CI",1)},size)
+            val queueStart=SystemClock.elapsedRealtimeNanos()
+            val queue=PlaybackLists.library(NativeMusicState(probe=NativeProbe(12,prefix),page=prefix,readSessionId="CI"),MusicLibrarySort.DEFAULT)
+            val queueMs=(SystemClock.elapsedRealtimeNanos()-queueStart).toDouble()/1_000_000
+            assertEquals(size,queue.size);assertEquals(size,queue.last().download!!.position)
             val readStart=SystemClock.elapsedRealtimeNanos();var before=Long.MAX_VALUE;var count=0;var pages=0
             while(true){val page=store.savedPage(before);if(page.isEmpty())break;count+=page.size;pages++;before=page.last().order}
             assertEquals(size,count);assertEquals((size+99)/100,pages)
@@ -110,7 +123,13 @@ class SavedLibraryDeviceTest {
             val aliasUs=(SystemClock.elapsedRealtimeNanos()-aliasStart)/1000
             val plan=db.rawQuery("EXPLAIN QUERY PLAN SELECT payload FROM files WHERE uri=?",arrayOf(row(size).uri)).use{c->buildString{while(c.moveToNext())append(c.getString(3))}}
             assertTrue(plan,plan.contains("file_uris"))
-            android.util.Log.i("SavedLibraryBenchmark","size=$size write_ms=$writeMs paged_read_ms=$readMs alias_us=$aliasUs pages=$pages plan=$plan")
+            results.add(buildJsonObject {
+                put("files",size);put("first20_ms",firstMs);put("reopen_ms",reopenMs);put("queue_build_ms",queueMs);put("write_ms",writeMs);put("paged_read_ms",readMs);put("alias_us",aliasUs);put("pages",pages)
+                put("uri_index",plan.contains("file_uris"))
+            })
         }
+        android.util.Log.i("VKSavedBench","VK_SAVED_BENCHMARK="+buildJsonObject {
+            put("schema",1);put("api",android.os.Build.VERSION.SDK_INT);put("results",JsonArray(results))
+        })
     }
 }

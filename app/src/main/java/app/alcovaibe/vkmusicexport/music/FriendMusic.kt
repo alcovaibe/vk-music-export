@@ -80,7 +80,9 @@ internal object FriendMusicProtocol {
 
 /** Source account remains the viewer; the friend and collection identify a separate source. */
 internal object FriendMusicExport {
-    fun tasks(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<AudioExportTask> {
+    fun tasks(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<AudioExportTask> =
+        references(page,user,viewer,list).mapIndexed{i,reference->reference.task(page.tracks[i])}
+    fun references(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<PlaybackExport> {
         musicCheck(viewer>0&&user.id>0,MusicError.ACCOUNT_CHANGED)
         musicCheck(list==null||list.kind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
         val source=ExportSource(viewer,if(list==null)"friend_library" else "friend_collection",
@@ -91,7 +93,7 @@ internal object FriendMusicExport {
         val occurrences=mutableMapOf<String,Int>()
         return page.tracks.mapIndexed{index,track->
             val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
-            ExportLayout.task(track,folders,index+1,source,occurrence)
+            PlaybackExport(folders,index+1,source,occurrence)
         }
     }
 }

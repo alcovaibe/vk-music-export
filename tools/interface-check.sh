@@ -46,7 +46,7 @@ fi
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
 # Preserve benchmark evidence continuously; app-owned directories are not shell
 # readable on every API, and AGP removes app data after instrumentation.
-adb logcat -v raw -s VKMetadataBench:I VKReceiptBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
+adb logcat -v raw -s VKMetadataBench:I VKReceiptBench:I VKSavedBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
 benchmark_logcat_pid=$!
 trap 'kill "$benchmark_logcat_pid" 2>/dev/null || true' EXIT
 ./gradlew --dependency-verification strict connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
@@ -82,5 +82,9 @@ timeout 15 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-scree
 if [[ "$result" == 0 ]]; then
   python3 tools/extract-checkpoint-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
   result=$?
+  if [[ "$result" == 0 ]]; then
+    python3 tools/extract-saved-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
+    result=$?
+  fi
 fi
 exit "$result"

@@ -33,6 +33,19 @@ internal object PlaybackRuntime {
     private var generation=0
     internal fun publish(value: PlaybackState){mutable.value=value}
     internal fun take(id: String?)=pending?.takeIf{it.id==id}.also{if(it!=null)pending=null}
+    /** Reserve the command before background work, so a late queue cannot replace a newer tap. */
+    fun prepare(context: Context,start: Int=-1,build: ()->List<PlaybackEntry>) {
+        val app=context.applicationContext;val g=++generation
+        expanded.value=true
+        scope.launch {
+            try {
+                val entries=withContext(Dispatchers.Default){build()}
+                if(g==generation)play(app,entries,start)
+            }catch(e: CancellationException){throw e}catch(_: Exception) {
+                if(g==generation)mutable.update{it.copy(error="Не удалось подготовить очередь. Повтори выбор трека.")}
+            }
+        }
+    }
     fun play(context: Context,entries: List<PlaybackEntry>,start: Int=-1,position: Long=0) {
         val selected=PlaybackLists.select(entries,if(start==-1)PlaybackLists.firstPlayable(entries)else start)?:return
         val app=context.applicationContext;val g=++generation

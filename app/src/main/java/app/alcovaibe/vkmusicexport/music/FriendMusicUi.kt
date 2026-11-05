@@ -98,7 +98,7 @@ private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit) {
 
 /** Rendering is driven by actual server/queue state; percentages are only used for known totals. */
 internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: FriendMusicController,configured: Boolean,enabled: Boolean,
-    queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<AudioExportTask>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
+    queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<PlaybackExport>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
     onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={}) {
     if(!configured) {
         item("friends_connect"){Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -237,7 +237,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     val matching=PlaybackLists.friendPositions(state)
     if(state.complete&&matching.isEmpty())item("friend_tracks_empty"){Text(if(state.musicQuery.isBlank())"Нет доступных треков" else "Треки по этому запросу не найдены")}
     itemsIndexed(matching,key={_,row->"friend_track_${row.index+1}_${row.value.id}"}){displayIndex,entry->
-        val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)
+        val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)?.task(track)
         FriendTrackRow(track,position,state.selecting,position in state.selection,{controller.toggle(position)},preview(track),saved[track.id],
             ready,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(displayIndex)},playable=track.metadataError==null&&!track.restricted&&track.duration>0)
     }

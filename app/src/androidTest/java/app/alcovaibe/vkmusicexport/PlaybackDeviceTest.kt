@@ -124,6 +124,17 @@ class PlaybackDeviceTest {
             assertEquals(rows[2].saved!!.uri,PlaybackRuntime.state.value.current!!.saved!!.uri);assertNull(vault.read())
         }finally{if(before!=null)vault.save(before)}
     }
+    @Test fun lateQueuePreparationCannotReplaceLatestLocalChoice()=fixture {rows->
+        val entered=java.util.concurrent.CountDownLatch(1);val release=java.util.concurrent.CountDownLatch(1)
+        try {
+            ui.runOnUiThread{PlaybackRuntime.prepare(app){entered.countDown();check(release.await(20,java.util.concurrent.TimeUnit.SECONDS));rows.take(1)}}
+            assertTrue(entered.await(10,java.util.concurrent.TimeUnit.SECONDS))
+            ui.runOnUiThread{PlaybackRuntime.play(app,rows,2)}
+            ui.waitUntil(20000){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.entries.size==3&&PlaybackRuntime.state.value.seekable}
+            release.countDown();Thread.sleep(500)
+            assertEquals(2,PlaybackRuntime.state.value.index);assertEquals(3,PlaybackRuntime.state.value.entries.size)
+        }finally{release.countDown()}
+    }
     @Test fun localPlaybackSurvivesStoppedActivityAndPublishesMediaNotification()=fixture {rows->
         start(rows)
         val manager=app.getSystemService(NotificationManager::class.java)

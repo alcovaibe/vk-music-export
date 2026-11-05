@@ -1,8 +1,13 @@
 package app.alcovaibe.vkmusicexport.music
 
+internal data class PlaybackExport(val folders: List<String>,val position: Int,val source: ExportSource,val occurrence: Int) {
+    fun task(track: NativeTrack)=ExportLayout.task(track,folders,position,source,occurrence)
+}
+
 /** A listening queue owns IDs and optional app-owned local files, never signed media URLs or credentials. */
 internal data class PlaybackEntry(val track: NativeTrack,val sourceLabel: String,val account: Long?=null,
-    val saved: PublishedAudio?=null,val download: AudioExportTask?=null,val readSessionId: String?=null) {
+    val saved: PublishedAudio?=null,val export: PlaybackExport?=null,val readSessionId: String?=null) {
+    val download: AudioExportTask? by lazy{export?.task(track)}
     val offline get()=saved!=null
     override fun toString()="PlaybackEntry([metadata omitted], offline=$offline)"
 }
@@ -26,10 +31,9 @@ internal object PlaybackLists {
         if(owner<=0||state.readSessionId==null||state.libraryStale&&state.selected==null)return emptyList()
         val selected=state.selected
         val kind=selected?.let{MusicCatalog.kind(it,state.catalogKinds)}?:PlaylistKind.UNKNOWN
-        val tasks=if(selected==null)ExportLayout.library(page,albums=false,account=owner)
-            else if(kind!=PlaylistKind.UNKNOWN)ExportLayout.playlist(page,selected,kind,account=owner)else emptyList()
+        val references=if(selected==null||kind!=PlaylistKind.UNKNOWN)ExportLayout.playback(page,owner,selected,kind)else emptyList()
         return MusicLibrarySorting.tracks(page.tracks,sort).map{row->
-            PlaybackEntry(row.value,selected?.title?:"Моя музыка",owner,download=tasks.getOrNull(row.index),readSessionId=state.readSessionId)
+            PlaybackEntry(row.value,selected?.title?:"Моя музыка",owner,export=references.getOrNull(row.index),readSessionId=state.readSessionId)
         }
     }
     fun friendPositions(state: FriendMusicState)=state.page?.tracks.orEmpty().withIndex().filter{
@@ -38,10 +42,10 @@ internal object PlaybackLists {
     fun friends(state: FriendMusicState): List<PlaybackEntry> {
         val viewer=state.viewerAccount?:return emptyList();val user=state.user?:return emptyList();val page=state.page?:return emptyList()
         if(viewer<=0)return emptyList()
-        val tasks=if(state.playlist?.kind!=PlaylistKind.UNKNOWN)FriendMusicExport.tasks(page,user,viewer,state.playlist)else emptyList()
+        val references=if(state.playlist?.kind!=PlaylistKind.UNKNOWN)FriendMusicExport.references(page,user,viewer,state.playlist)else emptyList()
         val source=state.playlist?.title?:"Музыка друга"
         val label=source+" · "+(user.handle?:user.name)
-        return friendPositions(state).map {row->PlaybackEntry(row.value,label,viewer,download=tasks.getOrNull(row.index),readSessionId=state.readSessionId)}
+        return friendPositions(state).map {row->PlaybackEntry(row.value,label,viewer,export=references.getOrNull(row.index),readSessionId=state.readSessionId)}
     }
 }
 internal data class PlaybackState(val entries: List<PlaybackEntry> = emptyList(),val index: Int=0,

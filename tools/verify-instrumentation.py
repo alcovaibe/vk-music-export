@@ -26,7 +26,7 @@ SAVED_PLAYBACK_TESTS = {
         'ownSecondPageBarrierDoesNotBlockClickedDuplicateAndLaterFailureDoesNotMutateQueue',
         'friendSecondPageBarrierAllowsSearchResultAndKeepsViewerDifferentFromFriendOwner',
     ),
-    'PlaybackDeviceTest': ('uncheckedSavedThirdTrackStartsWithoutVkLoginOrEnabledDownloadActions',),
+    'PlaybackDeviceTest': ('uncheckedSavedThirdTrackStartsWithoutVkLoginOrEnabledDownloadActions', 'lateQueuePreparationCannotReplaceLatestLocalChoice'),
 }
 
 

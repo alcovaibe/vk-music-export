@@ -102,6 +102,16 @@ internal object ExportLayout {
             task(track,listOf(kind.folder,folder),position,ExportSource(account,"catalog",list.key),occurrence)
         }
     }
+    /** Queue metadata is cheap; task hashes are computed only for a download action/current player item. */
+    fun playback(page: NativePage,account: Long,list: NativePlaylist?=null,kind: PlaylistKind=list?.kind?:PlaylistKind.UNKNOWN): List<PlaybackExport> {
+        val folders=if(list==null)listOf("Моя музыка")else listOf(kind.folder,component(list.title)+" [${list.owner}_${list.id}]")
+        val source=if(list==null)ExportSource(account,"library","my")else ExportSource(account,"catalog",list.key)
+        val occurrences=mutableMapOf<String,Int>()
+        return page.tracks.mapIndexed{i,track->
+            val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
+            PlaybackExport(folders,i+1,source,occurrence)
+        }
+    }
     fun library(page: NativePage,albums: Boolean=true,account: Long=0): List<AudioExportTask> {
         val tasks=mutableListOf<AudioExportTask>();val albumPositions=mutableMapOf<String,Int>()
         val occurrences=mutableMapOf<String,Int>()

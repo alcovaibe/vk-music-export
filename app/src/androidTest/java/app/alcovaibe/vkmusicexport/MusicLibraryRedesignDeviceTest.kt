@@ -71,7 +71,8 @@ class MusicLibraryRedesignDeviceTest {
         }
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_1_12_1"))
         ui.onNodeWithText("Миражи").assertIsDisplayed();ui.onNodeWithText("hehehe Cover sped up").assertIsDisplayed()
-        ui.onNodeWithText("Егор Крид").assertHasNoClickAction()
+        ui.onNodeWithText("Егор Крид",useUnmergedTree=true).assertHasNoClickAction()
+        ui.onNodeWithTag("music_track_1_12_1").assertHasClickAction()
         ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(0)
         screenshot("redesign-library")
         ui.onNodeWithTag("vk_connection_logo",useUnmergedTree=true).assertIsDisplayed()

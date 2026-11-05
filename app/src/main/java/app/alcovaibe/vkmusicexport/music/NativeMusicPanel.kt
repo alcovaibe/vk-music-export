@@ -161,7 +161,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     LaunchedEffect(state.stage) {if(state.stage=="browser_auth")accessOpen=true}
     val friendTasks=remember(friendState.page,friendState.user,friendState.playlist,friendState.viewerAccount) {
         val page=friendState.page;val user=friendState.user;val viewer=friendState.viewerAccount
-        if(page!=null&&user!=null&&viewer!=null)FriendMusicExport.tasks(page,user,viewer,friendState.playlist)else emptyList()
+        if(page!=null&&user!=null&&viewer!=null&&friendState.playlist?.kind!=PlaylistKind.UNKNOWN)FriendMusicExport.references(page,user,viewer,friendState.playlist)else emptyList()
     }
     val savedById=remember(localFiles,state.probe?.owner){localFiles.filter{it.present&&it.file.source?.account==state.probe?.owner}.associateBy{it.file.track.id}}
     val friendSavedById=remember(localFiles,friendState.viewerAccount){
@@ -198,10 +198,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     val playbackSnapshot=state;val playbackSort=sort;val friendPlaybackSnapshot=friendState
     fun playLibrary(index: Int=-1) {
-        scope.launch {
-            val entries=withContext(Dispatchers.Default){PlaybackLists.library(playbackSnapshot,playbackSort)}
-            PlaybackRuntime.play(context,entries,index)
-        }
+        PlaybackRuntime.prepare(context,index){PlaybackLists.library(playbackSnapshot,playbackSort)}
     }
     val canPlayLibrary=state.page?.tracks?.any{it.duration>0&&!it.restricted&&it.metadataError==null}==true&&state.readSessionId!=null
     Box(Modifier.fillMaxSize()) {
@@ -228,7 +225,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(destination==MusicDestination.FRIENDS) {
             friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
-                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->scope.launch{val entries=withContext(Dispatchers.Default){PlaybackLists.friends(friendPlaybackSnapshot)};PlaybackRuntime.play(context,entries,index)}})
+                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.prepare(context,index){PlaybackLists.friends(friendPlaybackSnapshot)}})
         }else if(destination==MusicDestination.DOWNLOADS) {
             item("queue") {DownloadProgressContent(queue,state.busy||backgroundCheck,state.error,
                 onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,
