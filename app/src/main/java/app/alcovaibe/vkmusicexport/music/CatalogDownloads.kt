@@ -9,7 +9,7 @@ internal object CatalogDownloads {
     suspend fun completed(catalog: NativeCatalog,account: Long,saved: List<PublishedAudio>,
         fetch: suspend(NativePlaylist)->NativePage,valid: suspend(PublishedAudio)->Boolean,
         sourceReady: suspend(ExportSource,List<AudioExportTask>,List<PublishedAudio>)->Boolean={_,_,_->true},
-        tasksFor: (NativePlaylist,NativePage)->List<AudioExportTask>={list,page->ExportLayout.playlist(page,list,account=account)}): Set<String> {
+        tasksFor: (NativePlaylist,NativePage)->List<AudioExportTask> = {list,page->ExportLayout.playlist(page,list,account=account)}): Set<String> {
         val sources=saved.filter{it.source?.account==account&&it.source.kind=="catalog"&&it.catalogueVerified}
             .groupBy{it.source!!.id}
         val checked=mutableMapOf<Triple<String,Long,String>,Boolean>()
