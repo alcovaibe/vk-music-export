@@ -15,6 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,25 +73,7 @@ internal fun LazyListScope.downloadsItems(queue: ExportSnapshot,pageState: Downl
             }
         }
     }
-    item("downloads_filters") {
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            DownloadsTab.entries.forEach{choice->
-                val selected=tab==choice
-                val count=when(choice){DownloadsTab.QUEUE->queue.pending;DownloadsTab.ERRORS->queue.failed+queue.sourceIssues;DownloadsTab.DONE->queue.done}
-                Surface(onClick={onTab(choice)},shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier=Modifier.weight(1f).heightIn(min=64.dp).testTag("downloads_tab_${choice.name}")) {
-                    Row(Modifier.padding(8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                        Icon(when(choice){DownloadsTab.QUEUE->FriendQueueIcon;DownloadsTab.ERRORS->FriendErrorIcon;DownloadsTab.DONE->Icons.Default.CheckCircle},null,Modifier.size(20.dp))
-                        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                            Text(choice.title,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelLarge)
-                            Text(count.toString(),style=MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    item("downloads_filters") { DownloadTabs(queue,tab,onTab) }
     if(tab==DownloadsTab.QUEUE&&current!=null)item("downloads_active") {
         Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surface,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -146,6 +132,35 @@ internal fun LazyListScope.downloadsItems(queue: ExportSnapshot,pageState: Downl
             if(!working)TextButton(onClick=onClear,enabled=!busy,modifier=Modifier.fillMaxWidth().testTag("downloads_clear")){Text("Очистить очередь · файлы останутся")}
         }
     }}
+}
+
+@Composable
+private fun DownloadTabs(queue: ExportSnapshot,selected: DownloadsTab,onTab:(DownloadsTab)->Unit) {
+    // Keep whole words readable when Android's accessibility font size is enlarged.
+    val stacked=LocalDensity.current.fontScale>=1.3f
+    @Composable fun tab(choice: DownloadsTab,modifier: Modifier) {
+        val count=when(choice){DownloadsTab.QUEUE->queue.pending;DownloadsTab.ERRORS->queue.failed+queue.sourceIssues;DownloadsTab.DONE->queue.done}
+        val active=selected==choice
+        Surface(onClick={onTab(choice)},shape=RoundedCornerShape(18.dp),color=if(active)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor=if(active)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier=modifier.heightIn(min=64.dp).testTag("downloads_tab_${choice.name}").semantics{this.selected=active;role=Role.Tab}) {
+            Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                Icon(when(choice){DownloadsTab.QUEUE->FriendQueueIcon;DownloadsTab.ERRORS->FriendErrorIcon;DownloadsTab.DONE->Icons.Default.CheckCircle},null,Modifier.size(20.dp))
+                if(stacked) {
+                    Text(choice.title,Modifier.weight(1f),fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelLarge)
+                    Text(count.toString(),style=MaterialTheme.typography.bodyMedium)
+                }else Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                    Text(choice.title,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelLarge)
+                    Text(count.toString(),style=MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+    if(stacked)Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        DownloadsTab.entries.forEach{tab(it,Modifier.fillMaxWidth())}
+    }else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        DownloadsTab.entries.forEach{tab(it,Modifier.weight(1f))}
+    }
 }
 
 @Composable

@@ -82,6 +82,10 @@ class DownloadsScreenDeviceTest {
         open()
         ui.onNodeWithTag("downloads_screen_list").performScrollToNode(hasTestTag("downloads_tab_ERRORS"))
         ui.onNodeWithTag("downloads_tab_ERRORS").performClick()
+        ui.onNodeWithTag("downloads_tab_ERRORS").assertIsSelected()
+        val largeTab=ui.onNodeWithTag("downloads_tab_ERRORS").fetchSemanticsNode().boundsInRoot
+        val listWidth=ui.onNodeWithTag("downloads_screen_list").fetchSemanticsNode().boundsInRoot.width
+        assertTrue("Large-text tabs must use the available width",largeTab.width>listWidth*0.8f)
         ui.waitUntil(10_000){model.downloadsPage.value.page?.tab==DownloadsTab.ERRORS&&!model.downloadsPage.value.loading}
         assertEquals(61,model.downloadsPage.value.page!!.total);assertEquals(49,model.downloadsPage.value.page!!.rows.size)
         ui.onNodeWithTag("downloads_screen_list").performScrollToNode(hasTestTag("downloads_next_page"))
@@ -94,6 +98,7 @@ class DownloadsScreenDeviceTest {
         ui.onNodeWithTag("downloads_tab_DONE").performClick()
         ui.waitUntil(10_000){model.downloadsPage.value.page?.tab==DownloadsTab.DONE&&!model.downloadsPage.value.loading}
         assertEquals(3,model.downloadsPage.value.page!!.rows.size)
+        ui.onNodeWithTag("downloads_screen_list").performScrollToNode(hasTestTag("downloads_tab_QUEUE"))
         ui.waitForIdle();captureDownloads("downloads-fullscreen-large-text")
         ui.onNodeWithTag("downloads_screen_list").performScrollToNode(hasTestTag("downloads_pause"))
         ui.onNodeWithTag("downloads_pause").performClick()
