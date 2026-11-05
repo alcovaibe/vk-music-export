@@ -59,8 +59,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     val friends=FriendMusicController(application,api,viewModelScope,onDownloads=::showDownloads,blocked={_state.value.busy})
+    private val authForeground=MutableStateFlow(false)
     private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
-    private val downloadsReader=DownloadsReader(viewModelScope,downloadsOpen,AudioExportRuntime.state){tab,offset->
+    private val downloadsReader=DownloadsReader(viewModelScope,combine(downloadsOpen,authForeground){open,foreground->open&&foreground},AudioExportRuntime.state){tab,offset->
         AudioExportRuntime.initialize(application)
         AudioExportStore(application).use{it.queuePage(tab,offset)}
     }
@@ -803,7 +804,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     private var work: Job?=null
-    private val authForeground=MutableStateFlow(false)
     private val authOpened=MutableStateFlow(false)
     private var authSession: DeviceSession?=null
     private var authCodes: Channel<DeviceConfirmationCode>?=null

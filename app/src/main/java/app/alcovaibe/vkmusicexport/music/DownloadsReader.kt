@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.*
 internal data class DownloadsSelection(val tab: DownloadsTab=DownloadsTab.QUEUE,val offset: Int=0,val refresh: Long=0)
 internal data class DownloadsPageState(val page: ExportQueuePage?=null,val loading: Boolean=false,val error: Boolean=false)
 /** Byte progress does not invalidate the list. A replaced queue cannot receive an older page. */
-internal class DownloadsReader(scope: CoroutineScope,open: StateFlow<Boolean>,versions: StateFlow<ExportSnapshot>,
+internal class DownloadsReader(scope: CoroutineScope,open: Flow<Boolean>,versions: StateFlow<ExportSnapshot>,
     private val fetch: suspend(DownloadsTab,Int)->ExportQueuePage) {
     private val selection=MutableStateFlow(DownloadsSelection())
     private val mutable=MutableStateFlow(DownloadsPageState());val state=mutable.asStateFlow()
