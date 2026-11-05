@@ -7,6 +7,10 @@ permissions:
   contents: read
 jobs:
   upload-fixture:
+    strategy:
+      fail-fast: false
+      matrix:
+        producer: [legacy, current]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -27,9 +31,22 @@ jobs:
           report.write_text('<p>Synthetic lint evidence.</p>\n')
           PY
       # Keep the v4 producer to cover recovery of existing ZIP artifacts.
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Upload legacy ZIP fixture
+        if: matrix.producer == 'legacy'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: VK-Music-Export-release-smoke
+          name: VK-Music-Export-release-smoke-${{ matrix.producer }}
+          path: |
+            release-output/
+            upgrade-results/
+            app/build/reports/lint-results-release.html
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload current ZIP fixture
+        if: matrix.producer == 'current'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: VK-Music-Export-release-smoke-${{ matrix.producer }}
           path: |
             release-output/
             upgrade-results/
@@ -39,6 +56,10 @@ jobs:
 
   download-fixture:
     needs: upload-fixture
+    strategy:
+      fail-fast: false
+      matrix:
+        producer: [legacy, current]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -47,7 +68,7 @@ jobs:
       # Explicit token and run-id exercise the API path used by recovery.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: VK-Music-Export-release-smoke
+          name: VK-Music-Export-release-smoke-${{ matrix.producer }}
           run-id: ${{ github.run_id }}
           github-token: ${{ github.token }}
           path: candidate
@@ -71,5 +92,5 @@ jobs:
           assert (out / 'SHA256SUMS.txt').read_text() == hashlib.sha256(apk.read_bytes()).hexdigest() + '  ' + apk.name + '\n'
           assert (root / 'upgrade-results/fixture.txt').read_text() == 'Synthetic upgrade evidence.\n'
           assert (root / 'app/build/reports/lint-results-release.html').read_text() == '<p>Synthetic lint evidence.</p>\n'
-          print('PASS: v8 restored the legacy release artifact layout and exact bytes.')
+          print('PASS: v8 restored the release artifact layout and exact bytes.')
           PY
