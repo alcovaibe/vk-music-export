@@ -25,6 +25,7 @@ SAVED_PLAYBACK_TESTS = {
     'PartialPlaybackDeviceTest': (
         'ownSecondPageBarrierDoesNotBlockClickedDuplicateAndLaterFailureDoesNotMutateQueue',
         'friendSecondPageBarrierAllowsSearchResultAndKeepsViewerDifferentFromFriendOwner',
+        'cachedOwnPageRemainsPlayableWhileRefreshWaitsForFirstResponse',
     ),
     'PlaybackDeviceTest': ('uncheckedSavedThirdTrackStartsWithoutVkLoginOrEnabledDownloadActions', 'lateQueuePreparationCannotReplaceLatestLocalChoice'),
 }

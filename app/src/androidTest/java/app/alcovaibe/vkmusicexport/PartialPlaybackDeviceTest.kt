@@ -17,9 +17,13 @@ class PartialPlaybackDeviceTest {
         val first=NativeTrack("12_771","Zulu","CI",180)
         val second=first.copy(id="12_772",title="Alpha")
         val gate=CompletableDeferred<Unit>();val entered=CompletableDeferred<Unit>()
-        var blockOwn=true;var failRest=false
+        var blockOwn=true;var failRest=false;var holdInitial=false
+        val initialEntered=CompletableDeferred<Unit>();val initialRelease=CompletableDeferred<Unit>()
         override suspend fun accountOwner(access: MusicAccess)=12L
-        override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(listOf(first,second,first),if(blockOwn)4 else 3))
+        override suspend fun library(access: MusicAccess): NativeProbe {
+            if(holdInitial){initialEntered.complete(Unit);initialRelease.await()}
+            return NativeProbe(12,NativePage(listOf(first,second,first),if(blockOwn)4 else 3))
+        }
         override suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
             if(owner==34L&&offset==0)return NativePage(listOf(first,second,first),4)
             entered.complete(Unit);gate.await()
@@ -44,7 +48,7 @@ class PartialPlaybackDeviceTest {
             inst.runOnMainSync{model.setForeground(true);model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
             block(model,api)
         }finally {
-            api.gate.complete(Unit);inst.runOnMainSync{holder.clear()}
+            api.gate.complete(Unit);api.initialRelease.complete(Unit);inst.runOnMainSync{holder.clear()}
             withContext(Dispatchers.IO){if(old==null)vault.delete()else vault.save(old)}
         }
     }
@@ -57,6 +61,17 @@ class PartialPlaybackDeviceTest {
         assertEquals(2,selected.entries[2].download!!.occurrence);assertEquals(state.readSessionId,selected.entries[2].readSessionId)
         api.failRest=true;api.gate.complete(Unit);until{!model.state.value.busy}
         assertEquals(3,selected.entries.size);assertEquals(2,selected.start)
+    }
+    @Test fun cachedOwnPageRemainsPlayableWhileRefreshWaitsForFirstResponse()=fixture(false){model,api->
+        until{!model.state.value.busy&&model.state.value.probe!=null}
+        val before=model.state.value;api.holdInitial=true
+        InstrumentationRegistry.getInstrumentation().runOnMainSync{model.checkAccess()}
+        withTimeout(20_000){api.initialEntered.await()}
+        val during=model.state.value
+        assertTrue(during.busy);assertTrue(during.libraryStale);assertEquals(before.readSessionId,during.readSessionId)
+        val selected=PlaybackLists.select(PlaybackLists.library(during,MusicLibrarySort.DEFAULT),2)!!
+        assertEquals(3,selected.entries[2].download!!.position);assertFalse(api.initialRelease.isCompleted)
+        assertEquals(before.page!!.tracks[2],selected.entries[2].track)
     }
     @Test fun friendSecondPageBarrierAllowsSearchResultAndKeepsViewerDifferentFromFriendOwner()=fixture(false){model,api->
         until{!model.state.value.busy&&model.state.value.probe!=null}

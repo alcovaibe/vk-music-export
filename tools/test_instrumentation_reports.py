@@ -59,10 +59,10 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.BulkDownloadDeviceTest" name="{name}"/>' for name in verification['BULK_DOWNLOAD_TESTS'])
         for suite, methods in verification['SAVED_PLAYBACK_TESTS'].items():
             cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
-        return f'<testsuites tests="171" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        return f'<testsuites tests="172" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 171)
+        self.assertEqual(self.check([self.successful_report()], '0'), 172)
 
     def test_missing_bulk_download_scenario_is_rejected_even_with_enough_other_tests(self):
         name=verification['BULK_DOWNLOAD_TESTS'][0]
@@ -84,9 +84,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 171)
+            self.assertEqual(self.check([executed], '0', api_level=api), 172)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 171)
+        self.assertEqual(self.check([report], '0', api_level=34), 172)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

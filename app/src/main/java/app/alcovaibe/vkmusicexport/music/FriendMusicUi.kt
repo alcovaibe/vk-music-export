@@ -191,6 +191,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     }
     item("friend_music_search"){FriendSearch(state.musicQuery,if(state.playlist==null)"Поиск по музыке" else "Поиск по трекам плейлиста","friend_music_search",controller::musicQuery)}
     val page=state.page
+    val matching=PlaybackLists.friendPositions(state)
     val ready=enabled&&!state.busy&&state.complete&&page?.tracks?.isNotEmpty()==true
     item("friend_track_actions") {
         Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -208,7 +209,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_download_all")) {
                     Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else when(state.playlist.kind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.UNKNOWN->"Скачать подборку";else->"Скачать плейлист"},maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
-                FilledTonalButton(onClick={onPlay(-1)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=page?.tracks?.any{!it.restricted&&it.duration>0&&it.metadataError==null}==true,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
+                FilledTonalButton(onClick={onPlay(-1)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.viewerAccount!=null&&matching.any{!it.value.restricted&&it.value.duration>0&&it.value.metadataError==null},modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
             }
             if(!state.complete&&state.busy) {
                 if(page!=null&&page.count>0)LinearProgressIndicator(progress={page.tracks.size.toFloat()/page.count},modifier=Modifier.fillMaxWidth())
@@ -234,7 +235,6 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
             }
         }
     }
-    val matching=PlaybackLists.friendPositions(state)
     if(state.complete&&matching.isEmpty())item("friend_tracks_empty"){Text(if(state.musicQuery.isBlank())"Нет доступных треков" else "Треки по этому запросу не найдены")}
     itemsIndexed(matching,key={_,row->"friend_track_${row.index+1}_${row.value.id}"}){displayIndex,entry->
         val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)?.task(track)

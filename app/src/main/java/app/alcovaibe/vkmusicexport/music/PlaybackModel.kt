@@ -28,7 +28,7 @@ internal object PlaybackLists {
     fun library(state: NativeMusicState,sort: MusicLibrarySort): List<PlaybackEntry> {
         val owner=state.probe?.owner?:return emptyList()
         val page=state.page?:return emptyList()
-        if(owner<=0||state.readSessionId==null||state.libraryStale&&state.selected==null)return emptyList()
+        if(owner<=0||state.readSessionId==null)return emptyList()
         val selected=state.selected
         val kind=selected?.let{MusicCatalog.kind(it,state.catalogKinds)}?:PlaylistKind.UNKNOWN
         val references=if(selected==null||kind!=PlaylistKind.UNKNOWN)ExportLayout.playback(page,owner,selected,kind)else emptyList()

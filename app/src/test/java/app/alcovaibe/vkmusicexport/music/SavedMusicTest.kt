@@ -35,14 +35,14 @@ class SavedMusicTest {
         assertEquals(ExportLayout.library(page,false,12)[2],chosen.entries[2].download)
         assertTrue(chosen.entries.all{it.readSessionId=="session"})
     }
-    @Test fun pagingDoesNotMutateTheAlreadySelectedQueueAndStalePagesCannotStart() {
+    @Test fun pagingDoesNotMutateTheSelectedQueueAndSameSessionCachedPagesRemainPlayable() {
         val prefix=NativePage(listOf(song,song),20)
         val state=NativeMusicState(probe=NativeProbe(12,prefix),page=prefix,readSessionId="session")
         val frozen=PlaybackLists.select(PlaybackLists.library(state,MusicLibrarySort.DEFAULT),1)!!
         val later=state.copy(page=NativePage(List(20){song},20))
         assertEquals(20,PlaybackLists.library(later,MusicLibrarySort.DEFAULT).size)
         assertEquals(2,frozen.entries.size);assertEquals(1,frozen.start)
-        assertTrue(PlaybackLists.library(state.copy(libraryStale=true),MusicLibrarySort.DEFAULT).isEmpty())
+        assertEquals(frozen.entries,PlaybackLists.library(state.copy(libraryStale=true,busy=true),MusicLibrarySort.DEFAULT))
         assertTrue(PlaybackLists.library(state.copy(readSessionId=null),MusicLibrarySort.DEFAULT).isEmpty())
     }
     @Test fun partialFriendsSearchPreservesOriginalPositionsViewerAndRepeatedOccurrences() {
