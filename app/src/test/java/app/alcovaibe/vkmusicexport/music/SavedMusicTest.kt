@@ -17,6 +17,15 @@ class SavedMusicTest {
         assertTrue(SavedMusicSorting.titles.compare("Song 2","song 10")<0)
         assertEquals(0,SavedMusicSorting.titles.compare("002","2"))
     }
+    @Test fun localPlaybackAllowsRemoteReadsButPreservesFileEditAdmissionGuards() {
+        val idle=NativeMusicState(initialized=true)
+        assertTrue(SavedPlaybackPolicy.allowed(idle))
+        for(stage in listOf("probe","configure","resume_refresh","catalog_refresh","playlist"))
+            assertTrue(stage,SavedPlaybackPolicy.allowed(idle.copy(busy=true,stage=stage)))
+        for(stage in listOf("artwork","track_metadata","metadata_lookup_apply","cover_lookup_apply","saved_files","unknown"))
+            assertFalse(stage,SavedPlaybackPolicy.allowed(idle.copy(busy=true,stage=stage)))
+        assertFalse(SavedPlaybackPolicy.allowed(idle.copy(initialized=false)))
+    }
     @Test fun uncheckedLocalRecordsArePlayableButMissingAndChangedAreNot() {
         val unknown=row("Local",1)
         assertFalse(unknown.present);assertTrue(unknown.playable)

@@ -11,6 +11,12 @@ internal data class SavedLibraryEntry(val file: PublishedAudio,val availability:
     val present get()=availability==SavedAvailability.READY
     val playable get()=availability==SavedAvailability.UNKNOWN||present
 }
+/** Preserve admission guards for actual file edits; remote metadata reads never own local playback. */
+internal object SavedPlaybackPolicy {
+    private val remoteReads=setOf("probe","resume_refresh","configure","browser_auth","catalog_refresh","playlist",
+        "artists","artist_details","artist_album","availability","remove_inspect")
+    fun allowed(state: NativeMusicState)=state.initialized&&(!state.busy||state.stage in remoteReads)
+}
 internal enum class SavedMusicSort(val title: String) { NEWEST("Сначала скачанные последними"),TITLE("По названию: 0–9, A–Z, А–Я") }
 internal object SavedMusicSorting {
     private fun normalized(s: String)=s.trimStart().lowercase(java.util.Locale.ROOT).replace('ё','е')

@@ -169,7 +169,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(viewer==null)emptyMap()else localFiles.filter{it.present&&it.file.source?.account==viewer}.associate{it.file.track.id to it.file}
     }
     val savedPlayback=remember(localFiles){PlaybackLists.saved(localFiles)}
+    val savedListeningAllowed=SavedPlaybackPolicy.allowed(state)
     fun openFile(row: PublishedAudio) {
+        if(!savedListeningAllowed)return
         val index=savedPlayback.indexOfFirst{it.saved?.uri==row.uri}
         if(index>=0)PlaybackRuntime.play(context,savedPlayback,index)
         else PlaybackRuntime.play(context,listOf(PlaybackEntry(row.track,"Сохранённая музыка",saved=row)))
@@ -249,7 +251,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         modifier=Modifier.weight(1f).fillMaxHeight().testTag("refresh_saved_music")) {
                         Icon(Icons.Default.Refresh,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Обновить сохранённое",maxLines=2)
                     }
-                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty(),shape=RoundedCornerShape(14.dp),
+                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty()&&savedListeningAllowed,shape=RoundedCornerShape(14.dp),
                         contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),modifier=Modifier.weight(1f).fillMaxHeight().testTag("play_saved_music")) {
                         Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2)
                     }
@@ -259,14 +261,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             itemsIndexed(localFiles,key={_,row->"saved_${row.file.uri}"}){i,entry->
                 val row=entry.file
                 Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.playable},onOpen=if(entry.playable)({openFile(row)})else null)
+                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.playable},onOpen=if(entry.playable&&savedListeningAllowed)({openFile(row)})else null)
                     if(entry.availability==SavedAvailability.UNKNOWN)Text("Доступность проверяется в фоне. Можно запустить трек.",style=MaterialTheme.typography.bodySmall)
                     if(!entry.playable)Text("${row.displayName}: файл недоступен или размер изменился. Открой проверку сохранённых файлов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 }
             }
             if(queue.recent.isNotEmpty())item("recent") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 RecentFilesHeading(enabled=!state.busy&&!backgroundCheck,onClear=model::clearRecentFiles)
-                queue.recent.forEach{row->TextButton(onClick={openFile(row)}){Text(row.displayName)}}
+                queue.recent.forEach{row->TextButton(enabled=savedListeningAllowed,onClick={openFile(row)}){Text(row.displayName)}}
             }}
             if(legacy.files.isNotEmpty())item("legacy") {Column {
                 Text("Сохранения старой версии",style=MaterialTheme.typography.titleMedium)
