@@ -45,9 +45,12 @@ class DownloadsScreenDeviceTest {
         ui.activityRule.scenario.recreate();ui.onNodeWithTag("downloads_screen").assertIsDisplayed()
         androidx.test.espresso.Espresso.pressBack();ui.onNodeWithTag("music_nav_FRIENDS").assertIsSelected()
         ui.onNodeWithTag("music_nav_SAVED").performClick()
+        val openedActivity=ui.activity;val launchAction=openedActivity.intent.action;val launchCategories=openedActivity.intent.categories
         val notification=withContext(Dispatchers.IO){AudioExportRuntime.notification(context,AudioExportRuntime.state.value)}
         ui.runOnUiThread{notification.contentIntent.send()}
         ui.waitUntil(10_000){ui.onAllNodesWithTag("downloads_screen").fetchSemanticsNodes().isNotEmpty()}
+        assertSame(openedActivity,ui.activity)
+        assertEquals(launchAction,ui.activity.intent.action);assertEquals(launchCategories,ui.activity.intent.categories)
         assertFalse(ui.activity.intent.hasExtra(AudioExportRuntime.OPEN_EXTRA))
         androidx.test.espresso.Espresso.pressBack();ui.onNodeWithTag("music_nav_SAVED").assertIsSelected()
         ui.activityRule.scenario.recreate();ui.onNodeWithTag("music_nav_SAVED").assertIsSelected()

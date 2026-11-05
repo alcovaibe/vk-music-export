@@ -149,8 +149,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     fun showDownloads(){Diagnostics.button("audio_downloads_open");_downloadsOpen.value=true}
     fun dismissDownloads(){
+        if(!_downloadsOpen.value)return
         Diagnostics.button("audio_downloads_dismiss");_downloadsOpen.value=false
-        if(AudioExportRuntime.state.value.status.startsWith("FINISHED")&&!_state.value.busy&&_state.value.probe!=null)refreshCatalog()
+        if(AudioExportRuntime.state.value.status.startsWith("FINISHED")&&!_state.value.busy&&!MaintenanceRuntime.busy&&!DuplicateCheckRuntime.transferring&&_state.value.probe!=null)refreshCatalog()
     }
     private suspend fun startDownloads(retry: Boolean=false) {
         // Presentation only: leaving Downloads never controls the UIDT job.

@@ -52,7 +52,11 @@ class MainActivity : ComponentActivity() {
             nativeMusic.openDuplicateNotification();intent.removeExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA)
         }
     }
-    override fun onNewIntent(intent: Intent){super.onNewIntent(intent);setIntent(intent);openNotification(intent)}
+    override fun onNewIntent(intent: Intent){
+        super.onNewIntent(intent)
+        // Notifications are one-shot navigation events; the saved route owns restoration.
+        openNotification(intent)
+    }
     override fun onResume(){super.onResume();nativeMusic.setForeground(true)}
     override fun onPause(){nativeMusic.setForeground(false);super.onPause()}
     override fun onStop(){nativeMusic.stopInBackground();super.onStop()}

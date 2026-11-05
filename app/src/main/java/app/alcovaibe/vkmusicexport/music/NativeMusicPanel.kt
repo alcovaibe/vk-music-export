@@ -138,7 +138,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
     var handledMaintenanceNavigation by rememberSaveable{mutableLongStateOf(0L)}
     LaunchedEffect(maintenanceNavigation) {
-        if(maintenanceNavigation>0&&maintenanceNavigation!=handledMaintenanceNavigation){handledMaintenanceNavigation=maintenanceNavigation;model.dismissDownloads();aboutOpen=false;accessOpen=false;toolsOpen=false;destination=MusicDestination.SAVED}
+        if(maintenanceNavigation>0&&maintenanceNavigation!=handledMaintenanceNavigation){handledMaintenanceNavigation=maintenanceNavigation;if(model.downloadsOpen.value)model.dismissDownloads();aboutOpen=false;accessOpen=false;toolsOpen=false;destination=MusicDestination.SAVED}
     }
     val downloadsOpen by model.downloadsOpen.collectAsState()
     val downloadsPage by model.downloadsPage.collectAsState()

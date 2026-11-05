@@ -137,6 +137,7 @@ class PlaybackDeviceTest {
     }
     @Test fun realOfflinePlaybackContinuesThroughDownloadsAndBack()=fixture {rows->
         start(rows)
+        ui.onNodeWithTag("player_collapse").performClick()
         ui.onNodeWithTag("music_nav_SAVED").performClick()
         ui.onNodeWithTag("open_music_downloads").performClick()
         ui.waitUntil(10000){ui.onAllNodesWithTag("downloads_screen").fetchSemanticsNodes().isNotEmpty()}

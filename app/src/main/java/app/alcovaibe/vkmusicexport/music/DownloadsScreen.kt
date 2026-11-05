@@ -52,13 +52,11 @@ internal fun LazyListScope.downloadsItems(queue: ExportSnapshot,pageState: Downl
             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text(downloadStatus(queue),Modifier.testTag("downloads_status"),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
                 if(queue.total>0) {
-                    Text("${queue.done} из ${queue.total} треков сохранено",style=MaterialTheme.typography.titleLarge)
+                    Text("Сохранено: ${queue.done} из ${queue.total}",style=MaterialTheme.typography.titleLarge)
                     LinearProgressIndicator(progress={queue.done.toFloat()/queue.total},modifier=Modifier.fillMaxWidth().testTag("downloads_total_progress"))
-                    Text("${(queue.pending-if(current!=null)1 else 0).coerceAtLeast(0)} ожидают · ${queue.failed+queue.sourceIssues} проблем",style=MaterialTheme.typography.bodyMedium)
-                    Text("Обработано: ${queue.done+queue.failed}/${queue.total} · с обложкой: ${queue.covered}",style=MaterialTheme.typography.bodySmall)
+                    Text("Ожидают: ${(queue.pending-if(current!=null)1 else 0).coerceAtLeast(0)} · Ошибки: ${queue.failed+queue.sourceIssues}",style=MaterialTheme.typography.bodyMedium)
                 }
-                if(queue.account>0)Text("Аккаунт ВК: ${queue.account}",style=MaterialTheme.typography.bodySmall)
-                else if(queue.total>0)Text("Для продолжения старой очереди нужно подтвердить аккаунт.",style=MaterialTheme.typography.bodySmall)
+                if(queue.account<=0&&queue.total>0)Text("Для продолжения старой очереди нужно подтвердить аккаунт.",style=MaterialTheme.typography.bodySmall)
                 if(working)Button(onClick=onPause,shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=52.dp).testTag("downloads_pause")) {
                     Icon(FriendPauseIcon,null);Spacer(Modifier.width(8.dp));Text("Приостановить")
                 }else if(queue.unfinished)Button(onClick=onResume,enabled=!busy,shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=52.dp).testTag("downloads_resume")) {
@@ -67,7 +65,7 @@ internal fun LazyListScope.downloadsItems(queue: ExportSnapshot,pageState: Downl
                 if(!working&&queue.failed>0)OutlinedButton(onClick=onRetry,enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("downloads_retry")){Text("Повторить пропущенные треки")}
                 queue.error?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
                 actionError?.takeIf{it!=queue.error}?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
-                if(queue.sourceIssues>0)Text("Не прочитаны источники/подборки: ${queue.sourceIssues}. Экспорт всей библиотеки не подтверждён.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                if(queue.sourceIssues>0)Text("Есть непрочитанные источники: ${queue.sourceIssues}",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -78,11 +76,13 @@ internal fun LazyListScope.downloadsItems(queue: ExportSnapshot,pageState: Downl
                 val count=when(choice){DownloadsTab.QUEUE->queue.pending;DownloadsTab.ERRORS->queue.failed+queue.sourceIssues;DownloadsTab.DONE->queue.done}
                 Surface(onClick={onTab(choice)},shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier=Modifier.weight(1f).heightIn(min=76.dp).testTag("downloads_tab_${choice.name}")) {
-                    Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        Icon(when(choice){DownloadsTab.QUEUE->FriendQueueIcon;DownloadsTab.ERRORS->FriendErrorIcon;DownloadsTab.DONE->Icons.Default.CheckCircle},null)
-                        Text(choice.title,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelLarge)
-                        Text(count.toString(),style=MaterialTheme.typography.bodyMedium)
+                    modifier=Modifier.weight(1f).heightIn(min=64.dp).testTag("downloads_tab_${choice.name}")) {
+                    Row(Modifier.padding(8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                        Icon(when(choice){DownloadsTab.QUEUE->FriendQueueIcon;DownloadsTab.ERRORS->FriendErrorIcon;DownloadsTab.DONE->Icons.Default.CheckCircle},null,Modifier.size(20.dp))
+                        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                            Text(choice.title,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelLarge)
+                            Text(count.toString(),style=MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }
@@ -138,6 +138,9 @@ internal fun LazyListScope.downloadsItems(queue: ExportSnapshot,pageState: Downl
     item("downloads_actions") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text("Можно слушать музыку, пока идёт скачивание.",style=MaterialTheme.typography.bodySmall)
         if(queue.total>0||queue.sourceIssues>0) {
+            if(queue.total>0)Text("Обработано: ${queue.done+queue.failed}/${queue.total} · с обложкой: ${queue.covered}",style=MaterialTheme.typography.bodySmall)
+            if(queue.account>0)Text("Аккаунт ВК: ${queue.account}",style=MaterialTheme.typography.bodySmall)
+            if(queue.sourceIssues>0)Text("Экспорт всей библиотеки не подтверждён: не прочитаны источники/подборки.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
             OutlinedButton(onClick=onReport,modifier=Modifier.fillMaxWidth().testTag("downloads_export_report")){Text("Поделиться полным отчётом")}
             Text("Отчёт содержит названия песен, источники, результаты и пути файлов. Токены и ссылки ВК не включаются.",style=MaterialTheme.typography.bodySmall)
             if(!working)TextButton(onClick=onClear,enabled=!busy,modifier=Modifier.fillMaxWidth().testTag("downloads_clear")){Text("Очистить очередь · файлы останутся")}
