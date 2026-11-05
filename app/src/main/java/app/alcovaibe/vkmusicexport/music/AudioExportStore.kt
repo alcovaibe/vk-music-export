@@ -18,7 +18,7 @@ internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,v
 }
 
 /** SQLite checkpoints each item. Only canonical track/folder metadata and local media URIs; no VK secrets. IO only. */
-internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,4) {
+internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,5) {
     private val json=Json{encodeDefaults=true}
     init{setWriteAheadLoggingEnabled(true)}
     override fun onConfigure(db: SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
@@ -31,6 +31,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         createDirectories(db)
         createSourceFailures(db)
         TrackMetadataCheckpoints.create(db)
+        SavedFileIndex.create(db)
     }
     private fun createDirectories(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE directories(identity TEXT PRIMARY KEY,relative_path TEXT NOT NULL,comparison_key TEXT NOT NULL UNIQUE)")
@@ -39,17 +40,50 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         db.execSQL("CREATE TABLE source_failures(source_key TEXT PRIMARY KEY,payload TEXT NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase,oldVersion: Int,newVersion: Int) {
-        check(oldVersion in 1..3&&newVersion==4){"Unsupported export schema"}
+        check(oldVersion in 1..4&&newVersion==5){"Unsupported export schema"}
         if(oldVersion<2)createDirectories(db)
         if(oldVersion<3)createSourceFailures(db)
-        TrackMetadataCheckpoints.create(db) // Preserve tasks/files and lazily import old checkpoints atomically.
+        if(oldVersion<4)TrackMetadataCheckpoints.create(db) // Preserve tasks/files and old checkpoints.
+        SavedFileIndex.create(db)
+        db.rawQuery("SELECT task_key,payload FROM files ORDER BY rowid",null).use{c->
+            while(c.moveToNext()) {
+                val row=json.decodeFromString<PublishedAudio>(c.getString(1))
+                db.execSQL("UPDATE files SET uri=? WHERE task_key=?",arrayOf(row.uri,c.getString(0)))
+            }
+        }
+        db.rawQuery("SELECT uri FROM files GROUP BY uri ORDER BY MIN(rowid)",null).use{c->
+            while(c.moveToNext())SavedFileIndex(db).sync(c.getString(0))
+        }
     }
     private fun put(name: String,value: String){writableDatabase.execSQL("INSERT OR REPLACE INTO meta(name,value) VALUES(?,?)",arrayOf(name,value))}
     private fun get(name: String)=readableDatabase.rawQuery("SELECT value FROM meta WHERE name=?",arrayOf(name)).use{if(it.moveToFirst())it.getString(0)else null}
+    private var savedChanged=false
     private inline fun <T> transaction(block:()->T): T {
-        val db=writableDatabase;db.beginTransaction()
-        try{val result=block();db.setTransactionSuccessful();return result}finally{db.endTransaction()}
+        val db=writableDatabase;val outer=!db.inTransaction();if(outer)savedChanged=false
+        db.beginTransaction();var committed=false;var failure: Throwable?=null
+        try{val result=block();db.setTransactionSuccessful();committed=true;return result}
+        catch(e: Throwable){failure=e;throw e}
+        finally{
+            try{db.endTransaction()}catch(cleanup: Throwable){if(failure!=null)failure.addSuppressed(cleanup)else throw cleanup}
+            if(outer&&committed&&savedChanged)SavedLibraryChanges.changed()
+        }
     }
+    private fun syncFiles(vararg uris: String) {
+        uris.distinct().forEach{SavedFileIndex(writableDatabase).sync(it)};savedChanged=true
+    }
+    private fun writeFile(row: PublishedAudio) {
+        val old=existing(row.taskKey)
+        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload,uri) VALUES(?,?,?,?)",
+            arrayOf(row.taskKey,row.track.id,json.encodeToString(row),row.uri))
+        syncFiles(*listOfNotNull(old?.uri,row.uri).toTypedArray())
+    }
+    @Synchronized fun savedRevision()=SavedFileIndex(readableDatabase).revision()
+    @Synchronized fun savedPage(before: Long=Long.MAX_VALUE,limit: Int=100)=SavedFileIndex(readableDatabase).page(before,limit)
+    @Synchronized fun savedChanges(after: Long,limit: Int=100)=SavedFileIndex(readableDatabase).changes(after,limit)
+    @Synchronized fun aliases(uri: String): List<PublishedAudio> = readableDatabase.rawQuery(
+        "SELECT payload FROM files WHERE uri=? ORDER BY rowid",arrayOf(uri)).use{c->buildList{
+            while(c.moveToNext())add(json.decodeFromString<PublishedAudio>(c.getString(0)))
+        }}
     private fun recordedDirectory(identity: String)=readableDatabase.rawQuery(
         "SELECT relative_path FROM directories WHERE identity=?",arrayOf(identity)).use{
         if(it.moveToFirst())it.getString(0)else null
@@ -255,16 +289,12 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     @Synchronized fun done(task: AudioExportTask,record: PublishedAudio)=transaction {
         musicCheck(record.taskKey==task.key,MusicError.STORAGE)
         val previous=existing(task.key)
-        val knownUri=readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=?",arrayOf(record.track.id)).use{c->
-            var found=false
-            while(c.moveToNext()&&!found)found=json.decodeFromString<PublishedAudio>(c.getString(0)).uri==record.uri
-            found
-        }
+        val knownUri=readableDatabase.rawQuery("SELECT 1 FROM files WHERE uri=? LIMIT 1",arrayOf(record.uri)).use{it.moveToFirst()}
         val wasDone=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(task.key)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
         val delta=(if(record.coverEmbedded)1 else 0)-(if(wasDone&&previous?.coverEmbedded==true)1 else 0)
         put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+delta).toString())
         val recent=recentFiles()
-        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload) VALUES(?,?,?)",arrayOf(task.key,task.track.id,json.encodeToString(record)))
+        writeFile(record)
         writableDatabase.execSQL("UPDATE tasks SET state='DONE',error=NULL,prepared=NULL WHERE task_key=?",arrayOf(task.key))
         writableDatabase.delete("meta","name=?",arrayOf("failure_detail:"+task.key))
         // Reusing an existing file completes the queue item without reviving cleared history.
@@ -305,16 +335,15 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
             (if(after.coverEmbedded)1 else 0)-(if(expectedTarget?.coverEmbedded==true)1 else 0)).coerceAtLeast(0).toString())
         val recent=recentFiles()
         writableDatabase.delete("files","task_key=?",arrayOf(before.taskKey))
-        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload) VALUES(?,?,?)",
-            arrayOf(task.key,after.track.id,json.encodeToString(after)))
+        writeFile(after)
+        syncFiles(before.uri)
         put("recent_files",json.encodeToString(recent.map{if(it.taskKey==before.taskKey||it.taskKey==task.key)after else it}.distinctBy{it.taskKey}))
         after
     }
     @Synchronized fun imported(record: PublishedAudio)=transaction {
         val previous=existing(record.taskKey)
         val recent=recentFiles()
-        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload) VALUES(?,?,?)",
-            arrayOf(record.taskKey,record.track.id,json.encodeToString(record)))
+        writeFile(record)
         if(previous!=record)put("recent_files",json.encodeToString((listOf(record)+recent.filterNot{it.taskKey==record.taskKey}).take(5)))
     }
     @Synchronized fun copies(track: NativeTrack): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files WHERE track_id=? ORDER BY rowid DESC",arrayOf(track.id)).use{c->buildList{
@@ -361,23 +390,23 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
     }
     private fun sameFile(a: PublishedAudio,b: PublishedAudio)=a.track.id==b.track.id&&a.bytes==b.bytes&&
         a.sha256==b.sha256&&a.durationMs==b.durationMs&&a.extension==b.extension&&a.mime==b.mime
-    @Synchronized fun canShareLocation(before: PublishedAudio,after: PublishedAudio)=savedFiles()
-        .filter{it.uri==after.uri&&it.uri!=before.uri}.all{sameFile(it,after)}
+    @Synchronized fun canShareLocation(before: PublishedAudio,after: PublishedAudio)=
+        (if(after.uri==before.uri)emptyList()else aliases(after.uri)).all{sameFile(it,after)}
     /** Moving or tagging one physical file must update every membership in one transaction. */
     private fun updateReferences(before: PublishedAudio,after: PublishedAudio,metadata: Boolean=false) {
         if(existing(before.taskKey)==after)return
         musicCheck(existing(before.taskKey)==before,MusicError.STORAGE)
-        val aliases=savedFiles().filter{it.uri==before.uri}
+        val aliases=aliases(before.uri)
         musicCheck(aliases.all{sameFile(it,before)&&AudioCompleteness.matchesCatalogue(after.durationMs,it.track.duration,it.track.duration)},MusicError.INCOMPLETE)
         fun changedTrack(track: NativeTrack)=if(metadata)track.copy(title=after.track.title,subtitle=after.track.subtitle)else track
         fun changed(row: PublishedAudio)=after.copy(taskKey=row.taskKey,track=changedTrack(row.track),source=row.source,occurrence=row.occurrence,
             catalogueVerified=row.catalogueVerified&&after.catalogueVerified)
         val recent=recentFiles()
-        val doneKeys=taskRows().filter{it.second=="DONE"}.map{it.first.key}.toSet()
+        val doneKeys=readableDatabase.rawQuery("SELECT t.task_key FROM tasks t JOIN files f ON f.task_key=t.task_key WHERE f.uri=? AND t.state='DONE'",arrayOf(before.uri)).use{c->buildSet{while(c.moveToNext())add(c.getString(0))}}
         val delta: Int=aliases.filter{it.taskKey in doneKeys}.sumOf{(if(after.coverEmbedded)1 else 0)-(if(it.coverEmbedded)1 else 0)}
         put("covered_count",((get("covered_count")?.toIntOrNull()?:0)+delta).coerceAtLeast(0).toString())
         for(alias in aliases) {
-            writableDatabase.execSQL("UPDATE files SET payload=? WHERE task_key=?",arrayOf(json.encodeToString(changed(alias)),alias.taskKey))
+            writableDatabase.execSQL("UPDATE files SET payload=?,uri=? WHERE task_key=?",arrayOf(json.encodeToString(changed(alias)),after.uri,alias.taskKey))
             val prepared=readableDatabase.rawQuery("SELECT prepared FROM tasks WHERE task_key=?",arrayOf(alias.taskKey)).use{c->
                 if(c.moveToFirst()&&!c.isNull(0))json.decodeFromString<PublishedAudio>(c.getString(0))else null
             }
@@ -391,6 +420,8 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
                     arrayOf(json.encodeToString(task.copy(track=changedTrack(task.track))),alias.taskKey))
             }
         }
+        syncFiles(before.uri,after.uri)
+        if(before.uri!=after.uri)SavedFileIndex(writableDatabase).inheritOrder(before.uri,after.uri)
         put("recent_files",json.encodeToString(recent.map{if(it.uri==before.uri)changed(it)else it}.distinctBy{it.uri}))
         if(before.relativePath+before.displayName!=after.relativePath+after.displayName||metadata) {
             val move=PlaylistRelocation(before.relativePath+before.displayName,after.relativePath+after.displayName,
@@ -406,6 +437,7 @@ internal class AudioExportStore(context: Context): SQLiteOpenHelper(context,File
         val done=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(before.taskKey)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
         if(done&&before.coverEmbedded)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)-1).coerceAtLeast(0).toString())
         writableDatabase.delete("files","task_key=?",arrayOf(before.taskKey))
+        syncFiles(before.uri)
         writableDatabase.execSQL("UPDATE tasks SET prepared=NULL WHERE task_key=?",arrayOf(before.taskKey))
         put("recent_files",json.encodeToString(recent.filterNot{it.taskKey==before.taskKey}))
     }

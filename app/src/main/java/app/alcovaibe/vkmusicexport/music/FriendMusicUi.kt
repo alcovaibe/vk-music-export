@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -207,7 +208,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_download_all")) {
                     Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else when(state.playlist.kind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.UNKNOWN->"Скачать подборку";else->"Скачать плейлист"},maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
-                FilledTonalButton(onClick={onPlay(-1)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=state.complete&&!state.busy&&page?.tracks?.any{!it.restricted&&it.duration>0&&it.metadataError==null}==true,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
+                FilledTonalButton(onClick={onPlay(-1)},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=page?.tracks?.any{!it.restricted&&it.duration>0&&it.metadataError==null}==true,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_play")){Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2,overflow=TextOverflow.Ellipsis)}
             }
             if(!state.complete&&state.busy) {
                 if(page!=null&&page.count>0)LinearProgressIndicator(progress={page.tracks.size.toFloat()/page.count},modifier=Modifier.fillMaxWidth())
@@ -233,12 +234,12 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
             }
         }
     }
-    val matching=page?.tracks.orEmpty().withIndex().filter{state.musicQuery.isBlank()||("${it.value.artist} ${it.value.displayTitle}").contains(state.musicQuery.trim(),true)}
+    val matching=PlaybackLists.friendPositions(state)
     if(state.complete&&matching.isEmpty())item("friend_tracks_empty"){Text(if(state.musicQuery.isBlank())"Нет доступных треков" else "Треки по этому запросу не найдены")}
-    items(matching,key={"friend_track_${it.index+1}_${it.value.id}"}){entry->
+    itemsIndexed(matching,key={_,row->"friend_track_${row.index+1}_${row.value.id}"}){displayIndex,entry->
         val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)
         FriendTrackRow(track,position,state.selecting,position in state.selection,{controller.toggle(position)},preview(track),saved[track.id],
-            ready,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(entry.index)},playable=state.complete&&!state.busy&&track.metadataError==null&&!track.restricted&&track.duration>0)
+            ready,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(displayIndex)},playable=track.metadataError==null&&!track.restricted&&track.duration>0)
     }
 }
 @Composable

@@ -14,6 +14,22 @@ BULK_DOWNLOAD_TESTS = (
 )
 
 
+SAVED_PLAYBACK_TESTS = {
+    'SavedLibraryDeviceTest': (
+        'allLegacySchemasPreserveQueueFilesAndCheckpointsAcrossMigration',
+        'aliasesRetagRelinkAndRollbackPreservePhysicalDownloadOrder',
+        'newPublicationAppearsBeforeBlockedPresencePassAndMissedEventsCatchUp',
+        'providerBatchHintsKeepOwnershipSizeAndFullHashValidation',
+        'indexedPagesAndAliasesScaleFor1004500And20000PhysicalFiles',
+    ),
+    'PartialPlaybackDeviceTest': (
+        'ownSecondPageBarrierDoesNotBlockClickedDuplicateAndLaterFailureDoesNotMutateQueue',
+        'friendSecondPageBarrierAllowsSearchResultAndKeepsViewerDifferentFromFriendOwner',
+    ),
+    'PlaybackDeviceTest': ('uncheckedSavedThirdTrackStartsWithoutVkLoginOrEnabledDownloadActions',),
+}
+
+
 def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
@@ -41,6 +57,10 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
     for method in BULK_DOWNLOAD_TESTS:
         if ('app.alcovaibe.vkmusicexport.BulkDownloadDeviceTest', method) not in executed:
             raise ValueError(f'Required bulk download integration test did not execute: {method}')
+    for suite, methods in SAVED_PLAYBACK_TESTS.items():
+        for method in methods:
+            if (f'app.alcovaibe.vkmusicexport.{suite}', method) not in executed:
+                raise ValueError(f'Required saved/playback integration test did not execute: {suite}.{method}')
     if not any(name == 'app.alcovaibe.vkmusicexport.InterfaceTest' for name, _ in executed):
         raise ValueError('Required interface test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest' for name, _ in executed) < 9:

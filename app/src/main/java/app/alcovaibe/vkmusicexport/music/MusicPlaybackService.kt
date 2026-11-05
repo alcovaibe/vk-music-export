@@ -42,6 +42,7 @@ internal object PlaybackRuntime {
                 val session=if(selected.entries.any{!it.offline})withContext(Dispatchers.IO) {
                     val stored=MusicAccessStore(app).read()?:throw MusicFailure(MusicError.ACCESS)
                     musicCheck(selected.entries.filter{!it.offline}.all{it.account!=null&&(stored.accountId==null||it.account==stored.accountId)},MusicError.ACCOUNT_CHANGED)
+                    musicCheck(selected.entries.filter{!it.offline}.all{it.readSessionId==null||it.readSessionId==stored.readSessionId},MusicError.ACCESS)
                     stored.readSessionId
                 }else null
                 if(g!=generation)return@launch

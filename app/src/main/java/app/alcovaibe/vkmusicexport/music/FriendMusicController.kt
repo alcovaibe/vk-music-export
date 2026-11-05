@@ -56,7 +56,7 @@ internal class FriendMusicController(private val application: Application,privat
             try {
                 val initial=lease?:withContext(Dispatchers.IO){sessions?.current()?:vault.read()?:throw MusicFailure(MusicError.ACCESS)}.also{lease=it}
                 val guard: suspend()->MusicAccess={checked(initial).also{if(g!=generation)throw CancellationException()}}
-                mutable.update{it.copy(viewerAccount=initial.accountId)}
+                mutable.update{it.copy(viewerAccount=initial.accountId,readSessionId=initial.readSessionId)}
                 withTimeout(5*60_000L){body(guard(),guard);guard()}
             }catch(e: TimeoutCancellationException){if(g==generation)problem(FriendMusicProblem(MusicError.TIMEOUT))}
              catch(e: CancellationException){throw e}

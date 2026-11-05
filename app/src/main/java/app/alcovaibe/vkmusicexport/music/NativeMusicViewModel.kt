@@ -28,7 +28,6 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
     val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null,val errorDetails: String?=null)
-internal data class SavedLibraryEntry(val file: PublishedAudio,val present: Boolean)
 
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
@@ -62,21 +61,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     val friends=FriendMusicController(application,api,viewModelScope,onDownloads=::showDownloads,blocked={_state.value.busy})
     private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
     private val _artists=MutableStateFlow(MusicArtistsState());val artists=_artists.asStateFlow()
-    private val _savedLibrary=MutableStateFlow<List<SavedLibraryEntry>>(emptyList());val savedLibrary=_savedLibrary.asStateFlow()
-    private val _savedLibraryError=MutableStateFlow(false);val savedLibraryError=_savedLibraryError.asStateFlow()
-    private var savedLibraryWork: Job?=null
+    private val savedRepository=SavedLibrary(application,viewModelScope)
+    val savedLibrary=savedRepository.rows.asStateFlow()
+    val savedLibraryError=savedRepository.error.asStateFlow()
     fun previewArtwork(track: NativeTrack)=api.previewArtwork(track)
-    fun refreshSavedLibrary() {
-        savedLibraryWork?.cancel()
-        savedLibraryWork=viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val shared=SharedAudioStore(getApplication())
-                val rows=AudioExportStore(getApplication()).use{it.savedFiles()}.distinctBy{it.uri}
-                val entries=rows.map{currentCoroutineContext().ensureActive();SavedLibraryEntry(it,shared.present(it))}
-                _savedLibrary.value=entries;_savedLibraryError.value=false
-            }catch(e: CancellationException){throw e}catch(_: Exception){_savedLibraryError.value=true}
-        }
-    }
+    fun refreshSavedLibrary()=savedRepository.refresh()
     fun showArtists(refresh: Boolean=false) {
         val owner=_state.value.probe?.owner?:return
         if(_state.value.busy)return
@@ -1289,7 +1278,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             AudioExportRuntime.initialize(getApplication())
             val queue=AudioExportRuntime.state.value
             musicCheck(!queue.unfinished&&queue.status !in setOf("RUNNING","QUEUED"),MusicError.BUSY)
-            val a=sessions?.current()?:access();val owner=api.accountOwner(a);active(g)
+            val a=sessions?.current()?:access()
+            musicCheck(entry.readSessionId==null||entry.readSessionId==a.readSessionId,MusicError.ACCESS)
+            val owner=api.accountOwner(a);active(g)
             musicCheck(owner==entry.account&&task.source?.account==owner,MusicError.ACCOUNT_CHANGED)
             api.resolve(a,task.track);active(g)
             if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.readSessionId==a.readSessionId,MusicError.ACCESS)

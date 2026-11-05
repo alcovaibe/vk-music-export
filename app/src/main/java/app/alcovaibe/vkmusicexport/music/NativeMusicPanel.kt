@@ -57,6 +57,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         var skipInitialResume=lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         val observer=LifecycleEventObserver{_,event->
             if(event==Lifecycle.Event.ON_RESUME) {
+                model.refreshSavedLibrary()
                 if(skipInitialResume)skipInitialResume=false
                 else if(model.state.value.probe!=null&&!model.state.value.busy)model.refreshOnResume()
             }
@@ -147,9 +148,15 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         return
     }
     val artists by model.artists.collectAsState()
-    val localFiles by model.savedLibrary.collectAsState()
+    val unsortedLocalFiles by model.savedLibrary.collectAsState()
+    val savedPreferences=remember(context){context.getSharedPreferences("saved_music",android.content.Context.MODE_PRIVATE)}
+    var savedSort by remember {mutableStateOf(runCatching{SavedMusicSort.valueOf(savedPreferences.getString("sort",null).orEmpty())}.getOrDefault(SavedMusicSort.NEWEST))}
+    var savedSortOpen by remember {mutableStateOf(false)}
+    val localFiles by produceState(initialValue=emptyList<SavedLibraryEntry>(),unsortedLocalFiles,savedSort) {
+        value=withContext(Dispatchers.Default){SavedMusicSorting.sorted(unsortedLocalFiles,savedSort)}
+    }
     val localError by model.savedLibraryError.collectAsState()
-    LaunchedEffect(state.initialized,state.busy,queue.done,queue.status) {if(state.initialized&&!state.busy)model.refreshSavedLibrary()}
+
     LaunchedEffect(state.initialized,state.busy) {if(state.initialized&&state.configured&&state.probe==null&&!state.busy&&state.error==null)model.openMusic()}
     LaunchedEffect(state.stage) {if(state.stage=="browser_auth")accessOpen=true}
     val friendTasks=remember(friendState.page,friendState.user,friendState.playlist,friendState.viewerAccount) {
@@ -162,7 +169,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(viewer==null)emptyMap()else localFiles.filter{it.present&&it.file.source?.account==viewer}.associate{it.file.track.id to it.file}
     }
     val savedPlayback=remember(localFiles){PlaybackLists.saved(localFiles)}
-    val friendPlayback=remember(friendState){PlaybackLists.friends(friendState)}
     fun openFile(row: PublishedAudio) {
         val index=savedPlayback.indexOfFirst{it.saved?.uri==row.uri}
         if(index>=0)PlaybackRuntime.play(context,savedPlayback,index)
@@ -190,14 +196,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             else->{model.stopForWindow();onDismiss()}
         }
     }
-    val libraryPlayback=remember(state.page,state.probe?.owner,state.selected,state.libraryStale) {
-        val owner=state.probe?.owner
-        val page=state.page?.takeIf{it.tracks.size==it.count&&(!state.libraryStale||state.selected!=null)}
-        if(owner==null||page==null)emptyList()else page.tracks.map{track->
-            PlaybackEntry(track,state.selected?.title?:"Моя музыка",account=owner)
+    val playbackSnapshot=state;val playbackSort=sort;val friendPlaybackSnapshot=friendState
+    fun playLibrary(index: Int=-1) {
+        scope.launch {
+            val entries=withContext(Dispatchers.Default){PlaybackLists.library(playbackSnapshot,playbackSort)}
+            PlaybackRuntime.play(context,entries,index)
         }
     }
-    val canPlayLibrary=libraryPlayback.any{it.track.duration>0&&!it.track.restricted&&it.track.metadataError==null}
+    val canPlayLibrary=state.page?.tracks?.any{it.duration>0&&!it.restricted&&it.metadataError==null}==true&&state.readSessionId!=null
     Box(Modifier.fillMaxSize()) {
     if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
         onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
@@ -222,7 +228,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(destination==MusicDestination.FRIENDS) {
             friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
-                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.play(context,friendPlayback,index)})
+                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->scope.launch{val entries=withContext(Dispatchers.Default){PlaybackLists.friends(friendPlaybackSnapshot)};PlaybackRuntime.play(context,entries,index)}})
         }else if(destination==MusicDestination.DOWNLOADS) {
             item("queue") {DownloadProgressContent(queue,state.busy||backgroundCheck,state.error,
                 onPause=model::pauseQueue,onResume={model.resumeQueue()},onRetry={model.resumeQueue(true)},onClear=model::clearQueue,
@@ -238,6 +244,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 OutlinedButton(enabled=state.initialized&&!state.busy&&!backgroundCheck&&!queueWorking,onClick=model::showSavedFiles,
                     modifier=Modifier.fillMaxWidth().testTag("saved_file_recovery")){Text("Проверить сохранённые файлы")}
                 Text("Файлы: ${localFiles.size}",style=MaterialTheme.typography.titleMedium)
+                TextButton(onClick={savedSortOpen=true},modifier=Modifier.testTag("saved_sort")){Text(savedSort.title)}
                 Text("Копии остаются здесь после удаления музыки из ВК. Проверка целостности доступна в инструментах.",style=MaterialTheme.typography.bodySmall)
                 if(localError)Text("Не удалось прочитать список файлов. Повтори обновление.",color=MaterialTheme.colorScheme.error)
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -245,7 +252,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         modifier=Modifier.weight(1f).fillMaxHeight().testTag("refresh_saved_music")) {
                         Icon(Icons.Default.Refresh,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Обновить сохранённое",maxLines=2)
                     }
-                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty()&&!state.busy,shape=RoundedCornerShape(14.dp),
+                    FilledTonalButton(onClick={PlaybackRuntime.play(context,savedPlayback)},enabled=savedPlayback.isNotEmpty(),shape=RoundedCornerShape(14.dp),
                         contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),modifier=Modifier.weight(1f).fillMaxHeight().testTag("play_saved_music")) {
                         Icon(PlayerPlayIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Воспроизвести",maxLines=2)
                     }
@@ -255,8 +262,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             itemsIndexed(localFiles,key={_,row->"saved_${row.file.uri}"}){i,entry->
                 val row=entry.file
                 Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.present},onOpen=if(entry.present&&!state.busy)({openFile(row)})else null)
-                    if(!entry.present)Text("${row.displayName}: файл недоступен или размер изменился. Открой проверку сохранённых файлов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.playable},onOpen=if(entry.playable)({openFile(row)})else null)
+                    if(entry.availability==SavedAvailability.UNKNOWN)Text("Доступность проверяется в фоне. Можно запустить трек.",style=MaterialTheme.typography.bodySmall)
+                    if(!entry.playable)Text("${row.displayName}: файл недоступен или размер изменился. Открой проверку сохранённых файлов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 }
             }
             if(queue.recent.isNotEmpty())item("recent") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -381,7 +389,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::refreshCatalog){Text("Обновить каталог")}
                     }
                     if(category==LibraryCategory.TRACKS||state.selected!=null) {
-                        FilledTonalButton(onClick={PlaybackRuntime.play(context,libraryPlayback)},enabled=canPlayLibrary&&!state.busy,
+                        FilledTonalButton(onClick={playLibrary()},enabled=canPlayLibrary,
                             shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=54.dp).testTag("library_play")) {
                             Icon(PlayerPlayIcon,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Воспроизвести")
                         }
@@ -399,13 +407,15 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 state.page?.let{page->
                     val rows=MusicLibrarySorting.tracks(page.tracks,sort)
                     if(page.tracks.size!=page.count)item("tracks_count"){Text("Показано ${page.tracks.size} из ${page.count}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
-                    itemsIndexed(rows,key={_,entry->"track_${entry.index}_${entry.value.id}"}){_,entry->
+                    itemsIndexed(rows,key={_,entry->"track_${entry.index}_${entry.value.id}"}){displayIndex,entry->
                         val track=entry.value;val position=entry.index+1;val saved=savedById[track.id]?.file
                         MusicTrackRow(track,position,preview=model.previewArtwork(track),saved=saved,
                             downloading=queue.status=="RUNNING"&&queue.account==state.probe?.owner&&queue.currentTask?.track?.id==track.id,
                             enabled=canPrepare,onDownload={model.download(track,position)},
                             onRemove=if(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY)({model.inspectRemoval(track)})else null,
-                            onOpen=saved?.let{({openFile(it)})})
+                            onOpen=saved?.let{({openFile(it)})},
+                            onPlay=if(state.readSessionId!=null&&track.metadataError==null&&!track.restricted&&track.duration>0)
+                                ({playLibrary(displayIndex)})else saved?.let{({openFile(it)})})
                     }
                 }
             }
@@ -426,6 +436,17 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         model::confirmMetadataReplacement,model::backMetadataReplacement,model::cancel,model::dismissMetadataLookup)
     if(lookup.visible)ArtworkLookupSheet(lookup,model::artworkLookupQuery,model::findArtworkReplacement,model::previewArtworkReplacement,
         model::confirmArtworkReplacement,model::backArtworkReplacement,model::cancel,model::dismissArtworkLookup)
+    if(savedSortOpen)ModalBottomSheet(onDismissRequest={savedSortOpen=false},modifier=Modifier.testTag("saved_sort_sheet")) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text("Сортировка сохранённого",style=MaterialTheme.typography.titleLarge)
+            SavedMusicSort.entries.forEach{choice->
+                TextButton(onClick={savedSort=choice;savedPreferences.edit().putString("sort",choice.name).apply();savedSortOpen=false},
+                    modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("saved_sort_${choice.name}")) {
+                    Text(choice.title,Modifier.weight(1f));if(savedSort==choice)Icon(Icons.Default.Check,null)
+                }
+            }
+        }
+    }
     if(sortOpen)ModalBottomSheet(onDismissRequest={sortOpen=false},modifier=Modifier.testTag("library_sort_sheet")) {
         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp)) {
             Text("Сортировка",style=MaterialTheme.typography.titleLarge)

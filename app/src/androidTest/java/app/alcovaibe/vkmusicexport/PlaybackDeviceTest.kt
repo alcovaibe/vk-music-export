@@ -108,6 +108,22 @@ class PlaybackDeviceTest {
             }
         }}
     }
+    @Test fun uncheckedSavedThirdTrackStartsWithoutVkLoginOrEnabledDownloadActions()=fixture {rows->
+        val vault=MusicAccessStore(app);val before=vault.read()
+        try {
+            vault.delete()
+            val saved=rows.map{SavedLibraryEntry(it.saved!!)} // No MediaStore list pass has completed.
+            val playable=PlaybackLists.saved(saved)
+            ui.runOnUiThread{ui.activity.setContent{MusicTheme {
+                MusicTrackRow(playable[2].track,3,enabled=false,onDownload={error("Download is disabled")},
+                    onPlay={PlaybackRuntime.play(app,playable,2)},tag="unchecked_saved_third")
+            }}}
+            ui.onNodeWithTag("unchecked_saved_third").performClick()
+            ui.waitUntil(20000){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&!PlaybackRuntime.state.value.buffering}
+            assertNull(PlaybackRuntime.state.value.error);assertTrue(PlaybackRuntime.state.value.current!!.offline)
+            assertEquals(rows[2].saved!!.uri,PlaybackRuntime.state.value.current!!.saved!!.uri);assertNull(vault.read())
+        }finally{if(before!=null)vault.save(before)}
+    }
     @Test fun localPlaybackSurvivesStoppedActivityAndPublishesMediaNotification()=fixture {rows->
         start(rows)
         val manager=app.getSystemService(NotificationManager::class.java)

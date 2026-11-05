@@ -35,7 +35,7 @@ class PlaybackListsTest {
         assertEquals(2,rows.size);assertTrue(rows.all{it.account==12L&&!it.offline&&it.sourceLabel=="Музыка друга · @friend"})
         assertEquals(listOf(1,2),rows.map{it.download?.position})
         assertNotEquals(rows[0].download?.key,rows[1].download?.key)
-        assertTrue(PlaybackLists.friends(state.copy(tracksComplete=false)).isEmpty())
+        assertEquals(rows,PlaybackLists.friends(state.copy(tracksComplete=false,busy=true)))
         assertTrue(PlaybackLists.friends(state.copy(viewerAccount=null)).isEmpty())
     }
     @Test fun stringRepresentationsDoNotExposeUserMetadataOrUris() {

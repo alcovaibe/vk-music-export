@@ -178,9 +178,9 @@ class AuditRegressionDeviceTest {
             val t=task();store.replace(listOf(t),account=12);store.status("PAUSED")
             val prepared=SharedAudioStore(context).publish(t,TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200)),store.directory(t)){store.prepared(t,it)}
             store.checkpoint("artwork-transaction","preserve-me")
-            store.writableDatabase.execSQL("DROP TABLE source_failures");store.writableDatabase.version=2
+            store.writableDatabase.execSQL("DROP TABLE source_failures");legacySavedFileSchema(store.writableDatabase);store.writableDatabase.version=2
             store.close();store=AudioExportStore(context)
-            assertEquals(4,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
+            assertEquals(5,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
             assertEquals("PAUSED",store.snapshot().status);assertEquals("preserve-me",store.checkpoint("artwork-transaction"))
             assertTrue(store.sourceFailures().isEmpty());assertEquals(12L,store.account())
             assertEquals(prepared,store.prepared().single().second)

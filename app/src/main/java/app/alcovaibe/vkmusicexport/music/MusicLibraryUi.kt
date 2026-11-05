@@ -186,9 +186,10 @@ internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String
 
 @Composable
 internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=null,saved: PublishedAudio?=null,downloading: Boolean=false,
-    enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
+    enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,onPlay:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
     var menu by remember{mutableStateOf(false)}
-    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(onOpen!=null)Modifier.clickable(onClick=onOpen)else Modifier)) {
+    val play=onPlay?:onOpen
+    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(play!=null)Modifier.clickable(onClick=play)else Modifier)) {
         Row(Modifier.padding(start=12.dp,end=4.dp,top=10.dp,bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
