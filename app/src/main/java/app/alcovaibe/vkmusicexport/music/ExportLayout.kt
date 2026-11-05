@@ -83,6 +83,25 @@ internal object ExportLayout {
         if(duplicate>1)folders[folders.lastIndex]="${component(folders.last(),150)} ($duplicate)"
         return ROOT+folders.joinToString("/")+"/"
     }
+    /** Save an exact record from the displayed prefix, not a new live source membership.
+     * Positions/occurrences belong to this snapshot; never apply them to a freshly fetched list.
+     */
+    fun single(page: NativePage?,track: NativeTrack,position: Int,account: Long,
+        list: NativePlaylist?=null,kind: PlaylistKind=list?.kind?:PlaylistKind.UNKNOWN): AudioExportTask {
+        musicCheck(account>0,MusicError.ACCOUNT_CHANGED)
+        musicCheck(page!=null&&page.tracks.size<=page.count&&position in 1..page.tracks.size,
+            MusicError.LIBRARY_CHANGED)
+        val tracks=page!!.tracks
+        musicCheck(tracks[position-1]==track,MusicError.LIBRARY_CHANGED)
+        musicCheck(track.metadataError==null&&!track.restricted&&track.duration>0,MusicError.UNAVAILABLE)
+        var occurrence=0
+        for(index in 0 until position)if(tracks[index].id==track.id)occurrence++
+        return if(list==null)task(track,listOf("Моя музыка"),position,ExportSource(account,"library","my"),occurrence)
+        else {
+            val folder=component(list.title)+" [${list.owner}_${list.id}]"
+            task(track,listOf(kind.folder,folder),position,ExportSource(account,"catalog",list.key),occurrence)
+        }
+    }
     fun library(page: NativePage,albums: Boolean=true,account: Long=0): List<AudioExportTask> {
         val tasks=mutableListOf<AudioExportTask>();val albumPositions=mutableMapOf<String,Int>()
         val occurrences=mutableMapOf<String,Int>()

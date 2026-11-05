@@ -23,7 +23,7 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
     val catalogKinds: Map<String,PlaylistKind> = emptyMap(),val hiddenCatalog: Set<String> = emptySet(),val accessDamaged: Boolean=false,
     val libraryRefreshing: Boolean=false,val libraryStale: Boolean=false,
     val catalogRefreshing: Boolean=false,val catalogStale: Boolean=false,
-    val catalogVerifying: Boolean=false)
+    val catalogVerifying: Boolean=false,val readSessionId: String?=null)
 
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
@@ -34,7 +34,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
-    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null,private val maintenanceBeforeItem: suspend(String,Int)->Unit={_,_->}): AndroidViewModel(application) {
+    private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null,private val maintenanceBeforeItem: suspend(String,Int)->Unit={_,_->},private val queueStart: (suspend(Boolean)->Unit)?=null): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
@@ -157,7 +157,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private suspend fun startDownloads(retry: Boolean=false) {
         // Presentation state only: dismissing the sheet never controls the UIDT job.
         _downloadsOpen.value=true
-        AudioExportRuntime.start(getApplication(),retry)
+        queueStart?.invoke(retry)?:AudioExportRuntime.start(getApplication(),retry)
     }
     private val _artwork=MaintenanceRuntime.artwork;val artwork=_artwork.asStateFlow()
     private val _trackMetadata=MaintenanceRuntime.metadata;val trackMetadata=_trackMetadata.asStateFlow()
@@ -1059,14 +1059,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private suspend fun acceptProbe(g: Int,access: MusicAccess,probe: NativeProbe) {
         active(g)
-        val sameOwner=_state.value.probe?.owner==probe.owner
+        val sameOwner=_state.value.probe?.owner==probe.owner&&_state.value.readSessionId==access.readSessionId
         if(!sameOwner) {
             friends.reset()
             _artists.value=MusicArtistsState(owner=probe.owner)
         }
         _state.update{old->
             if(sameOwner)old.copy(libraryRefreshing=true,catalogRefreshing=true)
-            else old.copy(probe=probe,page=probe.library,selected=null,catalog=null,catalogError=null,
+            else old.copy(probe=probe,page=probe.library,selected=null,catalog=null,catalogError=null,readSessionId=access.readSessionId,
                 catalogKinds=emptyMap(),hiddenCatalog=emptySet(),catalogSection=CatalogSection.LIBRARY,
                 libraryRefreshing=true,libraryStale=false,catalogRefreshing=true,catalogStale=false,
                 catalogVerifying=false)
@@ -1298,18 +1298,20 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         val s=_state.value
         val owner=s.probe?.owner?:return
         run("queue_one") {g->withContext(Dispatchers.IO){
-            musicCheck(position>0,MusicError.RESPONSE)
-            val a=access()
-            if(s.selected!=null)musicCheck(currentCatalog(g,a,owner).lists.any{it.key==s.selected.key},MusicError.UNAVAILABLE)
-            // Count preceding occurrences too: a repeated track on page 2 must not reuse occurrence 1.
-            val page=MusicPagination.tracks({offset->active(g)
-                if(s.selected==null)api.libraryPage(a,owner,offset)else api.playlistPage(a,s.selected,offset)
-            }){n,total->_state.update{it.copy(preparing="Проверяем позицию: $n/$total")}}
-            val all=if(s.selected==null)ExportLayout.library(page,albums=false,account=owner)
-                else ExportLayout.playlist(page,s.selected,MusicCatalog.kind(s.selected,s.catalogKinds),account=owner)
-            val selected=all.singleOrNull{it.position==position&&it.track.id==track.id}?:throw MusicFailure(MusicError.LIBRARY_CHANGED)
-            val tasks=listOf(selected)
-            active(g);AudioExportRuntime.replace(getApplication(),tasks,account=owner);active(g);startDownloads()
+            val task=ExportLayout.single(s.page,track,position,owner,s.selected,
+                s.selected?.let{MusicCatalog.kind(it,s.catalogKinds)}?:PlaylistKind.UNKNOWN)
+            active(g);AudioExportRuntime.initialize(getApplication())
+            musicCheck(!AudioExportRuntime.state.value.unfinished&&!AudioExportRuntime.active.get(),MusicError.BUSY)
+            val a=sessions?.current()?:access();active(g)
+            musicCheck(s.readSessionId!=null&&a.readSessionId==s.readSessionId,MusicError.ACCESS)
+            musicCheck(a.accountId==null||a.accountId==owner,MusicError.ACCOUNT_CHANGED)
+            musicCheck(api.accountOwner(a)==owner,MusicError.ACCOUNT_CHANGED);active(g)
+            // A verified renewal may change the credential, but not the read session.
+            // Logout/re-login (including the same account) must not reuse the old snapshot.
+            if(sessions!=null)sessions.continueRead(a)
+            else musicCheck(vault.read()?.readSessionId==a.readSessionId,MusicError.ACCESS)
+            active(g);AudioExportRuntime.replace(getApplication(),listOf(task),account=owner)
+            active(g);startDownloads()
         }}
     }
     fun resumeQueue(retry: Boolean=false) {
