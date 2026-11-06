@@ -79,7 +79,7 @@ class MusicPlaybackService : MediaSessionService() {
         }
         player=object: ExoPlayer by core {
             override fun stop() {
-                trace("stop:controller=${mediaSession?.controllerForCurrentRequest?.packageName}:"+Throwable().stackTrace.take(8).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"})
+                trace("stop:controller=${mediaSession?.controllerForCurrentRequest?.packageName},notification=${mediaSession?.controllerForCurrentRequest?.let{mediaSession?.isMediaNotificationController(it)}}:"+Throwable().stackTrace.take(8).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"})
                 core.stop()
             }
             override fun prepare(){trace("prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}");core.prepare()}
@@ -142,18 +142,24 @@ class MusicPlaybackService : MediaSessionService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo)=mediaSession
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
-        // Notification dismissal can arrive after this service has been recreated.
-        // Route only its STOP to the session that produced it. Hardware/widget commands
-        // keep Media3's normal resumption and fallback behaviour.
-        if(intent?.action==Intent.ACTION_MEDIA_BUTTON&&intent.getBooleanExtra(MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,false)) {
+        // Addressed media STOP from an old session must not fall back to a new one.
+        // Hardware and widget commands without a specific session keep normal fallback.
+        if(intent?.action==Intent.ACTION_MEDIA_BUTTON) {
             @Suppress("DEPRECATION") val key=if(android.os.Build.VERSION.SDK_INT>=33)intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT,KeyEvent::class.java)
                 else intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-            val expected=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
-                notificationSessionId,MusicPlaybackService::class.java).data
-            if(key?.keyCode==KeyEvent.KEYCODE_MEDIA_STOP&&intent.data!=expected) {
-                trace("ignored_old_notification_stop")
-                if(entries.isEmpty())stopSelf(startId)
-                return START_NOT_STICKY
+            if(key?.keyCode==KeyEvent.KEYCODE_MEDIA_STOP) {
+                val current=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
+                    notificationSessionId,MusicPlaybackService::class.java).data
+                val fallback=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
+                    null,MusicPlaybackService::class.java).data
+                val dismissed=intent.getBooleanExtra(MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,false)
+                val addressed=intent.data!=null&&intent.data!=fallback
+                trace("stop_intent:notification=$dismissed,target="+if(intent.data==current)"current" else if(addressed)"other" else "default")
+                if(intent.data!=current&&(dismissed||addressed)) {
+                    trace("ignored_old_notification_stop")
+                    if(entries.isEmpty())stopSelf(startId)
+                    return START_NOT_STICKY
+                }
             }
         }
         super.onStartCommand(intent,flags,startId)
