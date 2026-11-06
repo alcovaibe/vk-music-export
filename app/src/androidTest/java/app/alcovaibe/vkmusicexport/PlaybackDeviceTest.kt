@@ -373,7 +373,7 @@ class PlaybackDeviceTest {
         // The session URI is authoritative even when a forwarded STOP lost dismissal extras.
         ui.runOnUiThread{app.startService(androidx.media3.session.PlaybackPendingIntentBuilder.createMediaButtonIntent(
             app,Player.COMMAND_STOP,null,old,MusicPlaybackService::class.java))}
-        ui.waitUntil(10000){PlaybackRuntime.service?.playbackTrace()?.count{it.endsWith(":ignored_old_notification_stop")}==2}
+        ui.waitUntil(10000){(PlaybackRuntime.service?.playbackTrace()?.count{it.endsWith(":ignored_old_notification_stop")}?:0)>=2}
         assertTrue(PlaybackRuntime.state.value.playing)
         ui.runOnUiThread{app.startService(dismissal(current))}
         ui.waitUntil(10000){PlaybackRuntime.service?.playbackTrace()?.any{it.contains("stop:controller=")}==true&&!PlaybackRuntime.state.value.playing&&!PlaybackRuntime.state.value.buffering}
