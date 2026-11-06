@@ -381,6 +381,7 @@ class PlaybackDeviceTest {
                     if(PlaybackRuntime.state.value.shuffle)PlaybackRuntime.shuffle()
                     player().setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order.toIntArray(),0L))
                     PlaybackRuntime.shuffle()
+                    assertEquals(order,PlaybackRuntime.state.value.order)
                 }
                 PlaybackRuntime.seek(321)
             }
