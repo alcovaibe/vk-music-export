@@ -367,7 +367,7 @@ class PlaybackDeviceTest {
         ui.runOnUiThread{PlaybackRuntime.toggle(app)}
         ui.waitUntil(20000){PlaybackRuntime.state.value.playing}
         ui.runOnUiThread{current=sessionId();assertNotEquals(old,current);app.startService(dismissal(old))}
-        ui.waitUntil(10000){PlaybackRuntime.service?.playbackTrace()?.contains("ignored_old_notification_stop")==true}
+        ui.waitUntil(10000){PlaybackRuntime.service?.playbackTrace()?.any{it.endsWith(":ignored_old_notification_stop")}==true}
         assertTrue(PlaybackRuntime.state.value.playing)
         assertEquals(rows,PlaybackRuntime.state.value.entries)
         ui.runOnUiThread{app.startService(dismissal(current))}
