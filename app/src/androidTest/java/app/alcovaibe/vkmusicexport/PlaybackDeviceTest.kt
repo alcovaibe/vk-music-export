@@ -366,7 +366,7 @@ class PlaybackDeviceTest {
                         "state=${player.playbackState}, playing=${player.isPlaying}, ready=${player.playWhenReady}, position=${player.currentPosition}, suppression=${player.playbackSuppressionReason}, duration=${player.duration}, buffered=${player.bufferedPosition}, loading=${player.isLoading}, repeat=${player.repeatMode}, shuffle=${player.shuffleModeEnabled}, tracks=${player.mediaItemCount}, playerError=${player.playerError?.errorCode}"
                     }.getOrElse{"unavailable: ${it.javaClass.simpleName}"}
                 }
-                throw AssertionError("Playback phase=$phase, index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, repeat=${state.repeat}, error=${state.error}; player: $playerDetails; expectedOrder=$expectedOrder, currentOrder=${state.order}",t)
+                throw AssertionError("Playback phase=$phase, index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, repeat=${state.repeat}, error=${state.error}; player: $playerDetails; expectedOrder=$expectedOrder, currentOrder=${state.order}; trace=${PlaybackRuntime.service?.playbackTrace()}",t)
             }
         }
         // Keep the original random user-shuffle path, then cover every permutation.

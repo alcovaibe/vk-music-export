@@ -24,6 +24,12 @@ import kotlinx.coroutines.flow.*
 @androidx.annotation.OptIn(UnstableApi::class)
 class MusicPlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
+    private val commandTrace=java.util.ArrayDeque<String>()
+    internal fun playbackTrace()=commandTrace.toList()
+    private fun trace(action: String) {
+        if(commandTrace.size==32)commandTrace.removeFirst()
+        commandTrace.addLast("${SystemClock.elapsedRealtime()}:$action")
+    }
     private var mediaSession: MediaSession?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var entries: List<PlaybackEntry> = emptyList()
@@ -62,10 +68,18 @@ class MusicPlaybackService : MediaSessionService() {
                 return source(selected,entries[selected])
             }
         }
-        player=ExoPlayer.Builder(this).setMediaSourceFactory(factory).build().apply {
+        val core=ExoPlayer.Builder(this).setMediaSourceFactory(factory).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),true)
             setHandleAudioBecomingNoisy(true)
             setWakeMode(C.WAKE_MODE_NETWORK)
+        }
+        player=object: ExoPlayer by core {
+            override fun stop() {
+                trace("stop:"+Throwable().stackTrace.take(8).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"})
+                core.stop()
+            }
+            override fun prepare(){trace("prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}");core.prepare()}
+            override fun seekTo(mediaItemIndex: Int,positionMs: Long){trace("seek:$mediaItemIndex:state=${core.playbackState}");core.seekTo(mediaItemIndex,positionMs)}
         }
         val activity=PendingIntent.getActivity(this,6701,Intent(this,MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(PlaybackRuntime.OPEN_EXTRA,true),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -82,6 +96,8 @@ class MusicPlaybackService : MediaSessionService() {
                 resumeFromHistory(isForPlayback)
         }).build().also{addSession(it)}
         player.addListener(object: Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int){trace("state:$playbackState,index=${player.currentMediaItemIndex},ready=${player.playWhenReady}")}
+
             override fun onEvents(player: Player,events: Player.Events){publish(
                 events.contains(Player.EVENT_TIMELINE_CHANGED)||events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED),
                 events.contains(Player.EVENT_POSITION_DISCONTINUITY)||events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)||events.contains(Player.EVENT_IS_PLAYING_CHANGED))}

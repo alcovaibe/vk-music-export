@@ -84,9 +84,9 @@ class FriendsMusicDeviceTest {
         val entered=CompletableDeferred<Unit>();val cancelled=CompletableDeferred<Unit>()
         api.preview={entered.complete(Unit);try{awaitCancellation()}finally{cancelled.complete(Unit)}}
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
-        runBlocking{withTimeout(15000){entered.await()}}
+        ui.waitUntil(15000){entered.isCompleted}
         ui.onNodeWithTag("music_nav_SAVED").performClick()
-        runBlocking{withTimeout(15000){cancelled.await()}}
+        ui.waitUntil(15000){cancelled.isCompleted}
         assertTrue(model.friends.state.value.friendAccess.isEmpty())
         api.preview=null
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
