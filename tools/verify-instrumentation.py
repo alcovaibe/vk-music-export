@@ -149,7 +149,7 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
         raise ValueError('Required duplicate removal workflow test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.MaintenanceBackgroundDeviceTest' for name, _ in executed) < 2:
         raise ValueError('Required file maintenance background and restoration tests did not execute')
-    if sum(name == 'app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest' for name, _ in executed) < 4:
+    if sum(name == 'app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest' for name, _ in executed) < 5:
         raise ValueError('Required background scan and user-initiated job notification tests did not execute')
     if api_level is not None and 29 <= api_level <= 33:
         required = ('app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest',
