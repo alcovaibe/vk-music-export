@@ -59,18 +59,18 @@ internal object PlaybackDataSources {
 
 /** Resolve only when the player prepares this item, on IO, with a fresh checked read session. */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal class PlaybackMediaSource(private var publicItem: MediaItem,private val factory: MediaSource.Factory,
+internal class PlaybackMediaSource(@Volatile private var publicItem: MediaItem,private val factory: MediaSource.Factory,
     private val localFactory: MediaSource.Factory?=null,
     private val resolve: suspend()->Uri): CompositeMediaSource<Unit>() {
     private var child: MediaSource?=null
     private var failure: IOException?=null
-    private var lastTimeline: Timeline?=null
     private var scope: CoroutineScope?=null
     override fun getMediaItem()=publicItem
     override fun canUpdateMediaItem(mediaItem: MediaItem)=mediaItem.mediaId==publicItem.mediaId&&mediaItem.localConfiguration?.uri==publicItem.localConfiguration?.uri
     override fun updateMediaItem(mediaItem: MediaItem) {
         publicItem=mediaItem
-        lastTimeline?.let(::publishTimeline)
+        // ExoPlayer updates its playlist timeline for metadata changes. Republishing
+        // the child timeline here can race the masking timeline during a resumed seek.
     }
     override fun prepareSourceInternal(mediaTransferListener: TransferListener?) {
         super.prepareSourceInternal(mediaTransferListener)
@@ -97,7 +97,7 @@ internal class PlaybackMediaSource(private var publicItem: MediaItem,private val
         super.maybeThrowSourceInfoRefreshError()
     }
     override fun onChildSourceInfoRefreshed(id: Unit,mediaSource: MediaSource,timeline: Timeline) {
-        lastTimeline=timeline;publishTimeline(timeline)
+        publishTimeline(timeline)
     }
     private fun publishTimeline(timeline: Timeline) {
         // Public timelines and media sessions expose an opaque media ID, never a signed CDN address.
@@ -114,7 +114,7 @@ internal class PlaybackMediaSource(private var publicItem: MediaItem,private val
     override fun releasePeriod(mediaPeriod: MediaPeriod){child?.releasePeriod(mediaPeriod)}
     override fun releaseSourceInternal() {
         scope?.cancel();scope=null
-        super.releaseSourceInternal();child=null;failure=null;lastTimeline=null
+        super.releaseSourceInternal();child=null;failure=null
     }
     companion object {
         fun factory(context: Context,offline: Boolean=false)=DefaultMediaSourceFactory(context).setDataSourceFactory(

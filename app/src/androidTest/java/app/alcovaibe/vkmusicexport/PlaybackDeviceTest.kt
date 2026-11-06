@@ -32,6 +32,11 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import android.os.Handler
+import android.os.HandlerThread
+import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
@@ -297,6 +302,42 @@ class PlaybackDeviceTest {
         }
     }
 
+    @Test fun artworkMetadataUpdateDoesNotRepublishTheChildTimelineOrResolveAgain()=fixture {rows->
+        val thread=HandlerThread("CI source lifecycle").apply{start()}
+        val handler=Handler(thread.looper)
+        val ready=CompletableDeferred<Unit>();val released=CompletableDeferred<Unit>()
+        val calls=AtomicInteger();val timelines=AtomicInteger()
+        val item=MediaItem.Builder().setMediaId("opaque-metadata-ci").setUri("vkmusic://test/metadata").build()
+        val source=PlaybackMediaSource(item,PlaybackMediaSource.factory(app,offline=true)) {
+            calls.incrementAndGet();Uri.parse(rows.first().saved!!.uri)
+        }
+        val caller=MediaSource.MediaSourceCaller {_,timeline->
+            try {
+                assertEquals("vkmusic://test/metadata",timeline.getWindow(0,Timeline.Window()).mediaItem.localConfiguration!!.uri.toString())
+                timelines.incrementAndGet();ready.complete(Unit)
+            }catch(t: Throwable){ready.completeExceptionally(t)}
+        }
+        try {
+            handler.post{source.prepareSource(caller,null,PlayerId.UNSET)}
+            runBlocking{withTimeout(10_000){ready.await()}}
+            val updated=CompletableDeferred<Unit>()
+            val changed=item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setTitle("CI artwork metadata").build()).build()
+            ui.runOnUiThread{assertTrue(source.canUpdateMediaItem(changed))}
+            handler.post {
+                try {
+                    val count=timelines.get()
+                    source.updateMediaItem(changed)
+                    assertEquals(count,timelines.get());assertEquals(1,calls.get());updated.complete(Unit)
+                }catch(t: Throwable){updated.completeExceptionally(t)}
+            }
+            runBlocking{withTimeout(10_000){updated.await()}}
+            ui.runOnUiThread{assertEquals("CI artwork metadata",source.getMediaItem().mediaMetadata.title)}
+        }finally {
+            handler.post{try{source.releaseSource(caller);released.complete(Unit)}catch(t: Throwable){released.completeExceptionally(t)}}
+            try{runBlocking{withTimeout(10_000){released.await()}}}finally{thread.quitSafely();thread.join(10_000)}
+        }
+    }
+
     @Test fun serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition()=fixture {rows->
         start(rows)
         ui.runOnUiThread{PlaybackRuntime.playIndex(2)}
@@ -309,7 +350,11 @@ class PlaybackDeviceTest {
         ui.waitUntil(10_000){PlaybackRuntime.service==null}
         assertFalse(PlaybackRuntime.state.value.playing);assertEquals(2,PlaybackRuntime.state.value.index)
         ui.runOnUiThread{PlaybackRuntime.toggle(app)}
-        ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==2}
+        try{ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==2}}
+        catch(t: Throwable) {
+            val state=PlaybackRuntime.state.value
+            throw AssertionError("Resume state: index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, error=${state.error}",t)
+        }
         assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
         assertEquals(saved.order,PlaybackRuntime.state.value.order)
         assertTrue(PlaybackRuntime.state.value.shuffle);assertEquals(saved.repeat,PlaybackRuntime.state.value.repeat)

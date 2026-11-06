@@ -61,7 +61,8 @@ PLAYBACK_HISTORY_TESTS = {
         'conflatedWriterFinishesWithTheLatestStopAndDoesNotResurrectAnOlderQueue',
         'cursorWritesStayConstantFor1004500And20000Entries',
     ),
-    'PlaybackDeviceTest': ('serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition',),
+    'PlaybackDeviceTest': ('serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition',
+        'artworkMetadataUpdateDoesNotRepublishTheChildTimelineOrResolveAgain'),
 }
 
 
