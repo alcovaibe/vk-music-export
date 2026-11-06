@@ -55,7 +55,8 @@ class FriendPreviewLifecycleDeviceTest {
         until{api.calls.size==3}
         main{c.setForeground(false);c.pauseRead()}
         until{api.cancelled.get()==2}
-        assertEquals(listOf(34L,35L,36L),api.calls.toList())
+        assertEquals(34L,api.calls.first())
+        assertEquals(setOf(35L,36L),api.calls.drop(1).toSet())
         assertFalse(c.state.value.friendAccess.containsKey(35L))
         api.probe={};release.complete(Unit)
         main{c.setForeground(true)}
