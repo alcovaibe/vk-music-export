@@ -345,35 +345,46 @@ class PlaybackDeviceTest {
 
     @Test fun serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition()=fixture {rows->
         start(rows)
-        ui.runOnUiThread{PlaybackRuntime.playIndex(2)}
-        ui.waitUntil(20_000){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&PlaybackRuntime.state.value.playing}
-        ui.runOnUiThread{PlaybackRuntime.toggle(app);PlaybackRuntime.shuffle();PlaybackRuntime.seek(321)}
-        ui.waitUntil(10_000){!PlaybackRuntime.state.value.playWhenReady&&PlaybackRuntime.state.value.positionMs==321L}
-        runBlocking(Dispatchers.IO){withTimeout(15_000){PlaybackRuntime.flushHistory()}}
-        val saved=PlaybackRuntime.state.value
-        ui.runOnUiThread{app.stopService(android.content.Intent(app,MusicPlaybackService::class.java))}
-        ui.waitUntil(10_000){PlaybackRuntime.service==null}
-        assertFalse(PlaybackRuntime.state.value.playing);assertEquals(2,PlaybackRuntime.state.value.index)
-        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
-        try{ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==2}}
-        catch(t: Throwable) {
-            val state=PlaybackRuntime.state.value
-            var playerDetails="no service"
-            ui.runOnUiThread {
-                playerDetails=runCatching {
-                    val service=checkNotNull(PlaybackRuntime.service)
-                    val field=service.javaClass.getDeclaredField("player").apply{isAccessible=true}
-                    val player=field.get(service) as ExoPlayer
-                    "state=${player.playbackState}, suppression=${player.playbackSuppressionReason}, duration=${player.duration}, buffered=${player.bufferedPosition}, loading=${player.isLoading}, repeat=${player.repeatMode}, shuffle=${player.shuffleModeEnabled}, tracks=${player.mediaItemCount}, playerError=${player.playerError?.errorCode}"
-                }.getOrElse{"unavailable: ${it.javaClass.simpleName}"}
-            }
-            throw AssertionError("Resume state: index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, error=${state.error}; player: $playerDetails; savedOrder=${saved.order}, currentOrder=${state.order}",t)
+        fun player(): ExoPlayer {
+            val service=checkNotNull(PlaybackRuntime.service)
+            val field=service.javaClass.getDeclaredField("player").apply{isAccessible=true}
+            return field.get(service) as ExoPlayer
         }
-        assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
-        assertEquals(saved.order,PlaybackRuntime.state.value.order)
-        assertTrue(PlaybackRuntime.state.value.shuffle);assertEquals(saved.repeat,PlaybackRuntime.state.value.repeat)
-        ui.runOnUiThread{PlaybackRuntime.playIndex(1)}
-        ui.waitUntil(10_000){PlaybackRuntime.state.value.index==1&&PlaybackRuntime.state.value.playing}
+        val orders=listOf(listOf(0,1,2),listOf(0,2,1),listOf(1,0,2),listOf(1,2,0),listOf(2,0,1),listOf(2,1,0))
+        for(order in orders) {
+            ui.runOnUiThread{PlaybackRuntime.playIndex(2)}
+            ui.waitUntil(20_000){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&PlaybackRuntime.state.value.playing}
+            ui.runOnUiThread {
+                PlaybackRuntime.toggle(app)
+                if(!PlaybackRuntime.state.value.shuffle)PlaybackRuntime.shuffle()
+                player().setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order.toIntArray(),0L))
+                PlaybackRuntime.seek(321)
+            }
+            ui.waitUntil(10_000){!PlaybackRuntime.state.value.playWhenReady&&PlaybackRuntime.state.value.positionMs==321L&&PlaybackRuntime.state.value.order==order}
+            runBlocking(Dispatchers.IO){withTimeout(15_000){PlaybackRuntime.flushHistory()}}
+            val saved=PlaybackRuntime.state.value
+            ui.runOnUiThread{app.stopService(android.content.Intent(app,MusicPlaybackService::class.java))}
+            ui.waitUntil(10_000){PlaybackRuntime.service==null}
+            assertFalse(PlaybackRuntime.state.value.playing);assertEquals(2,PlaybackRuntime.state.value.index)
+            ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+            try{ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==2}}
+            catch(t: Throwable) {
+                val state=PlaybackRuntime.state.value
+                var playerDetails="no service"
+                ui.runOnUiThread {
+                    playerDetails=runCatching {
+                        val player=player()
+                        "state=${player.playbackState}, playing=${player.isPlaying}, ready=${player.playWhenReady}, position=${player.currentPosition}, suppression=${player.playbackSuppressionReason}, duration=${player.duration}, buffered=${player.bufferedPosition}, loading=${player.isLoading}, repeat=${player.repeatMode}, shuffle=${player.shuffleModeEnabled}, tracks=${player.mediaItemCount}, playerError=${player.playerError?.errorCode}"
+                    }.getOrElse{"unavailable: ${it.javaClass.simpleName}"}
+                }
+                throw AssertionError("Resume state: index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, error=${state.error}; player: $playerDetails; savedOrder=${saved.order}, currentOrder=${state.order}",t)
+            }
+            assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
+            assertEquals(saved.order,PlaybackRuntime.state.value.order)
+            assertTrue(PlaybackRuntime.state.value.shuffle);assertEquals(saved.repeat,PlaybackRuntime.state.value.repeat)
+            ui.runOnUiThread{PlaybackRuntime.playIndex(1)}
+            ui.waitUntil(10_000){PlaybackRuntime.state.value.index==1&&PlaybackRuntime.state.value.playing}
+        }
     }
 
 }
