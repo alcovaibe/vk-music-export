@@ -178,7 +178,9 @@ class InstrumentationReportTest(unittest.TestCase):
             self.check([report])
 
     def test_missing_background_job_coverage_is_rejected(self):
-        report = self.successful_report().replace('app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest', 'OtherTest')
+        report = self.successful_report()
+        for i in range(4):
+            report=report.replace(f'<testcase classname="app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest" name="job{i}"/>','')
         with self.assertRaisesRegex(ValueError, 'Required background scan'):
             self.check([report])
 
