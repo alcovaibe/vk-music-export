@@ -37,6 +37,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.upstream.BandwidthMeter
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
@@ -307,6 +308,7 @@ class PlaybackDeviceTest {
         val handler=Handler(thread.looper)
         val ready=CompletableDeferred<Unit>();val released=CompletableDeferred<Unit>()
         val calls=AtomicInteger();val timelines=AtomicInteger()
+        var registered=false
         val item=MediaItem.Builder().setMediaId("opaque-metadata-ci").setUri("vkmusic://test/metadata").build()
         val source=PlaybackMediaSource(item,PlaybackMediaSource.factory(app,offline=true)) {
             calls.incrementAndGet();Uri.parse(rows.first().saved!!.uri)
@@ -318,7 +320,10 @@ class PlaybackDeviceTest {
             }catch(t: Throwable){ready.completeExceptionally(t)}
         }
         try {
-            handler.post{source.prepareSource(caller,null,PlayerId.UNSET)}
+            handler.post {
+                try{source.prepareSource(caller,PlayerId.UNSET,BandwidthMeter.NO_OP);registered=true}
+                catch(t: Throwable){ready.completeExceptionally(t)}
+            }
             runBlocking{withTimeout(10_000){ready.await()}}
             val updated=CompletableDeferred<Unit>()
             val changed=item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setTitle("CI artwork metadata").build()).build()
@@ -333,7 +338,7 @@ class PlaybackDeviceTest {
             runBlocking{withTimeout(10_000){updated.await()}}
             ui.runOnUiThread{assertEquals("CI artwork metadata",source.getMediaItem().mediaMetadata.title)}
         }finally {
-            handler.post{try{source.releaseSource(caller);released.complete(Unit)}catch(t: Throwable){released.completeExceptionally(t)}}
+            handler.post{try{if(registered)source.releaseSource(caller);released.complete(Unit)}catch(t: Throwable){released.completeExceptionally(t)}}
             try{runBlocking{withTimeout(10_000){released.await()}}}finally{thread.quitSafely();thread.join(10_000)}
         }
     }
