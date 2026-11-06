@@ -136,9 +136,14 @@ class MusicPlaybackService : MediaSessionService() {
     private fun start(request: PlaybackRuntime.Request) {
         val record=request.restored
         installMetadata(record?.id?:request.id,request.selection.entries,request.session)
-        pendingOrder=record?.order
+        // Finish restoring the playlist configuration before the playback thread
+        // prepares or plays it. Applying the saved order from publish() is too late.
+        pendingOrder=null
         player.setMediaSources(sources(),request.selection.start,request.position)
-        if(record!=null){player.shuffleModeEnabled=record.cursor.shuffle;player.repeatMode=record.cursor.repeat}
+        if(record!=null) {
+            player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(record.order.toIntArray(),0L))
+            player.shuffleModeEnabled=record.cursor.shuffle;player.repeatMode=record.cursor.repeat
+        }
         suppressCheckpoint=false
         player.prepare();player.play();loadCover();publish(refreshOrder=true,forceCheckpoint=true)
     }
