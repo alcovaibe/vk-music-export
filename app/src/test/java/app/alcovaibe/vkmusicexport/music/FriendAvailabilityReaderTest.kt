@@ -27,7 +27,7 @@ class FriendAvailabilityReaderTest {
         val reader=FriendAvailabilityReader(scope,api,cache,
             checked={before->
                 val after=current?:throw MusicFailure(MusicError.ACCESS)
-                if(after.readSessionId!=before.readSessionId)throw MusicReadChanged()
+                MusicReadIdentity(before).require(after)
                 after
             },blocked={busy},publish={id,status->results.add(id to status)},changedSession={changed++})
         init{reader.bind(initial)}
@@ -62,11 +62,11 @@ class FriendAvailabilityReaderTest {
         }
     }
     @Test fun independentLoginAndLogoutInvalidateEvenWhenTheOldRequestFails()=runTest {
-        for(logout in listOf(false,true)) {
+        for(change in 0..2) {
             val f=Fixture(backgroundScope,access);val release=CompletableDeferred<Unit>()
             f.api.probe={release.await();throw MusicFailure(MusicError.DENIED,201)}
             f.reader.visible(listOf(34));f.reader.setActive(true);runCurrent()
-            f.current=if(logout)null else access.withSession(readSessionId="independent")
+            f.current=when(change){0->null;1->access.withSession(readSessionId="independent");else->access.withSession(accountId=99)}
             release.complete(Unit);runCurrent()
             assertEquals(1,f.changed);assertTrue(f.results.isEmpty());assertNull(f.cache.get(34))
         }
@@ -108,6 +108,7 @@ class FriendAvailabilityReaderTest {
         f.api.probe={throw MusicFailure(MusicError.RATE_LIMIT)}
         f.reader.visible(listOf(34,35,36));f.reader.setActive(true);runCurrent()
         assertEquals(listOf(34L),f.api.calls)
+        f.reader.setActive(true);runCurrent();assertEquals(listOf(34L),f.api.calls)
         assertEquals(listOf(34L to FriendAudioAccess.CHECK_FAILED),f.results)
         assertNull(f.cache.get(34));assertNull(f.cache.get(35))
     }

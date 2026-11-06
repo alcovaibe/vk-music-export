@@ -16,6 +16,7 @@ internal class FriendAvailabilityReader(
     private var access: MusicAccess?=null
     private var active=false
     private var visible=emptyList<Long>()
+    private var halted=false
     private var epoch=0L
     private var work: Job?=null
     private var attempted=mutableSetOf<Long>()
@@ -37,16 +38,15 @@ internal class FriendAvailabilityReader(
         stop();visible=next;start()
     }
     private fun stop() {
-        epoch++;work?.cancel();work=null;attempted=mutableSetOf()
+        epoch++;work?.cancel();work=null;attempted=mutableSetOf();halted=false
     }
     private fun start() {
         val initial=access?:return
-        if(!active||visible.isEmpty())return
+        if(!active||halted||visible.isEmpty())return
         if(work?.isActive==true)return
         val version=epoch
         val tried=attempted
         val inFlight=mutableSetOf<Long>()
-        var halted=false
         suspend fun guard(): MusicAccess {
             currentCoroutineContext().ensureActive()
             if(version!=epoch||!active)throw CancellationException()
