@@ -30,6 +30,11 @@ class FriendsMusicDeviceTest {
     private inner class Api: MusicApi {
         var extra: NativePlaylist?=null
         var ignoreAlbumFilter=false
+        var preview: (suspend(Long)->Unit)?=null
+        override suspend fun probeFriendAudio(access: MusicAccess,owner: Long) {
+            val action=preview
+            if(action!=null)action(owner)else libraryPage(access,owner,0)
+        }
         var rows=listOf(MusicFriend(34,"Алина","Смирнова","@old"),MusicFriend(35,"Ирина","Лебедева","@irina"),
             MusicFriend(36,"Максим","Ковалёв"),MusicFriend(37,"Денис","Орлов"),MusicFriend(38,"Софья","Белова"),
             MusicFriend(39,"Артём","Миронов"),MusicFriend(40,"Полина","Жукова"),MusicFriend(41,"Егор","Рябов"))
@@ -75,6 +80,20 @@ class FriendsMusicDeviceTest {
             ParcelFileDescriptor.AutoCloseInputStream(inst.uiAutomation.executeShellCommand(cmd)).use{it.readBytes()}
     }
     private fun top(){ui.onNodeWithTag("native_music_screen_list").performScrollToIndex(0)}
+    @Test fun leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem()=fixture {model,api->
+        val entered=CompletableDeferred<Unit>();val cancelled=CompletableDeferred<Unit>()
+        api.preview={entered.complete(Unit);try{awaitCancellation()}finally{cancelled.complete(Unit)}}
+        ui.onNodeWithTag("music_nav_FRIENDS").performClick()
+        runBlocking{withTimeout(15000){entered.await()}}
+        ui.onNodeWithTag("music_nav_SAVED").performClick()
+        runBlocking{withTimeout(15000){cancelled.await()}}
+        assertTrue(model.friends.state.value.friendAccess.isEmpty())
+        api.preview=null
+        ui.onNodeWithTag("music_nav_FRIENDS").performClick()
+        ui.waitUntil(15000){model.friends.state.value.friendAccess[34L]==FriendAudioAccess.AVAILABLE}
+        ui.waitUntil(15000){model.friends.state.value.friendAccess[35L]==FriendAudioAccess.DENIED}
+    }
+
     @Test fun friendAccessPreviewDistinguishesAvailableAndDenied()=fixture {model,_->
         ui.onNodeWithTag("music_nav_FRIENDS").performClick()
         ui.waitUntil(15000){model.friends.state.value.friendsComplete}

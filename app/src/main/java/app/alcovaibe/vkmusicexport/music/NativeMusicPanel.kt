@@ -132,6 +132,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var aboutOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
+    DisposableEffect(lifecycle,model,destination,playerExpanded,aboutOpen,accessOpen) {
+        model.friends.setPreviewVisible(destination==MusicDestination.FRIENDS&&!playerExpanded&&!aboutOpen&&!accessOpen)
+        val observer=LifecycleEventObserver{_,event->when(event) {
+            Lifecycle.Event.ON_RESUME->model.friends.setForeground(true)
+            Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.friends.setForeground(false)
+            else->Unit
+        }}
+        lifecycle.lifecycle.addObserver(observer)
+        onDispose{lifecycle.lifecycle.removeObserver(observer);model.friends.setPreviewVisible(false)}
+    }
     var sort by rememberSaveable {mutableStateOf(MusicLibrarySort.DEFAULT)}
     var sortOpen by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}

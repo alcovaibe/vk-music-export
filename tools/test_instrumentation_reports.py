@@ -64,10 +64,12 @@ class InstrumentationReportTest(unittest.TestCase):
         for suite, methods in verification['PLAYBACK_HISTORY_TESTS'].items():
             cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.SourceReadDeviceTest" name="{name}"/>' for name in verification['SOURCE_READ_TESTS'])
-        return f'<testsuites tests="202" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest" name="{name}"/>' for name in verification['FRIEND_PREVIEW_TESTS'])
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest" name="leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem"/>'
+        return f'<testsuites tests="206" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 202)
+        self.assertEqual(self.check([self.successful_report()], '0'), 206)
 
     def test_missing_bulk_download_scenario_is_rejected_even_with_enough_other_tests(self):
         name=verification['BULK_DOWNLOAD_TESTS'][0]
@@ -102,6 +104,17 @@ class InstrumentationReportTest(unittest.TestCase):
             with self.subTest(name=name),self.assertRaisesRegex(ValueError,'Required source read'):
                 self.check([report],'0')
 
+    def test_every_friend_preview_lifecycle_scenario_is_required(self):
+        for name in verification['FRIEND_PREVIEW_TESTS']:
+            report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest" name="{name}"/>','')
+            with self.subTest(name=name),self.assertRaisesRegex(ValueError,'Required friend preview lifecycle'):
+                self.check([report],'0')
+
+    def test_friend_destination_lifecycle_is_required(self):
+        report=self.successful_report().replace('leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem','missing_destination_case')
+        with self.assertRaisesRegex(ValueError,'Required friend destination lifecycle'):
+            self.check([report],'0')
+
     def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
         report = self.successful_report()
         for api in range(29, 34):
@@ -109,9 +122,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 202)
+            self.assertEqual(self.check([executed], '0', api_level=api), 206)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 202)
+        self.assertEqual(self.check([report], '0', api_level=34), 206)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

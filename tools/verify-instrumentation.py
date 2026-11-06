@@ -81,6 +81,13 @@ SOURCE_READ_TESTS = (
 )
 
 
+FRIEND_PREVIEW_TESTS = (
+    'pauseCancelsBothProbesAndReturnReusesOnlyConfirmedVisibleResults',
+    'profileAndHiddenDestinationStopProbesAndBackRestartsTheVisibleList',
+    'logoutAndNewLoginCannotPublishAnOldDenialOrReuseItsCache',
+)
+
+
 def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
@@ -123,6 +130,9 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
     for method in SOURCE_READ_TESTS:
         if ('app.alcovaibe.vkmusicexport.SourceReadDeviceTest', method) not in executed:
             raise ValueError(f'Required source read test did not execute: {method}')
+    for method in FRIEND_PREVIEW_TESTS:
+        if ('app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest', method) not in executed:
+            raise ValueError(f'Required friend preview lifecycle test did not execute: {method}')
     if not any(name == 'app.alcovaibe.vkmusicexport.InterfaceTest' for name, _ in executed):
         raise ValueError('Required interface test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest' for name, _ in executed) < 9:
@@ -160,6 +170,9 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
         raise ValueError('Required artist failure diagnostics test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest' for name, _ in executed) < 6:
         raise ValueError('Required friends music profile, access and queue tests did not execute')
+    if ('app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest',
+            'leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem') not in executed:
+        raise ValueError('Required friend destination lifecycle test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.PlaybackDeviceTest' for name, _ in executed) < 6:
         raise ValueError('Required background playback, controls and player interface tests did not execute')
     required = ('app.alcovaibe.vkmusicexport.ArtworkLookupViewModelDeviceTest',

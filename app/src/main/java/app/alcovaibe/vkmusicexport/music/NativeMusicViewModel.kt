@@ -943,6 +943,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private suspend fun active(g: Int){currentCoroutineContext().ensureActive();if(g!=generation)throw CancellationException()}
     private suspend fun access(): MusicAccess=withContext(Dispatchers.IO){vault.read()?:throw MusicFailure(MusicError.ACCESS)}
     fun setForeground(value: Boolean) {
+        friends.setForeground(value)
         if(authForeground.value==value)return
         authForeground.value=value
         sessionMonitor?.cancel();sessionMonitor=null
