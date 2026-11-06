@@ -63,7 +63,8 @@ PLAYBACK_HISTORY_TESTS = {
         'cursorWritesStayConstantFor1004500And20000Entries',
     ),
     'PlaybackDeviceTest': ('serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition',
-        'artworkMetadataUpdateDoesNotRepublishTheChildTimelineOrResolveAgain'),
+        'artworkMetadataUpdateDoesNotRepublishTheChildTimelineOrResolveAgain',
+        'oldNotificationDismissalCannotStopARecreatedPlayerButCurrentAndHardwareStopStillWork'),
 }
 
 

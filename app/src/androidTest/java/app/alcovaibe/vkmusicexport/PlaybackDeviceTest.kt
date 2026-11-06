@@ -348,6 +348,40 @@ class PlaybackDeviceTest {
         }
     }
 
+    @Test fun oldNotificationDismissalCannotStopARecreatedPlayerButCurrentAndHardwareStopStillWork()=fixture {rows->
+        fun sessionId(): String {
+            val service=checkNotNull(PlaybackRuntime.service)
+            val field=service.javaClass.getDeclaredField("mediaSession").apply{isAccessible=true}
+            return (field.get(service) as androidx.media3.session.MediaSession).id
+        }
+        fun dismissal(id: String)=androidx.media3.session.PlaybackPendingIntentBuilder.createMediaButtonIntent(
+            app,Player.COMMAND_STOP,android.os.Bundle().apply{putBoolean(androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,true)},
+            id,MusicPlaybackService::class.java)
+        start(rows)
+        var old="";var current=""
+        ui.runOnUiThread{old=sessionId();PlaybackRuntime.toggle(app)}
+        ui.waitUntil(10000){!PlaybackRuntime.state.value.playWhenReady}
+        runBlocking(Dispatchers.IO){withTimeout(15000){PlaybackRuntime.flushHistory()}}
+        ui.runOnUiThread{app.stopService(android.content.Intent(app,MusicPlaybackService::class.java))}
+        ui.waitUntil(10000){PlaybackRuntime.service==null}
+        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+        ui.waitUntil(20000){PlaybackRuntime.state.value.playing}
+        ui.runOnUiThread{current=sessionId();assertNotEquals(old,current);app.startService(dismissal(old))}
+        ui.waitUntil(10000){PlaybackRuntime.service?.playbackTrace()?.contains("ignored_old_notification_stop")==true}
+        assertTrue(PlaybackRuntime.state.value.playing)
+        assertEquals(rows,PlaybackRuntime.state.value.entries)
+        ui.runOnUiThread{app.startService(dismissal(current))}
+        ui.waitUntil(10000){PlaybackRuntime.service?.playbackTrace()?.any{it.contains("stop:controller=")}==true&&!PlaybackRuntime.state.value.playing&&!PlaybackRuntime.state.value.buffering}
+        ui.runOnUiThread{PlaybackRuntime.playIndex(1)}
+        ui.waitUntil(20000){PlaybackRuntime.state.value.index==1&&PlaybackRuntime.state.value.playing}
+        ui.runOnUiThread {
+            app.startService(android.content.Intent(android.content.Intent.ACTION_MEDIA_BUTTON).setClass(app,MusicPlaybackService::class.java)
+                .putExtra(android.content.Intent.EXTRA_KEY_EVENT,android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_MEDIA_STOP)))
+        }
+        ui.waitUntil(10000){!PlaybackRuntime.state.value.playing&&!PlaybackRuntime.state.value.buffering}
+        assertEquals(rows,PlaybackRuntime.state.value.entries)
+    }
+
     @Test fun serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition()=fixture {rows->
         start(rows)
         fun player(): ExoPlayer {

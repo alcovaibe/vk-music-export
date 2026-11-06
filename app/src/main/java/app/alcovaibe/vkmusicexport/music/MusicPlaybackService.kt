@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -12,6 +13,8 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaNotification
+import androidx.media3.session.PlaybackPendingIntentBuilder
 import app.alcovaibe.vkmusicexport.MainActivity
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.SettableFuture
@@ -24,9 +27,10 @@ import kotlinx.coroutines.flow.*
 @androidx.annotation.OptIn(UnstableApi::class)
 class MusicPlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
+    private val notificationSessionId=java.util.UUID.randomUUID().toString()
     private val commandTrace=java.util.ArrayDeque<String>()
-    internal fun playbackTrace()=commandTrace.toList()
-    private fun trace(action: String) {
+    @Synchronized internal fun playbackTrace()=commandTrace.toList()
+    @Synchronized private fun trace(action: String) {
         if(commandTrace.size==32)commandTrace.removeFirst()
         commandTrace.addLast("${SystemClock.elapsedRealtime()}:$action")
     }
@@ -75,7 +79,7 @@ class MusicPlaybackService : MediaSessionService() {
         }
         player=object: ExoPlayer by core {
             override fun stop() {
-                trace("stop:"+Throwable().stackTrace.take(8).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"})
+                trace("stop:controller=${mediaSession?.controllerForCurrentRequest?.packageName}:"+Throwable().stackTrace.take(8).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"})
                 core.stop()
             }
             override fun prepare(){trace("prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}");core.prepare()}
@@ -83,7 +87,7 @@ class MusicPlaybackService : MediaSessionService() {
         }
         val activity=PendingIntent.getActivity(this,6701,Intent(this,MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(PlaybackRuntime.OPEN_EXTRA,true),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        mediaSession=MediaSession.Builder(this,player).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
+        mediaSession=MediaSession.Builder(this,player).setId(notificationSessionId).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
             override fun onConnect(session: MediaSession,controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
                 if(!controller.isTrusted&&controller.packageName!=packageName)return MediaSession.ConnectionResult.reject()
                 val commands=MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
@@ -138,6 +142,20 @@ class MusicPlaybackService : MediaSessionService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo)=mediaSession
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
+        // Notification dismissal can arrive after this service has been recreated.
+        // Route only its STOP to the session that produced it. Hardware/widget commands
+        // keep Media3's normal resumption and fallback behaviour.
+        if(intent?.action==Intent.ACTION_MEDIA_BUTTON&&intent.getBooleanExtra(MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,false)) {
+            @Suppress("DEPRECATION") val key=if(android.os.Build.VERSION.SDK_INT>=33)intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT,KeyEvent::class.java)
+                else intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            val expected=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
+                notificationSessionId,MusicPlaybackService::class.java).data
+            if(key?.keyCode==KeyEvent.KEYCODE_MEDIA_STOP&&intent.data!=expected) {
+                trace("ignored_old_notification_stop")
+                if(entries.isEmpty())stopSelf(startId)
+                return START_NOT_STICKY
+            }
+        }
         super.onStartCommand(intent,flags,startId)
         if(intent?.action==PlaybackRuntime.START) {
             val request=PlaybackRuntime.take(intent.getStringExtra("request"))
