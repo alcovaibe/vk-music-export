@@ -30,6 +30,7 @@ class LegacyAudioExportService : Service() {
             AudioExportRuntime.notification(this,AudioExportRuntime.state.value),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)}
         catch(e: Exception) {
+            BackgroundTransport.exportStarts.acknowledge(intent?.getLongExtra(BackgroundTransport.START_TICKET,0L)?:0L)
             Diagnostics.event("audio_queue_schedule_failure",mapOf("transport" to "foreground_service"))
             // The start request may succeed even when Android later rejects foreground promotion.
             scope.launch(Dispatchers.IO+NonCancellable) {
@@ -39,6 +40,12 @@ class LegacyAudioExportService : Service() {
                 }catch(_: Exception){Diagnostics.event("audio_queue_failure",mapOf("code" to "STORAGE"))}
             }
             stopSelfResult(startId);return START_NOT_STICKY
+        }
+        val acknowledged=BackgroundTransport.exportStarts.acknowledge(intent?.getLongExtra(BackgroundTransport.START_TICKET,0L)?:0L)
+        if(acknowledged.cancelled) {
+            work?.cancel()
+            if(acknowledged.drained){stopForeground(STOP_FOREGROUND_DETACH);stopSelfResult(startId)}
+            return START_NOT_STICKY
         }
         // An existing worker has already been promoted; don't launch a second
         // queue runner. A completed worker no longer blocks a fresh start.
@@ -85,19 +92,32 @@ class LegacyAudioExportService : Service() {
 class LegacyDuplicateCheckService : Service() {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var work: Job?=null
+    private var latestStartId=0
     override fun onBind(intent: Intent?): IBinder?=null
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
+        latestStartId=startId
         val id=intent?.getStringExtra(DuplicateCheckRuntime.RUN_EXTRA)
-        if(Build.VERSION.SDK_INT>=34||id==null||id!=DuplicateCheckRuntime.state.value.scanId ||
-            !DuplicateCheckRuntime.state.value.busy){stopSelfResult(startId);return START_NOT_STICKY}
-        if(work!=null)return START_NOT_STICKY
+        if(Build.VERSION.SDK_INT>=34){stopSelfResult(startId);return START_NOT_STICKY}
         try{startForeground(DuplicateCheckRuntime.NOTIFICATION_ID,
             DuplicateCheckRuntime.notification(this,DuplicateCheckRuntime.state.value),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)}
         catch(_: Exception) {
-            DuplicateCheckRuntime.interrupted(this,id)
+            BackgroundTransport.duplicateStarts.acknowledge(intent?.getLongExtra(BackgroundTransport.START_TICKET,0L)?:0L)
+            if(id!=null)DuplicateCheckRuntime.interrupted(this,id)
             stopSelfResult(startId);return START_NOT_STICKY
         }
+        val acknowledged=BackgroundTransport.duplicateStarts.acknowledge(intent?.getLongExtra(BackgroundTransport.START_TICKET,0L)?:0L)
+        if(acknowledged.cancelled) {
+            work?.cancel()
+            if(acknowledged.drained){stopForeground(STOP_FOREGROUND_DETACH);stopSelfResult(startId)}
+            return START_NOT_STICKY
+        }
+        // Even a cancelled or superseded scan must acknowledge its foreground start.
+        if(id==null||id!=DuplicateCheckRuntime.state.value.scanId||!DuplicateCheckRuntime.state.value.busy) {
+            if(work?.isCompleted!=false){stopForeground(STOP_FOREGROUND_DETACH);stopSelfResult(startId)}
+            return START_NOT_STICKY
+        }
+        if(work?.isCompleted==false)return START_NOT_STICKY
         work=scope.launch(Dispatchers.IO) {
             val updates=launch {
                 DuplicateCheckRuntime.state.collect { snapshot ->
@@ -121,7 +141,7 @@ class LegacyDuplicateCheckService : Service() {
                         stopForeground(STOP_FOREGROUND_DETACH)
                         getSystemService(NotificationManager::class.java).notify(DuplicateCheckRuntime.NOTIFICATION_ID,
                             DuplicateCheckRuntime.notification(this@LegacyDuplicateCheckService,DuplicateCheckRuntime.state.value))
-                        stopSelfResult(startId)
+                        stopSelfResult(latestStartId)
                     }
                 }
             }

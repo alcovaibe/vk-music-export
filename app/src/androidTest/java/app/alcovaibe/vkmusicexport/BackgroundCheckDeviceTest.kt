@@ -176,6 +176,47 @@ class BackgroundCheckDeviceTest {
         }}finally{saved?.let{context.contentResolver.delete(Uri.parse(it.uri),null,null)};dir.deleteRecursively()}
     }
 
+    @Test fun pendingLegacyStartsArePromotedBeforeImmediatePauseWithoutRunningEitherQueue()=runBlocking<Unit> {
+        if(android.os.Build.VERSION.SDK_INT>=34)return@runBlocking
+        val previous=DuplicateCheckRuntime.state.value
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            try {
+                AudioExportRuntime.initialize(app);AudioExportRuntime.clear(app)
+                val task=ExportLayout.task(track(199),listOf("CI pending foreground start"),1)
+                AudioExportRuntime.replace(app,listOf(task))
+                AudioExportStore(app).use{it.status("PAUSED")};AudioExportRuntime.refresh()
+                val id=UUID.randomUUID().toString()
+                DuplicateCheckRuntime.mutable.value=DuplicatesState(visible=true,phase=DuplicatePhase.QUEUED,scanId=id)
+                // onActivity runs one uninterrupted Main callback. Neither service can
+                // acknowledge its starts until both immediate stop requests have run.
+                scenario.onActivity {
+                    repeat(2){assertTrue(BackgroundTransport.startExport(app))}
+                    BackgroundTransport.stopExport(app)
+                    repeat(2){assertTrue(BackgroundTransport.startDuplicates(app,id))}
+                    BackgroundTransport.stopDuplicates(app)
+                    assertEquals(2,BackgroundTransport.exportStarts.pendingCount())
+                    assertEquals(2,BackgroundTransport.duplicateStarts.pendingCount())
+                }
+                withTimeout(15_000) {
+                    while(BackgroundTransport.exportStarts.pendingCount()!=0||BackgroundTransport.duplicateStarts.pendingCount()!=0||
+                        AudioExportRuntime.active.get()||DuplicateCheckRuntime.active.get())delay(25)
+                }
+                // Cross Android's five-second FGS deadline; an early stop formerly
+                // killed the whole process after this UI action had already returned.
+                delay(6_000)
+                assertEquals("PAUSED",AudioExportRuntime.state.value.status);assertNull(AudioExportRuntime.state.value.error)
+                AudioExportStore(app).use{assertEquals(listOf(task),it.taskRows().map{row->row.first})}
+                assertEquals(DuplicatePhase.QUEUED,DuplicateCheckRuntime.state.value.phase)
+            }finally {
+                BackgroundTransport.stopExport(app);BackgroundTransport.stopDuplicates(app)
+                withTimeout(15_000){while(AudioExportRuntime.active.get()||DuplicateCheckRuntime.active.get()||
+                    BackgroundTransport.exportStarts.pendingCount()!=0||BackgroundTransport.duplicateStarts.pendingCount()!=0)delay(25)}
+                DuplicateCheckRuntime.mutable.value=previous
+                AudioExportRuntime.clear(app)
+            }
+        }
+    }
+
     @Test fun repeatedLegacyAudioExportStartAcknowledgesForegroundRequests()=runBlocking<Unit> {
         if(android.os.Build.VERSION.SDK_INT>=34)return@runBlocking
         // Android 10–13: two foreground start requests must be acknowledged without

@@ -48,6 +48,7 @@ QUEUE_DOWNLOADS_TESTS = {
         'errorsAreReadByPageAndLargeTextKeepsTabsBackAndClearUsable',
     ),
     'PlaybackDeviceTest': ('realOfflinePlaybackContinuesThroughDownloadsAndBack',),
+    'BackgroundCheckDeviceTest': ('pendingLegacyStartsArePromotedBeforeImmediatePauseWithoutRunningEitherQueue',),
 }
 
 

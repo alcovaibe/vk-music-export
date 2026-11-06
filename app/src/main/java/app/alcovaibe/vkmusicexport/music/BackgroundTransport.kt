@@ -15,12 +15,29 @@ import androidx.core.content.ContextCompat
  * are reported as a scheduling failure rather than bypassed.
  */
 internal object BackgroundTransport {
+    internal const val START_TICKET="foreground_start_ticket"
+    internal val exportStarts=ForegroundStartGate()
+    internal val duplicateStarts=ForegroundStartGate()
+    private fun startLegacy(context: Context,intent: Intent,gate: ForegroundStartGate): Boolean {
+        val ticket=gate.begin()
+        try {
+            val accepted=ContextCompat.startForegroundService(context,intent.putExtra(START_TICKET,ticket))!=null
+            if(!accepted) {
+                val failed=gate.acknowledge(ticket)
+                if(failed.cancelled&&failed.drained)context.stopService(intent)
+            }
+            return accepted
+        }catch(e: Exception) {
+            val failed=gate.acknowledge(ticket)
+            if(failed.cancelled&&failed.drained)runCatching{context.stopService(intent)}
+            throw e
+        }
+    }
     internal fun usesUserInitiatedJobs(sdk: Int) = sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 
     fun startExport(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return ContextCompat.startForegroundService(context,
-                Intent(context,LegacyAudioExportService::class.java)) != null
+            return startLegacy(context,Intent(context,LegacyAudioExportService::class.java),exportStarts)
         }
         val info=JobInfo.Builder(AudioExportRuntime.JOB_ID,ComponentName(context,AudioExportJob::class.java))
             .setUserInitiated(true).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
@@ -30,13 +47,13 @@ internal object BackgroundTransport {
 
     fun stopExport(context: Context) {
         if (usesUserInitiatedJobs(Build.VERSION.SDK_INT))context.getSystemService(JobScheduler::class.java).cancel(AudioExportRuntime.JOB_ID)
-        else context.stopService(Intent(context,LegacyAudioExportService::class.java))
+        else if(exportStarts.stop())context.stopService(Intent(context,LegacyAudioExportService::class.java))
     }
 
     fun startDuplicates(context: Context,id: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return ContextCompat.startForegroundService(context,Intent(context,LegacyDuplicateCheckService::class.java)
-                .putExtra(DuplicateCheckRuntime.RUN_EXTRA,id)) != null
+            return startLegacy(context,Intent(context,LegacyDuplicateCheckService::class.java)
+                .putExtra(DuplicateCheckRuntime.RUN_EXTRA,id),duplicateStarts)
         }
         return context.getSystemService(JobScheduler::class.java)
             .schedule(DuplicateCheckRuntime.job(context,id))==JobScheduler.RESULT_SUCCESS
@@ -44,6 +61,6 @@ internal object BackgroundTransport {
 
     fun stopDuplicates(context: Context) {
         if (usesUserInitiatedJobs(Build.VERSION.SDK_INT))context.getSystemService(JobScheduler::class.java).cancel(DuplicateCheckRuntime.JOB_ID)
-        else context.stopService(Intent(context,LegacyDuplicateCheckService::class.java))
+        else if(duplicateStarts.stop())context.stopService(Intent(context,LegacyDuplicateCheckService::class.java))
     }
 }
