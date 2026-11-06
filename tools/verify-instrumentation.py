@@ -75,6 +75,7 @@ SOURCE_READ_TESTS = (
     'cancellationOfABulkReadNeverCommitsItsPartialQueue',
     'passiveRefreshReusesMetadataExplicitRefreshFetchesAndKeepsOwnLibraryCache',
     'inaccessibleFreshProfileCannotExposeCachedFriendMusic',
+    'anEmptyRefreshedSourceDoesNotEraseThePreviousQueueOrStartAJob',
 )
 
 

@@ -80,6 +80,21 @@ class SourceReadDeviceTest {
         until{f.starts.get()==count&&!f.friends.state.value.busy&&!f.model.state.value.busy}
         return withContext(Dispatchers.IO){AudioExportStore(f.app).use{it.taskRows().map{row->row.first}}}
     }
+    private suspend fun completedQueue(f: Fixture): Pair<AudioExportTask,String> = withContext(Dispatchers.IO) {
+        val task=ExportLayout.task(f.api.song,listOf("CI preserved queue"),1,ExportSource(12,"library","my"))
+        AudioExportRuntime.replace(f.app,listOf(task),account=12)
+        AudioExportStore(f.app).use{store->
+            store.writableDatabase.execSQL("UPDATE tasks SET state='DONE'")
+            store.status("FINISHED")
+        }
+        AudioExportRuntime.refresh()
+        task to AudioExportRuntime.state.value.queueId
+    }
+    private suspend fun assertQueue(f: Fixture,before: Pair<AudioExportTask,String>)=withContext(Dispatchers.IO) {
+        AudioExportStore(f.app).use{store->
+            assertEquals(listOf(before.first),store.taskRows().map{it.first});assertEquals(before.second,store.snapshot().queueId)
+        }
+    }
     @Test fun ownPlaylistOpensAndReopensWithoutGlobalCatalogOrRepeatedPages()=fixture{f->
         val catalogs=f.api.catalogs.get();f.api.allowCatalog=false
         main{f.model.select(f.api.own)};until{!f.model.state.value.busy&&f.model.state.value.selected!=null}
@@ -90,7 +105,7 @@ class SourceReadDeviceTest {
     }
     @Test fun expiredOwnPlaylistQueuesOnlyItsPagesWithoutReloadingAnyCatalog()=fixture{f->
         main{f.model.select(f.api.own)};until{!f.model.state.value.busy&&f.model.state.value.selected!=null}
-        f.clock.addAndGet(60_000);f.api.rows=f.api.initial.reversed();val catalogs=f.api.catalogs.get();f.api.allowCatalog=false
+        f.clock.addAndGet(60_000);f.api.rows=listOf(f.api.initial[1],f.api.initial[0],f.api.song.copy(id="34_988009"));val catalogs=f.api.catalogs.get();f.api.allowCatalog=false
         main{f.model.prepare()};val tasks=queued(f,1)
         assertEquals(f.api.rows,tasks.map{it.track});assertEquals(2,f.api.playlists.get());assertEquals(catalogs,f.api.catalogs.get())
     }
@@ -122,15 +137,17 @@ class SourceReadDeviceTest {
         assertEquals(pages+1,f.api.playlists.get());assertEquals(catalogs,f.api.catalogs.get())
     }
     @Test fun newLoginAndLogoutDuringOwnerProofCannotReplaceTheQueue()=fixture{f->
-        open(f);val saved=withContext(Dispatchers.IO){f.vault.read()!!}
+        open(f);val existing=completedQueue(f)
+        until{!f.model.state.value.busy&&!f.model.state.value.catalogVerifying}
+        val saved=withContext(Dispatchers.IO){f.vault.read()!!}
         withContext(Dispatchers.IO){f.vault.save(MusicAccess("vk1.a."+"ANOTHER".repeat(12),"CI/1",accountId=12))}
         main{f.friends.download(setOf(3))};until{!f.friends.state.value.busy}
         assertEquals(0,f.starts.get());assertEquals(MusicError.ACCOUNT_CHANGED,f.friends.state.value.listProblem!!.code)
-        withContext(Dispatchers.IO){assertTrue(AudioExportStore(f.app).use{it.taskRows().isEmpty()});f.vault.save(saved)}
+        assertQueue(f,existing);withContext(Dispatchers.IO){f.vault.save(saved)}
         main{f.friends.reset()};open(f)
         f.api.beforeProof={withContext(Dispatchers.IO){f.vault.delete()}}
         main{f.friends.download(setOf(3))};until{!f.friends.state.value.busy}
-        assertEquals(0,f.starts.get());withContext(Dispatchers.IO){assertTrue(AudioExportStore(f.app).use{it.taskRows().isEmpty()})}
+        assertEquals(0,f.starts.get());assertQueue(f,existing)
     }
     @Test fun cancellationOfABulkReadNeverCommitsItsPartialQueue()=fixture{f->
         open(f);playlist(f);f.clock.addAndGet(60_000)
@@ -160,4 +177,13 @@ class SourceReadDeviceTest {
         assertEquals(MusicError.DENIED,f.friends.state.value.problems[FriendMusicTab.TRACKS]!!.code)
         assertEquals(pages,f.api.libraries.get());assertEquals(0,f.starts.get())
     }
+    @Test fun anEmptyRefreshedSourceDoesNotEraseThePreviousQueueOrStartAJob()=fixture{f->
+        open(f);playlist(f);val existing=completedQueue(f)
+        until{!f.model.state.value.busy&&!f.model.state.value.catalogVerifying}
+        f.clock.addAndGet(60_000);f.api.rows=emptyList()
+        main{f.friends.download()};until{!f.friends.state.value.busy}
+        assertEquals(0,f.friends.state.value.page!!.count);assertEquals(0,f.starts.get())
+        assertQueue(f,existing)
+    }
+
 }

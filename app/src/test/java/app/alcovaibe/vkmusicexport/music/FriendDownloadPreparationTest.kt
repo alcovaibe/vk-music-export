@@ -29,7 +29,8 @@ class FriendDownloadPreparationTest {
     }
     @Test fun selectedPlaylistOccurrencesUseDisplayedIdsEvenAfterRemoteReorder()=runBlocking {
         val rows=rows(3);val list=NativePlaylist(-55,7,"Album",3,null,null,null,1,PlaylistKind.ALBUM)
-        val before=state(rows,list);val api=Api().apply{this.rows=rows.reversed()}
+        val before=state(rows,list);val api=Api().apply{this.rows=rows.drop(1)}
+        assertNotEquals(rows,api.rows)
         val actual=FriendDownloadPreparation(api,ExportReadCache({0})).plan(before,access,12,setOf(1,3),{})
         assertEquals(FriendMusicExport.tasks(before.page!!,user,12,list).filter{it.position in setOf(1,3)},actual.tasks)
         assertTrue(actual.tasks.all{it.source?.account==12L&&it.source?.id=="34:${list.key}"});assertEquals(0,api.reads)
