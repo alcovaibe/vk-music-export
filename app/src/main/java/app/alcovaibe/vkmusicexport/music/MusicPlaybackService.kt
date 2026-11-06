@@ -5,7 +5,6 @@ import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.SystemClock
-import android.view.KeyEvent
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -13,8 +12,6 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import androidx.media3.session.MediaNotification
-import androidx.media3.session.PlaybackPendingIntentBuilder
 import app.alcovaibe.vkmusicexport.MainActivity
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.SettableFuture
@@ -27,13 +24,6 @@ import kotlinx.coroutines.flow.*
 @androidx.annotation.OptIn(UnstableApi::class)
 class MusicPlaybackService : MediaSessionService() {
     private lateinit var player: ExoPlayer
-    private val notificationSessionId=java.util.UUID.randomUUID().toString()
-    private val commandTrace=java.util.ArrayDeque<String>()
-    @Synchronized internal fun playbackTrace()=commandTrace.toList()
-    @Synchronized private fun trace(action: String) {
-        if(commandTrace.size==32)commandTrace.removeFirst()
-        commandTrace.addLast("${SystemClock.elapsedRealtime()}:$action")
-    }
     private var mediaSession: MediaSession?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var entries: List<PlaybackEntry> = emptyList()
@@ -72,22 +62,14 @@ class MusicPlaybackService : MediaSessionService() {
                 return source(selected,entries[selected])
             }
         }
-        val core=ExoPlayer.Builder(this).setMediaSourceFactory(factory).build().apply {
+        player=ExoPlayer.Builder(this).setMediaSourceFactory(factory).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),true)
             setHandleAudioBecomingNoisy(true)
             setWakeMode(C.WAKE_MODE_NETWORK)
         }
-        player=object: ExoPlayer by core {
-            override fun stop() {
-                trace("stop:controller=${mediaSession?.controllerForCurrentRequest?.packageName},notification=${mediaSession?.controllerForCurrentRequest?.let{mediaSession?.isMediaNotificationController(it)}}:"+Throwable().stackTrace.take(8).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"})
-                core.stop()
-            }
-            override fun prepare(){trace("prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}");core.prepare()}
-            override fun seekTo(mediaItemIndex: Int,positionMs: Long){trace("seek:$mediaItemIndex:state=${core.playbackState}");core.seekTo(mediaItemIndex,positionMs)}
-        }
         val activity=PendingIntent.getActivity(this,6701,Intent(this,MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(PlaybackRuntime.OPEN_EXTRA,true),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        mediaSession=MediaSession.Builder(this,player).setId(notificationSessionId).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
+        mediaSession=MediaSession.Builder(this,player).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
             override fun onConnect(session: MediaSession,controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
                 if(!controller.isTrusted&&controller.packageName!=packageName)return MediaSession.ConnectionResult.reject()
                 val commands=MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
@@ -100,8 +82,6 @@ class MusicPlaybackService : MediaSessionService() {
                 resumeFromHistory(isForPlayback)
         }).build().also{addSession(it)}
         player.addListener(object: Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int){trace("state:$playbackState,index=${player.currentMediaItemIndex},ready=${player.playWhenReady}")}
-
             override fun onEvents(player: Player,events: Player.Events){publish(
                 events.contains(Player.EVENT_TIMELINE_CHANGED)||events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED),
                 events.contains(Player.EVENT_POSITION_DISCONTINUITY)||events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)||events.contains(Player.EVENT_IS_PLAYING_CHANGED))}
@@ -142,26 +122,6 @@ class MusicPlaybackService : MediaSessionService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo)=mediaSession
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
-        // Addressed media STOP from an old session must not fall back to a new one.
-        // Hardware and widget commands without a specific session keep normal fallback.
-        if(intent?.action==Intent.ACTION_MEDIA_BUTTON) {
-            @Suppress("DEPRECATION") val key=if(android.os.Build.VERSION.SDK_INT>=33)intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT,KeyEvent::class.java)
-                else intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-            if(key?.keyCode==KeyEvent.KEYCODE_MEDIA_STOP) {
-                val current=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
-                    notificationSessionId,MusicPlaybackService::class.java).data
-                val fallback=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
-                    null,MusicPlaybackService::class.java).data
-                val dismissed=intent.getBooleanExtra(MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,false)
-                val addressed=intent.data!=null&&intent.data!=fallback
-                trace("stop_intent:notification=$dismissed,target="+if(intent.data==current)"current" else if(addressed)"other" else "default")
-                if(intent.data!=current&&(dismissed||addressed)) {
-                    trace("ignored_old_notification_stop")
-                    if(entries.isEmpty())stopSelf(startId)
-                    return START_NOT_STICKY
-                }
-            }
-        }
         super.onStartCommand(intent,flags,startId)
         if(intent?.action==PlaybackRuntime.START) {
             val request=PlaybackRuntime.take(intent.getStringExtra("request"))

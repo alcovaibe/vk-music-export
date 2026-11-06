@@ -60,7 +60,7 @@ class FriendPreviewLifecycleDeviceTest {
         assertFalse(c.state.value.friendAccess.containsKey(35L))
         api.probe={};release.complete(Unit)
         main{c.setForeground(true)}
-        until{c.state.value.friendAccess[37L]==FriendAudioAccess.AVAILABLE}
+        until{listOf(35L,36L,37L).all{c.state.value.friendAccess[it]==FriendAudioAccess.AVAILABLE}}
         assertEquals(1,api.calls.count{it==34L})
         assertEquals(2,api.calls.count{it==35L});assertEquals(2,api.calls.count{it==36L})
         assertFalse(api.calls.contains(38L))
