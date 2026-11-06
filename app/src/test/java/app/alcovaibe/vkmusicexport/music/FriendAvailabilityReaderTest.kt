@@ -22,10 +22,11 @@ class FriendAvailabilityReaderTest {
     }
     private class Fixture(val scope: CoroutineScope,initial: MusicAccess) {
         val api=Api();var now=1000L;val cache=FriendAvailabilityCache({now})
-        var current: MusicAccess?=initial;var changed=0;var busy=false
+        var current: MusicAccess?=initial;var changed=0;var busy=false;var checks=0
         val results=mutableListOf<Pair<Long,FriendAudioAccess>>()
         val reader=FriendAvailabilityReader(scope,api,cache,
             checked={before->
+                checks++
                 val after=current?:throw MusicFailure(MusicError.ACCESS)
                 MusicReadIdentity(before).require(after)
                 after
@@ -74,7 +75,7 @@ class FriendAvailabilityReaderTest {
     @Test fun verifiedRenewalContinuesButBusyAndHiddenCardsNeverStartNewProbes()=runTest {
         val f=Fixture(backgroundScope,access);val release=CompletableDeferred<Unit>()
         f.busy=true;f.reader.visible(listOf(34));f.reader.setActive(true);runCurrent()
-        assertTrue(f.api.calls.isEmpty())
+        assertTrue(f.api.calls.isEmpty());assertEquals(0,f.checks)
         f.busy=false;f.api.probe={release.await()};advanceTimeBy(151);runCurrent()
         assertEquals(listOf(34L),f.api.calls)
         f.current=MusicAccess("b".repeat(64),"CI",accountId=12,readSessionId=access.readSessionId)

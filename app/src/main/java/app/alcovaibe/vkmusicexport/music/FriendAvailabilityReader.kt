@@ -60,7 +60,7 @@ internal class FriendAvailabilityReader(
                 repeat(2) {launch {
                     while(isActive&&!halted) {
                         // Pausing the coroutine cancels the current HTTP Call through the existing transport.
-                        while(blocked()){guard();delay(150)}
+                        while(blocked())delay(150)
                         guard()
                         val id=visible.firstOrNull{it !in tried&&it !in inFlight}?:break
                         val cached=cache.get(id)
