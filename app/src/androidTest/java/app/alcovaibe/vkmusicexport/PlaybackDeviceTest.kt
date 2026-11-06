@@ -358,7 +358,16 @@ class PlaybackDeviceTest {
         try{ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==2}}
         catch(t: Throwable) {
             val state=PlaybackRuntime.state.value
-            throw AssertionError("Resume state: index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, error=${state.error}",t)
+            var playerDetails="no service"
+            ui.runOnUiThread {
+                playerDetails=runCatching {
+                    val service=checkNotNull(PlaybackRuntime.service)
+                    val field=service.javaClass.getDeclaredField("player").apply{isAccessible=true}
+                    val player=field.get(service) as ExoPlayer
+                    "state=${player.playbackState}, suppression=${player.playbackSuppressionReason}, duration=${player.duration}, buffered=${player.bufferedPosition}, loading=${player.isLoading}, repeat=${player.repeatMode}, shuffle=${player.shuffleModeEnabled}, tracks=${player.mediaItemCount}, playerError=${player.playerError?.errorCode}"
+                }.getOrElse{"unavailable: ${it.javaClass.simpleName}"}
+            }
+            throw AssertionError("Resume state: index=${state.index}, playing=${state.playing}, ready=${state.playWhenReady}, buffering=${state.buffering}, position=${state.positionMs}, error=${state.error}; player: $playerDetails; savedOrder=${saved.order}, currentOrder=${state.order}",t)
         }
         assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
         assertEquals(saved.order,PlaybackRuntime.state.value.order)
