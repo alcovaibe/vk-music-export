@@ -65,6 +65,19 @@ PLAYBACK_HISTORY_TESTS = {
 }
 
 
+SOURCE_READ_TESTS = (
+    'ownPlaylistOpensAndReopensWithoutGlobalCatalogOrRepeatedPages',
+    'expiredOwnPlaylistQueuesOnlyItsPagesWithoutReloadingAnyCatalog',
+    'friendSingleTrackPreemptsAnIncompleteReadAndPreservesTheDisplayedOccurrence',
+    'friendPlaylistSelectedAndBulkQueuesReuseTheirSnapshotWithoutCatalogReads',
+    'expiredFriendBulkSourceUpdatesItsCountWithoutRecheckingOtherSources',
+    'newLoginAndLogoutDuringOwnerProofCannotReplaceTheQueue',
+    'cancellationOfABulkReadNeverCommitsItsPartialQueue',
+    'passiveRefreshReusesMetadataExplicitRefreshFetchesAndKeepsOwnLibraryCache',
+    'inaccessibleFreshProfileCannotExposeCachedFriendMusic',
+)
+
+
 def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
@@ -104,6 +117,9 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
         for method in methods:
             if (f'app.alcovaibe.vkmusicexport.{suite}', method) not in executed:
                 raise ValueError(f'Required playback history test did not execute: {suite}.{method}')
+    for method in SOURCE_READ_TESTS:
+        if ('app.alcovaibe.vkmusicexport.SourceReadDeviceTest', method) not in executed:
+            raise ValueError(f'Required source read test did not execute: {method}')
     if not any(name == 'app.alcovaibe.vkmusicexport.InterfaceTest' for name, _ in executed):
         raise ValueError('Required interface test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest' for name, _ in executed) < 9:

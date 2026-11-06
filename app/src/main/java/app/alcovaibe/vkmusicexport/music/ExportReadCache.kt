@@ -8,7 +8,7 @@ internal class ExportReadCache(private val clock:()->Long,
         val kind: PlaylistKind,val originalOwner: Long?,val originalId: Long?,val accessKey: String?,
         val following: Boolean?,val deleted: Boolean,val conflict: Boolean)
     private data class Page(val value: NativePage,val stamp: Stamp?,val at: Long)
-    private data class Catalog(val value: NativeCatalog,val at: Long)
+    private data class Catalog(val value: NativeCatalog,val at: Long,val owner: Long)
     private var epoch=0L
     private var scope: Lease?=null
     private var catalog: Catalog?=null
@@ -25,6 +25,8 @@ internal class ExportReadCache(private val clock:()->Long,
         return Lease(owner,session,epoch).also{scope=it}
     }
     @Synchronized fun lease(owner: Long,session: String)=scope?.takeIf{it.owner==owner&&it.session==session}
+    @Synchronized fun acquire(owner: Long,session: String): Lease? =
+        if(scope==null)begin(owner,session)else lease(owner,session)
     @Synchronized fun invalidateCatalog(lease: Lease?) {
         if(!current(lease))return
         catalog=null
@@ -34,7 +36,12 @@ internal class ExportReadCache(private val clock:()->Long,
             if(entry.value.stamp!=null){positions-=entry.value.value.tracks.size;iterator.remove()}
         }
     }
-    @Synchronized fun rememberCatalog(lease: Lease?,value: NativeCatalog) {
+    @Synchronized fun restartCatalog(lease: Lease?): Lease? {
+        if(!current(lease))return null
+        invalidateCatalog(lease)
+        return lease!!.copy(epoch=++epoch).also{scope=it}
+    }
+    @Synchronized fun rememberCatalog(lease: Lease?,value: NativeCatalog,owner: Long=lease?.owner?:0) {
         if(!current(lease))return
         // Missing entries in a partial catalog are not evidence of deletion.
         val known=value.lists.associateBy{it.key}
@@ -46,13 +53,13 @@ internal class ExportReadCache(private val clock:()->Long,
                 positions-=entry.value.value.tracks.size;iterator.remove()
             }
         }
-        catalog=if(value.lists.size<=20_000)Catalog(value.copy(lists=value.lists.toList()),clock())else null
+        catalog=if(value.lists.size<=20_000)Catalog(value.copy(lists=value.lists.toList()),clock(),owner)else null
     }
-    @Synchronized fun catalog(lease: Lease?,kind: PlaylistKind?): NativeCatalog? {
+    @Synchronized fun catalog(lease: Lease?,kind: PlaylistKind?,owner: Long=lease?.owner?:0): NativeCatalog? {
         if(!current(lease))return null
-        return catalog?.takeIf{fresh(it.at)&&it.value.completeFor(kind)}?.value
+        return catalog?.takeIf{it.owner==owner&&fresh(it.at)&&it.value.completeFor(kind)}?.value
     }
-    @Synchronized fun rememberLibrary(lease: Lease?,page: NativePage)=remember(lease,"library",page,null)
+    @Synchronized fun rememberLibrary(lease: Lease?,page: NativePage,owner: Long=lease?.owner?:0)=remember(lease,"library:$owner",page,null)
     @Synchronized fun rememberPlaylist(lease: Lease?,list: NativePlaylist,page: NativePage) {
         if(page.count!=list.count){
             if(current(lease)) {catalog=null;remove(list.key)}
@@ -60,7 +67,18 @@ internal class ExportReadCache(private val clock:()->Long,
         }
         remember(lease,list.key,page,stamp(list))
     }
-    @Synchronized fun library(lease: Lease?)=read(lease,"library",null)
+    @Synchronized fun library(lease: Lease?,owner: Long=lease?.owner?:0)=read(lease,"library:$owner",null)
+    /** A complete page may observe a newer count without renewing the age of the entire catalog. */
+    @Synchronized fun observePlaylist(lease: Lease?,list: NativePlaylist,page: NativePage): NativePlaylist {
+        val observed=list.withCount(page.count)
+        if(!current(lease)||page.count<0||page.tracks.size!=page.count)return observed
+        catalog?.let{before->
+            if(before.value.lists.any{it.key==list.key&&stamp(it)==stamp(list)})
+                catalog=before.copy(value=before.value.copy(lists=before.value.lists.map{if(it.key==list.key)observed else it}))
+        }
+        rememberPlaylist(lease,observed,page)
+        return observed
+    }
     @Synchronized fun playlist(lease: Lease?,list: NativePlaylist)=read(lease,list.key,stamp(list))
     private fun remove(key: String){pages.remove(key)?.let{positions-=it.value.tracks.size}}
     private fun remember(lease: Lease?,key: String,value: NativePage,stamp: Stamp?) {

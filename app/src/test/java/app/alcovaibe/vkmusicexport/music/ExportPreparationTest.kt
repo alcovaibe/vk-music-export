@@ -99,4 +99,15 @@ class ExportPreparationTest {
         catch(e: MusicFailure){assertEquals(MusicError.ACCOUNT_CHANGED,e.code)}
         assertEquals(lease,cache.lease(12,access.readSessionId));assertEquals(0,api.libraryCalls)
     }
+    @Test fun selectedSourceCountChangesBecomeTheObservedPageWithoutAFullCatalogRead()=runBlocking {
+        val api=Api();val cache=ExportReadCache({0});val source=list(9,3)
+        api.contents[source.key]=tracks(4)
+        val prepared=ExportPreparation(api,cache).plan(access,12,selected=source)
+        val observed=checkNotNull(prepared.selected)
+        assertEquals(4,prepared.tasks.size);assertEquals(4,observed.list.count)
+        assertEquals(api.contents[source.key],observed.page.tracks)
+        assertEquals(0,api.catalogCalls);assertEquals(mapOf(source.key to 1),api.playlistCalls)
+        val again=ExportPreparation(api,cache).plan(access,12,selected=observed.list)
+        assertEquals(prepared.tasks,again.tasks);assertEquals(1,again.reusedSources)
+    }
 }

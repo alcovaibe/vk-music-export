@@ -221,7 +221,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,style=MaterialTheme.typography.bodySmall)
             val metadataErrors=page?.tracks?.count{it.metadataError!=null}?:0
             if(metadataErrors>0)Text("Неполные описания записей: $metadataErrors. Они отмечены в списке; остальные треки доступны.",style=MaterialTheme.typography.bodySmall)
-            if(state.preparing) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Проверяем актуальный список перед скачиванием…",style=MaterialTheme.typography.bodySmall)}
+            if(state.preparing) {LinearProgressIndicator(Modifier.fillMaxWidth());Text("Готовим выбранные записи к скачиванию…",style=MaterialTheme.typography.bodySmall)}
         }
     }
     problem?.let{item("friend_tracks_problem"){FriendProblemCard(it,{state.playlist?.let(controller::playlist)?:controller.refresh()})}}
@@ -239,7 +239,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     itemsIndexed(matching,key={_,row->"friend_track_${row.index+1}_${row.value.id}"}){displayIndex,entry->
         val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)?.task(track)
         FriendTrackRow(track,position,state.selecting,position in state.selection,{controller.toggle(position)},preview(track),saved[track.id],
-            ready,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(displayIndex)},playable=track.metadataError==null&&!track.restricted&&track.duration>0)
+            enabled&&!state.preparing,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(displayIndex)},playable=track.metadataError==null&&!track.restricted&&track.duration>0)
     }
 }
 @Composable

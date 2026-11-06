@@ -11,18 +11,20 @@ import kotlinx.coroutines.sync.withLock
 /** Read-only remote profiles. File publication belongs to the existing persisted download job. */
 internal class FriendMusicController(private val application: Application,private val api: MusicApi,private val scope: CoroutineScope,
     private val onDownloads: ()->Unit={},private val queueStart: suspend()->Unit={AudioExportRuntime.start(application)},
-    private val blocked: ()->Boolean={false}) {
+    clock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val blocked: ()->Boolean={false}) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application)else null
     private val mutable=MutableStateFlow(FriendMusicState());val state=mutable.asStateFlow()
     private var work: Job?=null;private var previewWork: Job?=null;private var generation=0;private var lease: MusicAccess?=null
     private val availabilityCache=FriendAvailabilityCache()
+    private val exportReads=ExportReadCache(clock)
+    private val sourceReads=MusicSourceReader(api,exportReads)
     private var visibleFriendIds=emptyList<Long>()
     private var previewWake: Channel<Unit>?=null
     fun reset(){
         generation++;work?.cancel();previewWork?.cancel();previewWake?.close();previewWake=null
         previewWork=null;work=null;lease=null;visibleFriendIds=emptyList()
-        availabilityCache.clear();mutable.value=FriendMusicState()
+        availabilityCache.clear();exportReads.clear();mutable.value=FriendMusicState()
     }
     fun pauseRead(){generation++;work?.cancel();work=null;mutable.update{it.copy(busy=false,preparing=false,selecting=false,selection=emptySet())}}
     fun back() {
@@ -41,7 +43,7 @@ internal class FriendMusicController(private val application: Application,privat
     fun tab(value: FriendMusicTab){mutable.update{it.copy(tab=value,playlist=null,playlistTracks=null,playlistComplete=false,playlistProblem=null,selecting=false,selection=emptySet(),musicQuery="",message=null)}}
     fun selectMode(){mutable.update{it.copy(selecting=!it.selecting,selection=emptySet())}}
     fun toggle(position: Int){mutable.update{if(position in 1..(it.page?.tracks?.size?:0))it.copy(selecting=true,selection=if(position in it.selection)it.selection-position else it.selection+position)else it}}
-    fun refresh(){state.value.user?.let{open(it)}?:loadFriends(forceStatuses=true)}
+    fun refresh(){state.value.user?.let{open(it,force=true)}?:loadFriends(forceStatuses=true)}
     private suspend fun checked(initial: MusicAccess): MusicAccess {
         currentCoroutineContext().ensureActive()
         return (sessions?.continueRead(initial)?:withContext(Dispatchers.IO){vault.read()?:throw MusicFailure(MusicError.ACCESS)}.also{
@@ -62,7 +64,7 @@ internal class FriendMusicController(private val application: Application,privat
              catch(e: CancellationException){throw e}
              catch(e: MusicReadChanged){if(g==generation){
                  previewWork?.cancel();previewWake?.close();previewWake=null
-                 availabilityCache.clear();lease=null
+                 availabilityCache.clear();exportReads.clear();lease=null
                  mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))
              }}
              catch(e: Exception){if(g==generation) {
@@ -196,22 +198,19 @@ internal class FriendMusicController(private val application: Application,privat
         wake.trySend(Unit)
     }
 
-    private suspend fun tracks(fetch:suspend(Int)->NativePage,guard:suspend()->MusicAccess,playlist: Boolean): NativePage {
-        val rows=mutableListOf<NativeTrack>()
-        return MusicPagination.tracks({offset->
-            val page=fetch(offset);guard();rows.addAll(page.tracks)
-            mutable.update{if(playlist)it.copy(playlistTracks=NativePage(rows.toList(),page.count))else it.copy(tracks=NativePage(rows.toList(),page.count))}
-            page
-        })
-    }
-    fun open(user: MusicFriend) {
+    fun open(user: MusicFriend,force: Boolean=false) {
         mutable.update{it.copy(user=user,tab=FriendMusicTab.TRACKS,tracks=null,tracksComplete=false,catalog=null,playlist=null,playlistTracks=null,
             playlistComplete=false,problems=emptyMap(),playlistProblem=null,selecting=false,selection=emptySet(),musicQuery="")}
         previewWake?.trySend(Unit)
-        run {_,guard->
+        run {initial,guard->
+            val viewer=initial.accountId?:api.accountOwner(guard())
+            guard();mutable.update{it.copy(viewerAccount=viewer)}
+            if(force)exportReads.begin(viewer,initial.readSessionId)
             val fresh=api.friendProfile(guard(),user.id);guard();mutable.update{it.copy(user=fresh)}
+            if(!fresh.accessible)exportReads.clear()
             try {
-                val page=tracks({offset->api.libraryPage(guard(),user.id,offset)},guard,false)
+                musicCheck(fresh.accessible,MusicError.DENIED)
+                val page=sourceReads.library(guard(),viewer,user.id,guard={guard();Unit},partial={part->mutable.update{it.copy(tracks=part)}})
                 guard();availabilityCache.put(user.id,FriendAudioAccess.AVAILABLE)
                 mutable.update{it.copy(tracks=page,tracksComplete=true,friendAccess=it.friendAccess+(user.id to FriendAudioAccess.AVAILABLE))}
             }catch(e: CancellationException){throw e}catch(e: MusicReadChanged){throw e}catch(e: Exception){
@@ -222,7 +221,8 @@ internal class FriendMusicController(private val application: Application,privat
                     friendAccess=if(denied)it.friendAccess+(user.id to FriendAudioAccess.DENIED)else it.friendAccess)}
             }
             try {
-                val catalog=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false,partial={part->mutable.update{it.copy(catalog=part)}})
+                musicCheck(fresh.accessible,MusicError.DENIED)
+                val catalog=sourceReads.catalog(guard(),viewer,user.id,personal=false,guard={guard();Unit},partial={part->mutable.update{it.copy(catalog=part)}})
                 guard();mutable.update{it.copy(catalog=catalog)}
                 val issue=if(!catalog.complete)MusicError.INCOMPLETE else if(catalog.lists.any{it.kind==PlaylistKind.UNKNOWN})MusicError.COLLECTION_TYPE else null
                 if(issue!=null)mutable.update{it.copy(problems=it.problems+listOf(FriendMusicTab.PLAYLISTS,FriendMusicTab.ALBUMS).associateWith{FriendMusicProblem(issue)})}
@@ -233,34 +233,40 @@ internal class FriendMusicController(private val application: Application,privat
         if(list.kind==PlaylistKind.UNKNOWN)return
         if(state.value.catalog?.lists?.none{it.key==list.key}!=false)return
         mutable.update{it.copy(playlist=list,playlistTracks=null,playlistComplete=false,playlistProblem=null,selection=emptySet(),selecting=false,musicQuery="")}
-        run {_,guard->
-            val page=tracks({offset->api.playlistPage(guard(),list,offset)},guard,true)
-            guard();mutable.update{it.copy(playlistTracks=page,playlistComplete=true)}
+        run {initial,guard->
+            val viewer=initial.accountId?:api.accountOwner(guard())
+            val read=sourceReads.playlist(guard(),viewer,list,guard={guard();Unit},partial={part->mutable.update{it.copy(playlistTracks=part)}})
+            guard();mutable.update{it.copy(playlist=read.list,playlistTracks=read.page,playlistComplete=true,
+                catalog=it.catalog?.let{catalog->catalog.copy(lists=catalog.lists.map{row->if(row.key==read.list.key)read.list else row})})}
         }
     }
     fun download(positions: Set<Int>?=null) {
-        val before=state.value;val user=before.user?:return;val page=before.page?:return
-        if(!before.complete||before.busy||positions?.isEmpty()==true)return
-        val selected=positions?:page.tracks.indices.map{it+1}.toSet()
-        if(selected.isEmpty())return
+        val before=state.value
+        if(before.user==null||before.page==null||before.preparing||positions?.isEmpty()==true)return
+        if(positions==null&&(!before.complete||before.busy))return
         run(preparing=true){_,guard->withContext(Dispatchers.IO){
+            AudioExportRuntime.initialize(application)
             val queue=AudioExportRuntime.state.value
             musicCheck(!blocked()&&!queue.unfinished&&queue.status !in setOf("RUNNING","QUEUED"),MusicError.BUSY)
             val proofAccess=guard();val viewer=api.accountOwner(proofAccess);guard()
-            musicCheck(proofAccess.accountId==null||proofAccess.accountId==viewer,MusicError.ACCOUNT_CHANGED)
-            mutable.update{it.copy(viewerAccount=viewer)}
-            val list=before.playlist?.let{old->
-                val current=MusicCatalog.load(api,guard(),user.id,guard={guard();Unit},personal=false)
-                musicCheck(current.complete,MusicError.INCOMPLETE)
-                current.lists.singleOrNull{it.key==old.key}?:throw MusicFailure(MusicError.UNAVAILABLE)
-            }
-            val current=MusicPagination.tracks({offset->if(list==null)api.libraryPage(guard(),user.id,offset)else api.playlistPage(guard(),list,offset)})
-            musicCheck(current.count==page.count&&selected.all{it>0&&it<=page.tracks.size&&current.tracks.getOrNull(it-1)?.id==page.tracks[it-1].id},MusicError.LIBRARY_CHANGED)
-            val tasks=FriendMusicExport.tasks(current,user,viewer,list).filter{it.position in selected}
+            val prepared=FriendDownloadPreparation(api,exportReads).plan(before,proofAccess,viewer,positions,guard={guard();Unit})
             guard();musicCheck(!blocked(),MusicError.BUSY)
-            AudioExportRuntime.replace(application,tasks,account=viewer)
+            if(prepared.tasks.isEmpty()) {
+                withContext(Dispatchers.Main){publishPrepared(before,prepared,viewer,false)}
+                return@withContext
+            }
+            AudioExportRuntime.replace(application,prepared.tasks,account=viewer)
             guard();queueStart()
-            withContext(Dispatchers.Main){mutable.update{it.copy(selecting=false,selection=emptySet(),message="Очередь готова. Скачивание продолжается в фоне.")};onDownloads()}
+            withContext(Dispatchers.Main){publishPrepared(before,prepared,viewer,true);onDownloads()}
         }}
+    }
+    private fun publishPrepared(before: FriendMusicState,prepared: PreparedFriendDownload,viewer: Long,queued: Boolean) {
+        mutable.update{state->
+            val updated=prepared.page?.let{page->if(before.playlist==null)state.copy(tracks=page,tracksComplete=true)
+                else state.copy(playlist=prepared.list,playlistTracks=page,playlistComplete=true,
+                    catalog=state.catalog?.let{catalog->catalog.copy(lists=catalog.lists.map{row->prepared.list?.takeIf{it.key==row.key}?:row})})}?:state
+            updated.copy(viewerAccount=viewer,selecting=false,selection=emptySet(),message=if(queued)
+                "Очередь подготовлена по полученным данным. Скачивание продолжается в фоне." else "Доступных треков для скачивания нет.")
+        }
     }
 }

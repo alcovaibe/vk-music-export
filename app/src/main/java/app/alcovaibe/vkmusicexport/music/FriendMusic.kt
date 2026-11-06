@@ -80,20 +80,37 @@ internal object FriendMusicProtocol {
 
 /** Source account remains the viewer; the friend and collection identify a separate source. */
 internal object FriendMusicExport {
-    fun tasks(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<AudioExportTask> =
-        references(page,user,viewer,list).mapIndexed{i,reference->reference.task(page.tracks[i])}
-    fun references(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<PlaybackExport> {
+    private data class Origin(val folders: List<String>,val source: ExportSource)
+    private fun origin(user: MusicFriend,viewer: Long,list: NativePlaylist?): Origin {
         musicCheck(viewer>0&&user.id>0,MusicError.ACCOUNT_CHANGED)
         musicCheck(list==null||list.kind!=PlaylistKind.UNKNOWN,MusicError.COLLECTION_TYPE)
         val source=ExportSource(viewer,if(list==null)"friend_library" else "friend_collection",
             if(list==null)user.id.toString() else "${user.id}:${list.key}")
         val folder=ExportLayout.component(user.name,120)+" [${user.id}]"
         val folders=listOf("Друзья",folder)+(list?.let{listOf(ExportLayout.component(
-            (when(it.kind){PlaylistKind.ALBUM->"Альбом — ";PlaylistKind.UNKNOWN->"Подборка — ";else->"Плейлист — "})+it.title,120)+" [${it.owner}_${it.id}]")}?:emptyList())
-        val occurrences=mutableMapOf<String,Int>()
+            (if(it.kind==PlaylistKind.ALBUM)"Альбом — " else "Плейлист — ")+it.title,120)+" [${it.owner}_${it.id}]")}?:emptyList())
+        return Origin(folders,source)
+    }
+    fun selected(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?,positions: Set<Int>): List<AudioExportTask> {
+        musicCheck(positions.isNotEmpty()&&positions.all{it in 1..page.tracks.size},MusicError.LIBRARY_CHANGED)
+        val origin=origin(user,viewer,list)
+        val wanted=positions.mapTo(hashSetOf()){page.tracks[it-1].id}
+        val occurrences=mutableMapOf<String,Int>();val result=mutableListOf<AudioExportTask>()
+        for(index in 0 until positions.max()) {
+            val track=page.tracks[index]
+            if(track.id !in wanted)continue
+            val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
+            if(index+1 in positions)result.add(ExportLayout.task(track,origin.folders,index+1,origin.source,occurrence))
+        }
+        return result
+    }
+    fun tasks(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<AudioExportTask> =
+        references(page,user,viewer,list).mapIndexed{i,reference->reference.task(page.tracks[i])}
+    fun references(page: NativePage,user: MusicFriend,viewer: Long,list: NativePlaylist?=null): List<PlaybackExport> {
+        val origin=origin(user,viewer,list);val occurrences=mutableMapOf<String,Int>()
         return page.tracks.mapIndexed{index,track->
             val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
-            PlaybackExport(folders,index+1,source,occurrence)
+            PlaybackExport(origin.folders,index+1,origin.source,occurrence)
         }
     }
 }

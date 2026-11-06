@@ -59,6 +59,7 @@ internal class NativePlaylist(val owner: Long, val id: Long, val title: String, 
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
     val kind: PlaylistKind=when(nativeType){0->PlaylistKind.PLAYLIST;1->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN},val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null,val typeConflict: Boolean=false) {
     fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo,typeConflict)
+    fun withCount(value: Int)=if(value==count)this else NativePlaylist(owner,id,title,value,accessKey,originalOwner,originalId,nativeType,kind,following,deleted,photo,typeConflict)
     fun reconciled(other: NativePlaylist): NativePlaylist {
         val conflict=typeConflict||other.typeConflict||(kind!=PlaylistKind.UNKNOWN&&other.kind!=PlaylistKind.UNKNOWN&&kind!=other.kind)
         val resolved=if(conflict)PlaylistKind.UNKNOWN else if(kind==PlaylistKind.UNKNOWN)other.kind else kind
