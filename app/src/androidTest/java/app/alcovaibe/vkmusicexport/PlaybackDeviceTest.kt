@@ -356,8 +356,9 @@ class PlaybackDeviceTest {
             ui.waitUntil(20_000){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&PlaybackRuntime.state.value.playing}
             ui.runOnUiThread {
                 PlaybackRuntime.toggle(app)
-                if(!PlaybackRuntime.state.value.shuffle)PlaybackRuntime.shuffle()
+                if(PlaybackRuntime.state.value.shuffle)PlaybackRuntime.shuffle()
                 player().setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order.toIntArray(),0L))
+                PlaybackRuntime.shuffle()
                 PlaybackRuntime.seek(321)
             }
             ui.waitUntil(10_000){!PlaybackRuntime.state.value.playWhenReady&&PlaybackRuntime.state.value.positionMs==321L&&PlaybackRuntime.state.value.order==order}
