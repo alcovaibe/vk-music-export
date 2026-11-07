@@ -1,136 +1,124 @@
-name: "Bug report / Сообщить об ошибке"
-description: "Report a problem with VK Music Export / Сообщить о проблеме VK Music Export"
-title: "[Bug] "
+name: "Ошибка или тестирование / Bug or test report"
+description: "Сообщить об ошибке или результатах проверки / Report a bug or test results"
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting a bug. Please provide as much information as possible.
-        Спасибо за сообщение об ошибке. Пожалуйста, укажите как можно больше информации.
-
-        **Do not include VK tokens, cookies, passwords, signed music links, signing keys, account IDs or personal data.**
-        **Не публикуйте токены ВК, cookie, пароли, подписанные ссылки на музыку, ключи подписи, ID аккаунтов и личные данные.**
-        Review all screenshots and exported diagnostics before attaching them.
-        Просмотрите скриншоты и экспортированную диагностику перед отправкой.
-
+        Опишите ошибку или проверенные сценарии на устройстве любой поддерживаемой версии Android.
+        Report a bug or actual test results on any supported Android version.
+        Не публикуйте токены ВК, cookie, пароли, ID аккаунтов, личные данные и ссылки на музыку. Проверьте вложения перед отправкой.
+        Do not post VK tokens, cookies, passwords, account IDs, personal data or music URLs. Review attachments before submitting.
+        Об уязвимостях сообщайте через Security → Report a vulnerability.
+        Report vulnerabilities through Security → Report a vulnerability.
+  - type: dropdown
+    id: report_type
+    attributes:
+      label: "Тип сообщения / Report type"
+      options:
+        - "Ошибка / Bug"
+        - "Результаты тестирования / Test results"
+    validations:
+      required: true
   - type: input
     id: app_version
     attributes:
-      label: "App version / Версия приложения"
-      description: "Version, versionCode and, for a test build, commit SHA / Версия, номер сборки и SHA коммита для тестовой сборки"
-      placeholder: "0.11.9 / 1311 / commit (if test build)"
+      label: "Версия и номер сборки / Version and versionCode"
+      description: "Для тестовой сборки укажите также SHA или запуск Actions, если известен. / Include commit or Actions run for test builds if known."
+      placeholder: "0.13.0 / versionCode"
     validations:
       required: true
-
   - type: dropdown
     id: build_source
     attributes:
-      label: "APK source / Источник APK"
+      label: "Источник APK / APK source"
       options:
-        - "GitHub Releases (stable) / GitHub Releases (стабильная)"
-        - "GitHub Actions (test build) / GitHub Actions (тестовая сборка)"
-        - "Other / Другое"
-        - "Unknown / Не знаю"
+        - "GitHub Releases — stable"
+        - "GitHub Releases — RC / pre-release"
+        - "GitHub Actions — debug / test"
+        - "Собственная сборка / Self-built"
+        - "Другое или неизвестно / Other or unknown"
     validations:
       required: true
-
   - type: input
-    id: manufacturer
+    id: device
     attributes:
-      label: "Device manufacturer / Производитель устройства"
-      description: "Example / Пример: Samsung, Xiaomi, Google"
-      placeholder: "Samsung"
+      label: "Производитель и модель / Manufacturer and model"
+      placeholder: "Samsung Galaxy S25"
     validations:
       required: true
-
   - type: input
-    id: device_model
+    id: android
     attributes:
-      label: "Device model / Модель устройства"
-      description: "Example / Пример: Galaxy S25"
-      placeholder: "Galaxy S25"
+      label: "Версия Android / Android version"
+      description: "API, прошивку и патч безопасности можно указать дополнительно. / API, firmware and security patch are optional."
+      placeholder: "Android 16, API 36, One UI"
     validations:
       required: true
-
-  - type: input
-    id: android_version
-    attributes:
-      label: "Android version / Версия Android"
-      description: "Include API level and firmware if known / Укажите API и прошивку, если знаете"
-      placeholder: "Android 10 (API 29)"
-    validations:
-      required: true
-
   - type: dropdown
     id: component
     attributes:
-      label: "Affected feature / Где возникает ошибка?"
+      label: "Раздел приложения / Feature"
       options:
-        - "Login and account / Авторизация и аккаунт"
-        - "Download and playlists / Скачивание и плейлисты"
-        - "Background transfers and notifications / Фоновые операции и уведомления"
-        - "Duplicates / Поиск дубликатов"
-        - "Playback / Воспроизведение"
-        - "Updates and installation / Обновление и установка"
-        - "Interface or other / Интерфейс или другое"
+        - "Вход и аккаунт / Login and account"
+        - "Библиотека и музыка друзей / Library and friends"
+        - "Скачивание и очередь / Downloads and queue"
+        - "Фоновые операции / Background operations"
+        - "Воспроизведение / Playback"
+        - "Дубликаты и восстановление / Duplicates and recovery"
+        - "Обновление и установка / Updates and installation"
+        - "Интерфейс / Interface"
+        - "Несколько разделов или другое / Multiple features or other"
     validations:
       required: true
-
   - type: textarea
-    id: problem
+    id: summary
     attributes:
-      label: "What happened? / Что произошло?"
-      description: "Include the error message without secrets / Укажите сообщение об ошибке без секретов"
-      placeholder: "Describe what happened / Опишите проблему"
+      label: "Описание и результат / Description and result"
+      description: "Что произошло и что ожидалось? Для успешной проверки напишите, что именно работает. / Describe actual and expected behavior, or what passed."
     validations:
       required: true
-
-  - type: textarea
-    id: expected
-    attributes:
-      label: "Expected behavior / Ожидаемое поведение"
-      description: "What did you expect? / Какой результат ожидался?"
-      placeholder: "Describe the expected result / Опишите ожидаемый результат"
-    validations:
-      required: true
-
   - type: textarea
     id: steps
     attributes:
-      label: "Steps to reproduce / Шаги для воспроизведения"
-      description: "List exact actions, including backgrounding, screen lock or network changes if relevant / Перечислите точные действия, в том числе сворачивание, блокировку или смену сети"
-      placeholder: |
-        1. ...
-        2. ...
-        3. ...
+      label: "Шаги и условия / Steps and conditions"
+      description: "Для ошибки перечислите шаги воспроизведения. Для тестирования — выполненные действия, включая фон, блокировку экрана и смену сети. / List reproduction steps or tested actions, including backgrounding, screen lock and network changes."
     validations:
       required: true
-
   - type: dropdown
     id: frequency
     attributes:
-      label: "How often does it happen? / Как часто это происходит?"
+      label: "Повторяемость ошибки / Bug frequency"
       options:
-        - "Every time / Каждый раз"
-        - "Sometimes / Иногда"
-        - "Only once / Только один раз"
-        - "I don't know / Не знаю"
-    validations:
-      required: true
-
+        - "Не относится — успешная проверка / Not applicable — passed"
+        - "Каждый раз / Every time"
+        - "Иногда / Sometimes"
+        - "Один раз / Once"
+        - "Не знаю / Unknown"
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: "Результаты тестирования — необязательно / Test results — optional"
+      description: "Для отчёта тестирования отметьте ОК / СБОЙ / НЕ ПРОВЕРЯЛ. Непроверенные сценарии не считаются успешными. / Mark PASS / FAIL / NOT TESTED."
+      placeholder: |
+        Установка и запуск / Install and launch:
+        Вход ВК / VK login:
+        Библиотека, плейлисты и друзья / Library, playlists and friends:
+        Скачивание MP3/M4A и M3U8 / Downloads:
+        Плеер и экран блокировки / Playback and lock screen:
+        Фоновые операции и уведомления / Background and notifications:
+        Пауза и продолжение / Pause and resume:
+        Дубликаты / Duplicates:
+        Пропадание и восстановление сети / Network loss and recovery:
+        Перезапуск и сохранность данных / Restart and data:
   - type: textarea
     id: attachments
     attributes:
-      label: "Screenshots, video, or logs / Скриншоты, видео или логи"
-      description: "Optional. Remove VK tokens, signed URLs, names, IDs and other private information before attaching anything. / Необязательно. Удалите токены ВК, подписанные URL, имена, ID и другие личные данные."
-      placeholder: "Optional / Необязательно"
-    validations:
-      required: false
-
+      label: "Скриншоты, видео и очищенные логи / Screenshots, video and sanitized logs"
+      description: "Необязательно. Удалите личные данные и секреты. / Optional. Remove personal data and secrets."
   - type: checkboxes
     id: confirmation
     attributes:
-      label: "Confirmation / Подтверждение"
+      label: "Подтверждение / Confirmation"
       options:
-        - label: "I have not included passwords, VK tokens, cookies, personal data, or other secrets. / Я не публикую пароли, токены ВК, cookie, личные данные и другие секреты."
+        - label: "Описаны реальные результаты; секреты и личные данные удалены. / These are actual results; secrets and personal data have been removed."
           required: true

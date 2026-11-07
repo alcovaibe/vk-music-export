@@ -20,11 +20,10 @@ concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  # A generated update-channel JSON commit must not rerun the Android emulator
-  # matrix after the signed APK was already verified. All PRs, manual dispatches,
-  # release markers and changes to code/workflows still require full CI.
+  # Keep required check names present for Markdown-only pushes and PRs.
+  # Manual runs, release requests and mixed/code changes retain full CI.
   changes:
-    name: Detect generated update-channel-only push
+    name: Classify Android CI changes
     runs-on: ubuntu-latest
     outputs:
       run_android: ${{ steps.scope.outputs.run_android }}
@@ -45,6 +44,8 @@ jobs:
           PYHEAD
       - name: Validate channel even when Android binaries are unchanged
         run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --schema-only
+      - name: Test CI change classification
+        run: python3 -m unittest discover -s tools -p test_ci_change_scope.py
       - name: Classify changed files, failing open
         id: scope
         run: python3 tools/ci-change-scope.py
@@ -334,6 +335,7 @@ jobs:
 
   channel-delivery:
     needs: changes
+    if: needs.changes.outputs.scope != 'markdown_only'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -468,18 +470,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Preserve the required stable check. On docs-only main pushes it records
-  # the intentional, independently verified skip; on every code/PR run it
-  # succeeds only when all nine Android API jobs succeed.
+  # Report an explicit success for proven documentation-only changes.
+  # Code changes require all Android checks.
   interface:
     needs: [changes, interface-tests, channel-delivery, updater-tests, r8-playback, sast]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require successful matrix or verified generated-JSON-only change
+      - name: Require successful checks or proven documentation-only change
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           RUN_ANDROID: ${{ needs.changes.outputs.run_android }}
+          CHANGE_SCOPE: ${{ needs.changes.outputs.scope }}
           MATRIX_RESULT: ${{ needs.interface-tests.result }}
           CHANNEL_RESULT: ${{ needs.channel-delivery.result }}
           UPDATER_RESULT: ${{ needs.updater-tests.result }}
@@ -487,7 +489,12 @@ jobs:
           SAST_RESULT: ${{ needs.sast.result }}
         run: |
           test "$CHANGES_RESULT" = success
-          test "$CHANNEL_RESULT" = success
+          if [[ "$CHANGE_SCOPE" == markdown_only ]]; then
+            test "$RUN_ANDROID" = false
+            test "$CHANNEL_RESULT" = skipped
+          else
+            test "$CHANNEL_RESULT" = success
+          fi
           if [[ "$RUN_ANDROID" == true ]]; then
             test "$MATRIX_RESULT" = success
             test "$UPDATER_RESULT" = success
@@ -500,7 +507,7 @@ jobs:
             test "$UPDATER_RESULT" = skipped
             test "$R8_RESULT" = skipped
             test "$SAST_RESULT" = skipped
-            echo 'Generated update-channel JSON only: Android binaries and sources unchanged.'
+            echo "Android checks intentionally skipped: $CHANGE_SCOPE."
           fi
 
   release:
