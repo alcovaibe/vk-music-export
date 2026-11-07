@@ -11,7 +11,17 @@ dump_crash() {
   adb logcat -d -b crash > r8-evidence/crash.log 2>&1 || true
   cat r8-evidence/crash.log
 }
-./gradlew --dependency-verification strict -Pr8PlaybackCheck=true connectedReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace || { dump_crash; exit 1; }
+./gradlew --dependency-verification strict -Pr8PlaybackCheck=true connectedReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace || {
+  dump_crash
+  # Print assertion details even when Gradle fails; never create passing evidence.
+  python3 - "$api" <<'PY'
+import runpy
+import sys
+from pathlib import Path
+runpy.run_path('tools/verify-r8-evidence.py')['verify'](Path('.'), int(sys.argv[1]))
+PY
+  exit 1
+}
 kill "$reader" 2>/dev/null || true
 wait "$reader" 2>/dev/null || true
 trap - EXIT
