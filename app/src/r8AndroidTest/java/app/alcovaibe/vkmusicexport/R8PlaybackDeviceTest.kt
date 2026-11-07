@@ -18,7 +18,7 @@ import java.io.File
 /** Dedicated release source set: no reflection, debug-only hooks, or production signing key. */
 @RunWith(AndroidJUnit4::class)
 class R8PlaybackDeviceTest {
-    @Test fun minifiedOfflinePlaybackPauseStopResumeAndBackgroundProduceMeasuredEvidence()=runBlocking {
+    @Test fun minifiedOfflinePlaybackPauseStopResumeAndBackgroundProduceMeasuredEvidence(): Unit=runBlocking {
         val inst=InstrumentationRegistry.getInstrumentation();val app=inst.targetContext
         assertEquals(0,app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE)
         val scenario=ActivityScenario.launch(MainActivity::class.java)
