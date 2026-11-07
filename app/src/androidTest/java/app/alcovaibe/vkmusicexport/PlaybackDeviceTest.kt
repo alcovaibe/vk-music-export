@@ -56,6 +56,8 @@ class PlaybackDeviceTest {
     private val inst=InstrumentationRegistry.getInstrumentation()
     private val app get()=inst.targetContext
     private fun fixture(block:(List<PlaybackEntry>)->Unit) {
+        val trace=CopyOnWriteArrayList<String>()
+        PlaybackCommandDiagnostics.observer={event->trace.add(event);if(trace.size>256)trace.removeAt(0)}
         val rows=mutableListOf<PublishedAudio>()
         val root=File(app.cacheDir,"player-${UUID.randomUUID()}").apply{mkdirs()}
         ui.runOnUiThread{PlaybackRuntime.stop()}
@@ -77,8 +79,11 @@ class PlaybackDeviceTest {
                 }
             }
             block(rows.map{PlaybackEntry(it.track,"Сохранённая музыка",saved=it)})
+        }catch(t: Throwable) {
+            throw AssertionError("Playback command trace: ${trace.takeLast(100)}",t)
         }finally {
             ui.runOnUiThread{PlaybackRuntime.stop()}
+            PlaybackCommandDiagnostics.observer=null
             ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
             rows.forEach{app.contentResolver.delete(Uri.parse(it.uri),null,null)}
             root.deleteRecursively()

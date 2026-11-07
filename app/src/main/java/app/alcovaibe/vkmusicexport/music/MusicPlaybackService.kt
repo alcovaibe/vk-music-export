@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -23,6 +24,9 @@ import kotlinx.coroutines.flow.*
 /** Foreground media playback is intentionally separate from dataSync/file-maintenance services. */
 @androidx.annotation.OptIn(UnstableApi::class)
 class MusicPlaybackService : MediaSessionService() {
+    private fun trace(event: () -> String) = PlaybackCommandDiagnostics.record {
+        "${SystemClock.elapsedRealtime()}:service=${System.identityHashCode(this)}:queue=$serial:${event()}"
+    }
     private lateinit var player: ExoPlayer
     private var mediaSession: MediaSession?=null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
@@ -62,19 +66,36 @@ class MusicPlaybackService : MediaSessionService() {
                 return source(selected,entries[selected])
             }
         }
-        player=ExoPlayer.Builder(this).setMediaSourceFactory(factory).build().apply {
+        val core=ExoPlayer.Builder(this).setMediaSourceFactory(factory).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),true)
             setHandleAudioBecomingNoisy(true)
             setWakeMode(C.WAKE_MODE_NETWORK)
+        }
+        player=object: ExoPlayer by core {
+            override fun stop() {
+                trace {
+                    val controller=mediaSession?.controllerForCurrentRequest
+                    "stop:caller=${controller?.packageName},uid=${controller?.uid},version=${controller?.controllerVersion},notification=${controller?.let{mediaSession?.isMediaNotificationController(it)}}:state=${core.playbackState},index=${core.currentMediaItemIndex}:"+
+                        Throwable().stackTrace.take(9).joinToString(" > "){"${it.className}.${it.methodName}:${it.lineNumber}"}
+                }
+                core.stop()
+            }
+            override fun prepare(){trace{"prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}"};core.prepare()}
+            override fun seekTo(mediaItemIndex: Int,positionMs: Long){trace{"seek:index=$mediaItemIndex,state=${core.playbackState}"};core.seekTo(mediaItemIndex,positionMs)}
         }
         val activity=PendingIntent.getActivity(this,6701,Intent(this,MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(PlaybackRuntime.OPEN_EXTRA,true),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         mediaSession=MediaSession.Builder(this,player).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
             override fun onConnect(session: MediaSession,controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+                trace{"connect:caller=${controller.packageName},uid=${controller.uid},version=${controller.controllerVersion},notification=${session.isMediaNotificationController(controller)}"}
                 if(!controller.isTrusted&&controller.packageName!=packageName)return MediaSession.ConnectionResult.reject()
                 val commands=MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                     .remove(Player.COMMAND_CHANGE_MEDIA_ITEMS).remove(Player.COMMAND_SET_MEDIA_ITEM).build()
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailablePlayerCommands(commands).build()
+            }
+            override fun onMediaButtonEvent(session: MediaSession,controllerInfo: MediaSession.ControllerInfo,intent: Intent): Boolean {
+                trace { "button:caller=${controllerInfo.packageName},uid=${controllerInfo.uid}:"+buttonDetails(intent) }
+                return false
             }
             override fun onAddMediaItems(session: MediaSession,controller: MediaSession.ControllerInfo,mediaItems: List<MediaItem>): ListenableFuture<List<MediaItem>> =
                 Futures.immediateFuture(emptyList())
@@ -82,6 +103,7 @@ class MusicPlaybackService : MediaSessionService() {
                 resumeFromHistory(isForPlayback)
         }).build().also{addSession(it)}
         player.addListener(object: Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int){trace{"state=$playbackState,index=${player.currentMediaItemIndex},ready=${player.playWhenReady}"}}
             override fun onEvents(player: Player,events: Player.Events){publish(
                 events.contains(Player.EVENT_TIMELINE_CHANGED)||events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED),
                 events.contains(Player.EVENT_POSITION_DISCONTINUITY)||events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)||events.contains(Player.EVENT_IS_PLAYING_CHANGED))}
@@ -122,12 +144,18 @@ class MusicPlaybackService : MediaSessionService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo)=mediaSession
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
+        trace { "intent:action=${intent?.action},id=$startId:"+buttonDetails(intent) }
         super.onStartCommand(intent,flags,startId)
         if(intent?.action==PlaybackRuntime.START) {
             val request=PlaybackRuntime.take(intent.getStringExtra("request"))
             if(request!=null)start(request)else if(entries.isEmpty())stopSelf()
         }
         return START_NOT_STICKY
+    }
+    @Suppress("DEPRECATION")
+    private fun buttonDetails(intent: Intent?): String {
+        val key=intent?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+        return "key=${key?.keyCode},action=${key?.action},eventTime=${key?.eventTime},data=${intent?.data},dismiss=${intent?.getBooleanExtra(androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,false)}"
     }
     private fun installMetadata(id: String,items: List<PlaybackEntry>,session: String?) {
         suppressCheckpoint=true;serial++;queueId=id;queueOrder=emptyList();savedOrder=emptyList();lastSavedOrder=null;lastCursor=null
@@ -290,6 +318,7 @@ class MusicPlaybackService : MediaSessionService() {
     internal fun repeat(){player.repeatMode=when(player.repeatMode){Player.REPEAT_MODE_OFF->Player.REPEAT_MODE_ALL;Player.REPEAT_MODE_ALL->Player.REPEAT_MODE_ONE;else->Player.REPEAT_MODE_OFF};publish()}
     internal fun stopPlayback(){serial++;queueId=null;pendingOrder=null;entries=emptyList();artWork?.cancel();player.stop();player.clearMediaItems();stopSelf()}
     override fun onDestroy() {
+        trace{"destroy"}
         saveCheckpoint(force=true)
         scope.cancel();artWork?.cancel();mediaSession?.release();mediaSession=null;player.release()
         if(PlaybackRuntime.service===this){PlaybackRuntime.service=null;PlaybackRuntime.publish(PlaybackRuntime.state.value.copy(playing=false,buffering=false,playWhenReady=false))}
