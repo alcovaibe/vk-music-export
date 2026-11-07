@@ -9,7 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.music.*
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.*
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,7 +48,7 @@ class R8PlaybackDeviceTest {
             inst.runOnMainSync{PlaybackRuntime.play(app,listOf(entry),0)}
             until{PlaybackRuntime.state.value.playing};assertNull(PlaybackRuntime.state.value.error)
             val memory=Debug.MemoryInfo();Debug.getMemoryInfo(memory)
-            val report=buildJsonObject {
+            val report=JSONObject().apply {
                 put("schema",1);put("api",android.os.Build.VERSION.SDK_INT);put("debuggable",false)
                 put("first_play_ms",firstPlayMs);put("cpu_ms",android.os.Process.getElapsedCpuTime()-cpu)
                 put("pss_kib",memory.totalPss);put("java_heap_bytes",Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())
