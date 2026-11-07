@@ -90,7 +90,14 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override val capabilities=ApiCapabilities(CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,
         CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,
         CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL)
-    override suspend fun searchMusic(access: MusicAccess,query: String,offset: Int)=searchMetadata(access,query,offset)
+    override suspend fun searchMusic(access: MusicAccess,query: String,offset: Int): MetadataMatches {
+        val text=MusicSearchQuery.text(query)
+        musicCheck(offset>=0&&offset<MusicSearchQuery.MAX_RESULTS,MusicError.RESPONSE)
+        val page=NativeProtocol.page(request(access,"audio.search",mapOf("q" to text,
+            "count" to MusicSearchQuery.PAGE_SIZE.toString(),"offset" to offset.toString(),
+            "auto_complete" to "0","search_own" to "0","sort" to "2")))
+        return MetadataMatches(page.tracks,page.count,offset)
+    }
     private val mutationClient=client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
         .authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).build()
     private val previews=object: java.util.LinkedHashMap<String,String>(128,.75f,true) {

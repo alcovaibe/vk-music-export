@@ -3,13 +3,21 @@ package app.alcovaibe.vkmusicexport.music
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
+internal object MusicSearchQuery {
+    const val PAGE_SIZE=100
+    const val MAX_RESULTS=20_000
+    fun text(raw: String): String = raw.trim().also {
+        musicCheck(it.length in 2..300&&it.none{char->Character.isISOControl(char)},MusicError.RESPONSE)
+    }
+}
+
 internal enum class MusicSearchPhase { READY, LOADING, RESULTS, EMPTY, ERROR, DENIED, CHALLENGE, UNAVAILABLE }
 internal data class MusicSearchState(val query: String="",val phase: MusicSearchPhase=MusicSearchPhase.READY,
     val tracks: List<NativeTrack> = emptyList(),val total: Int=0,val nextOffset: Int=0,
     val account: Long=0,val readSessionId: String?=null,val active: Boolean=false,
     val error: MusicError?=null,val capability: CapabilityStatus=CapabilityStatus.UNAVAILABLE,
     val audio: CapabilityStatus=CapabilityStatus.UNAVAILABLE) {
-    val canLoadMore get()=phase==MusicSearchPhase.RESULTS&&nextOffset<total&&nextOffset<ArtworkQuery.MAX_RESULTS
+    val canLoadMore get()=phase==MusicSearchPhase.RESULTS&&nextOffset<total&&nextOffset<MusicSearchQuery.MAX_RESULTS
 }
 /** User search owns its own cancellation/generation; it never takes the file mutation gate. */
 internal class MusicSearchController(private val scope: CoroutineScope,private val api: MusicApi,
@@ -60,9 +68,9 @@ internal class MusicSearchController(private val scope: CoroutineScope,private v
                 val current=checked(initial);active(g)
                 val owner=current.accountId?:api.accountOwner(current)
                 musicCheck(owner>0,MusicError.ACCOUNT_CHANGED)
-                val result=api.searchMusic(current,before.query.trim(),offset)
+                val result=api.searchMusic(current,MusicSearchQuery.text(before.query),offset)
                 checked(initial);active(g)
-                musicCheck(result.offset==offset&&result.tracks.size<=ArtworkQuery.PAGE_SIZE&&
+                musicCheck(result.offset==offset&&result.tracks.size<=MusicSearchQuery.PAGE_SIZE&&
                     result.count>=offset+result.tracks.size&&
                     (result.tracks.isNotEmpty()||result.count<=offset),MusicError.INCOMPLETE)
                 val tracks=if(append)before.tracks+result.tracks else result.tracks

@@ -85,4 +85,14 @@ class MusicSearchControllerTest {
         missing.setActive(true);missing.query("none");runCurrent()
         assertEquals(MusicSearchPhase.UNAVAILABLE,missing.state.value.phase)
     }
+    @Test fun musicSearchHasIndependentLimitsAndDoesNotStopAtArtworkLookupLimit()=runTest {
+        val api=Api()
+        api.search={_,offset->MetadataMatches(List(MusicSearchQuery.PAGE_SIZE){index->song.copy(id="99_${offset+index+1}")},
+            MusicSearchQuery.PAGE_SIZE*2,offset)}
+        val reader=controller(api);reader.setActive(true);reader.query("test");advanceTimeBy(350);runCurrent()
+        assertEquals(100,reader.state.value.tracks.size);assertTrue(reader.state.value.canLoadMore)
+        reader.more();runCurrent()
+        assertEquals(200,reader.state.value.tracks.size)
+        assertEquals(listOf("test" to 0,"test" to 100),api.calls)
+    }
 }

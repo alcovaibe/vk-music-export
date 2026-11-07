@@ -56,6 +56,12 @@ internal fun MusicSearchScreen(state: MusicSearchState,onQuery:(String)->Unit,on
                     onPlay=if(ready)({onPlay(index)})else null,
                     onDownload=if(ready)({onDownload(index)})else null,tag="search_track_${index}")
             }
+            if(state.tracks.isNotEmpty())item("count") {
+                Text("Показано ${state.tracks.size} из ${state.total}",style=MaterialTheme.typography.bodySmall)
+                if(state.nextOffset>=MusicSearchQuery.MAX_RESULTS&&state.nextOffset<state.total)
+                    Text("Достигнут предел просмотра: ${MusicSearchQuery.MAX_RESULTS} результатов.",
+                        style=MaterialTheme.typography.bodySmall)
+            }
             if(state.canLoadMore)item("more") {
                 TextButton(onClick=onMore,modifier=Modifier.testTag("music_search_more")){Text("Загрузить ещё")}
             }
