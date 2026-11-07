@@ -378,7 +378,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                 modifier=Modifier.testTag("library_stale"))
                         if(toolsOpen) {
                             Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
-                            OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
+                            OutlinedButton(enabled=state.probe!=null&&!backgroundCheck&&(!state.busy||state.stage in setOf("catalog_refresh","resume_refresh")),onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
                             OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showDuplicates,
                                 modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
                                 Text("Дубликаты: проверка и результаты")
@@ -459,7 +459,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
         model::cancelDuplicateRemoval,model::skipDuplicate,model::pauseDuplicateCheck,model::dismissDuplicates)
-    if(availability.visible)AvailabilitySheet(availability,model::checkUnavailableTracks,model::cancel,model::dismissAvailability)
+    if(availability.visible)AvailabilitySheet(availability,model::checkUnavailableTracks,model::pauseAvailability,model::dismissAvailability)
     LibraryRemovalSheet(removal,model::confirmRemoval,model::dismissRemoval)
     if(savedFiles.visible)SavedFilesSheet(savedFiles,{startMaintenance{model.checkSavedFiles()}},{startMaintenance{model.checkSavedFiles(true)}},
         onSelect={row->model.selectSavedFile(row);savedFilePicker.launch(arrayOf("audio/*"))},

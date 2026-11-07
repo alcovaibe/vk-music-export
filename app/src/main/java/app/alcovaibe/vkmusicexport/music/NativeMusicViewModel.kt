@@ -578,28 +578,25 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         }
     }
-    private val _availability=MutableStateFlow(AvailabilityState());val availability=_availability.asStateFlow()
-    fun showAvailability(){if(!_state.value.busy&&!_duplicates.value.busy)_availability.update{it.copy(visible=true)}}
-    fun dismissAvailability(){_availability.update{it.copy(visible=false)}}
-    fun checkUnavailableTracks() {
-        if(!_availability.value.visible||_availability.value.running)return
-        run("availability"){g->
-            _availability.value=AvailabilityState(visible=true,running=true)
-            try{withContext(Dispatchers.IO){
-                val a=sessions?.current()?:access()
-                suspend fun guard(){active(g);if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.credentialId==a.credentialId,MusicError.ACCESS)}
-                val extra=AudioExportStore(getApplication()).use{it.unavailableTracks()}+_duplicates.value.report?.problems.orEmpty().filter{it.error in setOf(MusicError.UNAVAILABLE,MusicError.DENIED)}.map{it.track}
-                AvailabilityCheck(api,::guard).check(a,extra){done,total,row->
-                    _availability.update{it.copy(done=done,total=total,results=if(row==null)it.results else it.results+row)}
-                }
-                active(g)
-                _availability.update{it.copy(message="Проверка завершена. Результат относится к текущему аккаунту и соединению; для загрузки повтори пропущенные треки.")}
-                Diagnostics.event("audio_availability_result",mapOf("checked" to _availability.value.done,"links" to _availability.value.results.count{it.linkAvailable}))
-            }}catch(e: CancellationException){_availability.update{it.copy(message="Проверка прервана. Уже полученные результаты показаны.")};throw e}
-             catch(e: Exception){_availability.update{it.copy(message="Проверка остановлена: "+((e as? MusicFailure)?.code?.label?:MusicError.STORAGE.label))}}
-            finally{_availability.update{it.copy(running=false)}}
-        }
-    }
+    // Read-only availability probes have their own job and generation; they do not own
+    // the catalog/file mutation gate. Auth changes reset only this controller.
+    private val availabilityController=MusicAvailabilityController(viewModelScope,api,
+        access={sessions?.current()?:access()},
+        checked={initial->sessions?.continueRead(initial)?:access().also{MusicReadIdentity(initial).require(it)}},
+        extra={
+            AudioExportStore(getApplication()).use{it.unavailableTracks()}+
+                _duplicates.value.report?.problems.orEmpty()
+                    .filter{it.error in setOf(MusicError.UNAVAILABLE,MusicError.DENIED)}.map{it.track}
+        },
+        blocked={_state.value.probe==null||_state.value.stage in setOf("browser_auth","configure","forget","remove_confirm")||
+            MaintenanceRuntime.busy||DuplicateCheckRuntime.transferring},
+        report={snapshot->Diagnostics.event("audio_availability_result",
+            mapOf("checked" to snapshot.done,"links" to snapshot.results.count{it.linkAvailable}))})
+    val availability=availabilityController.state
+    fun showAvailability()=availabilityController.show()
+    fun dismissAvailability()=availabilityController.dismiss()
+    fun checkUnavailableTracks()=availabilityController.check()
+    fun pauseAvailability()=availabilityController.pause()
     private val _savedFiles=MaintenanceRuntime.files;val savedFiles=_savedFiles.asStateFlow()
     fun showSavedFiles(){if(_state.value.initialized&&!_state.value.busy)_savedFiles.update{it.copy(visible=true)}}
     fun dismissSavedFiles(){_savedFiles.update{it.copy(visible=false)}}
@@ -817,7 +814,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         catalogVerificationWork=null
         cancelledVerification?.cancel()
         _state.update{if(it.catalogVerifying)it.copy(catalogVerifying=false)else it}
-        if(stage in setOf("browser_auth","configure","forget")){exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset()}
+        if(stage in setOf("browser_auth","configure","forget")){exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset();availabilityController.reset()}
         if(stage in setOf("duplicates_delete","remove_confirm"))exportReads.clear()
         if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
         if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
@@ -1337,10 +1334,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     fun cancel(){if(MaintenanceRuntime.busy)MaintenanceRuntime.pause()else stop("native_stop_button")}
-    fun stopForWindow(){artistController.pause();_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();if(_state.value.stage !in MaintenanceRuntime.stages)stop("native_window_closed")}
+    fun stopForWindow(){artistController.pause();availabilityController.pause();_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();if(_state.value.stage !in MaintenanceRuntime.stages)stop("native_window_closed")}
     fun stopInBackground() {
         friends.pauseRead()
         artistController.pause()
+        availabilityController.pause()
         _metadataLookup.value=MetadataLookupState()
         _artworkLookup.value=ArtworkLookupState()
         _duplicates.update{it.copy(consent=null)}
