@@ -1,6 +1,5 @@
 package app.alcovaibe.vkmusicexport.music
 
-import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -17,6 +16,7 @@ internal class MusicArtistsController(
     private val checked: suspend(MusicAccess)->MusicAccess,
     private val blocked: ()->Boolean,
     private val artistTimeoutMs: Long=45_000,
+    private val report: (Exception)->Unit={},
 ) {
     private val _artists=MutableStateFlow(MusicArtistsState())
     val state=_artists.asStateFlow()
@@ -52,11 +52,7 @@ internal class MusicArtistsController(
                 _artists.value=MusicArtistsState(owner,true,rows.distinctBy{it.id},busy=true,stage="artists")
             }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.")}}
             catch(e: CancellationException){if(g==generation)_artists.update{it.copy(message="Загрузка подписок приостановлена. Уже полученные исполнители доступны.")};throw e}
-            catch(e: Exception){active(g);Diagnostics.event("audio_artists_failure",mapOf("code" to (e as? MusicFailure)?.code?.name,
-                "vk_code" to (e as? MusicFailure)?.remoteCode,"http_status" to (e as? MusicFailure)?.httpStatus,
-                "reason" to (e as? ArtistLoadingFailure)?.reason?.name,"method" to (e as? ArtistLoadingFailure)?.method,
-                "pages" to (e as? ArtistLoadingFailure)?.pages,"sections" to (e as? ArtistLoadingFailure)?.sections,
-                "blocks" to (e as? ArtistLoadingFailure)?.blocks,"artist_pool" to (e as? ArtistLoadingFailure)?.pool));_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
+            catch(e: Exception){active(g);report(e);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
         }
     }
     fun select(artist: MusicArtist?) {

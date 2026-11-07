@@ -71,7 +71,11 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         checked={initial->
             sessions?.continueRead(initial)?:access().also{MusicReadIdentity(initial).require(it)}
         },blocked={_state.value.probe==null||_state.value.stage in setOf("browser_auth","configure","forget")},
-        artistTimeoutMs=artistTimeoutMs)
+        artistTimeoutMs=artistTimeoutMs,report={e->Diagnostics.event("audio_artists_failure",mapOf("code" to (e as? MusicFailure)?.code?.name,
+                "vk_code" to (e as? MusicFailure)?.remoteCode,"http_status" to (e as? MusicFailure)?.httpStatus,
+                "reason" to (e as? ArtistLoadingFailure)?.reason?.name,"method" to (e as? ArtistLoadingFailure)?.method,
+                "pages" to (e as? ArtistLoadingFailure)?.pages,"sections" to (e as? ArtistLoadingFailure)?.sections,
+                "blocks" to (e as? ArtistLoadingFailure)?.blocks,"artist_pool" to (e as? ArtistLoadingFailure)?.pool))})
     val artists=artistController.state
     private val savedRepository=SavedLibrary(application,viewModelScope)
     val savedLibrary=savedRepository.rows.asStateFlow()
