@@ -5,10 +5,14 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
+/** Historical component contracts only; actual navigation is tested through MainActivity. */
 @Composable
 internal fun MusicCatalogPanel(state: NativeMusicState,canPrepare: Boolean,onSection: (CatalogSection)->Unit,
     onRefresh: ()->Unit,
@@ -74,3 +78,35 @@ internal fun LazyListScope.musicCatalogEntries(state: NativeMusicState,onSelect:
         }
     }
 }
+
+// Retained as historical fixtures, excluded from the production APK.
+@Composable
+internal fun DownloadQueueButton(queue: ExportSnapshot,onClick: ()->Unit) {
+    OutlinedButton(onClick=onClick,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("open_home_downloads")) {
+        Icon(DownloadIcon,null);Spacer(Modifier.width(8.dp))
+        Text(if(queue.total>0)"Скачивания · ${queue.done}/${queue.total}" else "Скачивания")
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,actionError: MusicError?=null,
+    onPause: ()->Unit,onResume: ()->Unit,onRetry: ()->Unit,onClear: ()->Unit,onDismiss: ()->Unit,
+    onSourceRetry: (ExportSourceFailure)->Unit={},onExportReport: (()->Unit)?=null) {
+    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("downloads_sheet")) {
+            DownloadProgressContent(queue,busy,actionError,onPause,onResume,onRetry,onClear,onSourceRetry,onExportReport,scrollable=true)
+            Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
+                TextButton(onClick=onDismiss,modifier=Modifier.testTag("downloads_dismiss")){Text("Свернуть")}
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LibraryRemoveButton(inLibrary: Boolean,enabled: Boolean,onClick: ()->Unit) {
+    if(inLibrary)IconButton(enabled=enabled,onClick=onClick,modifier=Modifier.testTag("remove_from_vk")) {
+        Icon(Icons.Default.Delete,"Удалить из моей музыки ВК",tint=MaterialTheme.colorScheme.error)
+    }
+}
+

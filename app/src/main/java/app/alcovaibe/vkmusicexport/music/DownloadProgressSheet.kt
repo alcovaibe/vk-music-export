@@ -5,11 +5,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -29,36 +24,10 @@ internal val DownloadIcon=ImageVector.Builder("Downloads",24.dp,24.dp,24f,24f).a
 }.build()
 
 @Composable
-internal fun DownloadQueueButton(queue: ExportSnapshot,onClick: ()->Unit) {
-    OutlinedButton(onClick=onClick,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("open_home_downloads")) {
-        Icon(DownloadIcon,null);Spacer(Modifier.width(8.dp))
-        Text(if(queue.total>0)"Скачивания · ${queue.done}/${queue.total}" else "Скачивания")
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun DownloadProgressSheet(queue: ExportSnapshot,busy: Boolean=false,actionError: MusicError?=null,
-    onPause: ()->Unit,onResume: ()->Unit,onRetry: ()->Unit,onClear: ()->Unit,onDismiss: ()->Unit,
-    onSourceRetry: (ExportSourceFailure)->Unit={},onExportReport: (()->Unit)?=null) {
-    ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
-        Column(Modifier.fillMaxWidth().padding(horizontal=24.dp).padding(bottom=24.dp).testTag("downloads_sheet")) {
-            DownloadProgressContent(queue,busy,actionError,onPause,onResume,onRetry,onClear,onSourceRetry,onExportReport,scrollable=true)
-            Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.End,verticalAlignment=Alignment.CenterVertically) {
-                TextButton(onClick=onDismiss,modifier=Modifier.testTag("downloads_dismiss")){Text("Свернуть")}
-            }
-        }
-    }
-}
-
-@Composable
 internal fun DownloadProgressContent(queue: ExportSnapshot,busy: Boolean=false,actionError: MusicError?=null,
     onPause: ()->Unit,onResume: ()->Unit,onRetry: ()->Unit,onClear: ()->Unit,
     onSourceRetry: (ExportSourceFailure)->Unit={},onExportReport: (()->Unit)?=null,scrollable: Boolean=false) {
     val working=queue.status in setOf("RUNNING","QUEUED")
-    var problemPage by rememberSaveable{mutableIntStateOf(0)}
-    val pages=(maxOf(queue.failures.size,queue.sourceFailures.size)+49)/50
-    val page=problemPage.coerceIn(0,(pages-1).coerceAtLeast(0))
     Column(if(scrollable)Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState())else Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("Скачивание музыки",style=MaterialTheme.typography.titleLarge)
         if(queue.account>0)Text("Аккаунт ВК: ${queue.account}",style=MaterialTheme.typography.bodySmall)
@@ -108,23 +77,11 @@ internal fun DownloadProgressContent(queue: ExportSnapshot,busy: Boolean=false,a
             if(queue.failed>0)OutlinedButton(enabled=!busy,onClick=onRetry,modifier=Modifier.fillMaxWidth().testTag("downloads_retry")){Text("Повторить пропущенные треки")}
             TextButton(enabled=!busy,onClick=onClear,modifier=Modifier.fillMaxWidth().testTag("downloads_clear")){Text("Очистить очередь · файлы останутся")}
         }
-        if(pages>1)Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            TextButton(enabled=page>0,onClick={problemPage=page-1}){Text("Предыдущие проблемы")}
-            Text("${page+1}/$pages",style=MaterialTheme.typography.bodySmall)
-            TextButton(enabled=page+1<pages,onClick={problemPage=page+1}){Text("Следующие проблемы")}
-        }
-        queue.sourceFailures.drop(page*50).take(50).forEach{issue->
-            Text("Источник: ${issue.title}\n${issue.error.label}",style=MaterialTheme.typography.bodySmall)
-            OutlinedButton(enabled=!busy&&!working,onClick={onSourceRetry(issue)}){Text("Перечитать этот источник")}
-        }
-        queue.failures.drop(page*50).take(50).forEach{
-            Text("${it.task.track.artist} — ${it.task.track.displayTitle}: ${it.error.label}",style=MaterialTheme.typography.bodySmall)
-            it.details?.let{details->Text(details.label,style=MaterialTheme.typography.bodySmall)}
-        }
         onExportReport?.let{export->if(queue.total>0||queue.sourceIssues>0) {
             OutlinedButton(onClick=export){Text("Поделиться полным отчётом")}
             Text("Отчёт содержит названия песен, источники, результаты и пути файлов. Токены и ссылки ВК не включаются.",style=MaterialTheme.typography.bodySmall)
         }}
+        if(working||queue.unfinished)Text("После паузы незавершённый файл скачивается заново. Готовые треки сохраняются.",style=MaterialTheme.typography.bodySmall)
         if(working)Text("Панель можно свернуть — скачивание продолжится. Android может приостановить задачу; продолжение доступно здесь.",style=MaterialTheme.typography.bodySmall)
     }
 }

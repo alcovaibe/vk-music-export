@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+api=${1:?Expected API}
+test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = "$api"
+mkdir -p r8-evidence
+adb logcat -c
+adb logcat -v raw -s VKR8Bench:I '*:S' > r8-evidence/playback.log &
+reader=$!
+trap 'kill "$reader" 2>/dev/null || true' EXIT
+dump_crash() {
+  adb logcat -d -b crash > r8-evidence/crash.log 2>&1 || true
+  cat r8-evidence/crash.log
+}
+./gradlew --dependency-verification strict -Pr8PlaybackCheck=true connectedReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace || {
+  dump_crash
+  # Print assertion details even when Gradle fails; never create passing evidence.
+  python3 - "$api" <<'PY'
+import runpy
+import sys
+from pathlib import Path
+runpy.run_path('tools/verify-r8-evidence.py')['verify'](Path('.'), int(sys.argv[1]))
+PY
+  exit 1
+}
+kill "$reader" 2>/dev/null || true
+wait "$reader" 2>/dev/null || true
+trap - EXIT
+python3 tools/verify-r8-evidence.py "$api" || { dump_crash; exit 1; }
+cat "r8-evidence/playback-api-$api.json"
+# AGP may remove the tested package after instrumentation; reinstall the same minified bytes.
+adb install -r app/build/outputs/apk/release/app-release.apk
+# Keep observed cold/warm startup and graphics data, without inferring physical-device budgets.
+for sample in 1 2 3 4 5; do
+  adb shell am force-stop app.alcovaibe.vkmusicexport
+  adb shell am start -W -n app.alcovaibe.vkmusicexport/.MainActivity > "r8-evidence/cold-$sample.txt"
+  adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME > /dev/null
+  adb shell am start -W -n app.alcovaibe.vkmusicexport/.MainActivity > "r8-evidence/warm-$sample.txt"
+  cat "r8-evidence/cold-$sample.txt" "r8-evidence/warm-$sample.txt"
+done
+# Retain the last real cold/warm launch frames. The unauthenticated home can
+# be idle/non-scrollable; resetting here would erase every rendered sample.
+# This is launcher/home evidence, not a large-library scrolling benchmark.
+for sample in 1 2 3 4 5; do adb shell input swipe 360 1200 360 450 250; done
+adb shell dumpsys gfxinfo app.alcovaibe.vkmusicexport framestats > r8-evidence/frames.txt
+adb shell dumpsys meminfo app.alcovaibe.vkmusicexport > r8-evidence/memory.txt
+python3 tools/summarize-r8-performance.py "$api"
+cat "r8-evidence/performance-api-$api.json"

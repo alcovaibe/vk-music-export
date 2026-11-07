@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -66,6 +67,11 @@ internal fun playbackTime(ms: Long): String {
     return if(seconds>=3600)"${seconds/3600}:${(seconds/60%60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}"
         else "${seconds/60}:${(seconds%60).toString().padStart(2,'0')}"
 }
+internal fun playbackSpokenTime(ms: Long): String {
+    val seconds=ms.coerceAtLeast(0)/1000
+    return if(seconds>=3600)"${seconds/3600} ч. ${seconds/60%60} мин. ${seconds%60} сек."
+        else "${seconds/60} мин. ${seconds%60} сек."
+}
 @Composable
 private fun PlayerArtwork(state: PlaybackState,modifier: Modifier) {
     val image=remember(state.artwork){state.artwork?.let{BitmapFactory.decodeByteArray(it,0,it.size)?.asImageBitmap()}}
@@ -80,7 +86,7 @@ private fun PlayerArtwork(state: PlaybackState,modifier: Modifier) {
 internal fun PlaybackMiniPlayer(state: PlaybackState,onOpen:()->Unit) {
     val entry=state.current?:return;val context=LocalContext.current
     Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.secondaryContainer,
-        modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=5.dp).testTag("music_mini_player").clickable(onClick=onOpen)) {
+        modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=5.dp).testTag("music_mini_player").clickable(onClickLabel="Открыть плеер",onClick=onOpen)) {
         Row(Modifier.padding(start=8.dp,end=4.dp,top=7.dp,bottom=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             PlayerArtwork(state,Modifier.size(42.dp))
             Column(Modifier.weight(1f)) {
@@ -192,16 +198,19 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                 }
                 PlayerArtwork(state,Modifier.size(cover).testTag("player_artwork"))
                 Column(Modifier.fillMaxWidth().padding(horizontal=3.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Text(current?.track?.displayTitle?:"Подготовка воспроизведения…",fontSize=25.sp,lineHeight=29.sp,fontWeight=FontWeight.Bold,maxLines=2,overflow=TextOverflow.Ellipsis,
-                        modifier=Modifier.testTag("player_title"))
-                    Text(current?.track?.artist.orEmpty(),fontSize=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2,overflow=TextOverflow.Ellipsis)
+                    Text(current?.track?.displayTitle?:"Подготовка воспроизведения…",fontSize=25.sp,lineHeight=29.sp,fontWeight=FontWeight.Bold,
+                        modifier=Modifier.testTag("player_title").semantics{heading()})
+                    Text(current?.track?.artist.orEmpty(),fontSize=19.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(current?.sourceLabel.orEmpty(),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
                 Column(Modifier.fillMaxWidth()) {
                     val duration=state.durationMs.coerceAtLeast(1)
                     Slider(value=seeking?:state.positionMs.coerceIn(0,duration).toFloat(),valueRange=0f..duration.toFloat(),
                         onValueChange={seeking=it},onValueChangeFinished={seeking?.let{PlaybackRuntime.seek(it.toLong())};seeking=null},
-                        enabled=state.seekable,modifier=Modifier.fillMaxWidth().testTag("player_seek"),
+                        enabled=state.seekable,modifier=Modifier.fillMaxWidth().testTag("player_seek").semantics {
+                            contentDescription="Позиция воспроизведения"
+                            stateDescription="${playbackSpokenTime(seeking?.toLong()?:state.positionMs)} из ${playbackSpokenTime(state.durationMs)}"
+                        },
                         thumb={Box(Modifier.size(14.dp).background(if(state.seekable)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,CircleShape))},
                         track={
                             val fraction=((seeking?:state.positionMs.toFloat())/duration.toFloat()).coerceIn(0f,1f)
@@ -220,9 +229,9 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                             tint=if(state.shuffle)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick=PlaybackRuntime::previous,enabled=state.previous,modifier=Modifier.testTag("player_previous")){Icon(PlayerPreviousIcon,"Предыдущий трек",Modifier.size(30.dp))}
-                    FilledIconButton(onClick={PlaybackRuntime.toggle(context)},enabled=current!=null,shape=CircleShape,modifier=Modifier.size(72.dp).testTag("player_toggle")) {
+                    FilledIconButton(onClick={PlaybackRuntime.toggle(context)},enabled=current!=null,shape=CircleShape,modifier=Modifier.size(72.dp).testTag("player_toggle").semantics{contentDescription=if(state.playWhenReady&&state.error==null)"Пауза" else "Воспроизвести"}) {
                         if(state.buffering&&state.playWhenReady)CircularProgressIndicator(Modifier.size(32.dp),color=MaterialTheme.colorScheme.onPrimary,strokeWidth=2.dp)
-                        else Icon(if(state.playWhenReady&&state.error==null)FriendPauseIcon else PlayerPlayIcon,if(state.playWhenReady&&state.error==null)"Пауза" else "Воспроизвести",Modifier.size(35.dp))
+                        else Icon(if(state.playWhenReady&&state.error==null)FriendPauseIcon else PlayerPlayIcon,null,Modifier.size(35.dp))
                     }
                     IconButton(onClick=PlaybackRuntime::next,enabled=state.next,modifier=Modifier.testTag("player_next")){Icon(PlayerNextIcon,"Следующий трек",Modifier.size(30.dp))}
                     IconButton(onClick=PlaybackRuntime::repeat,modifier=Modifier.background(if(state.repeat!=0)MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,CircleShape).testTag("player_repeat")) {
@@ -244,6 +253,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                     }
                 }
                 state.error?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth().testTag("player_error"))}
+                state.historyError?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth().testTag("player_history_error"))}
                 Row(Modifier.padding(top=3.dp,bottom=18.dp).testTag("player_connection"),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                     Icon(if(current?.offline==true)PlayerOfflineIcon else PlayerOnlineIcon,null,Modifier.size(20.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(if(current?.offline==true)"Офлайн" else "Онлайн",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -258,7 +268,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=440.dp).testTag("playback_queue_list"),contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(state.order.ifEmpty{state.entries.indices.toList()},key={_,index->index}) {_,index->
                     val entry=state.entries[index]
-                    Surface(onClick={PlaybackRuntime.service?.playIndex(index);queue=false},shape=RoundedCornerShape(14.dp),
+                    Surface(onClick={PlaybackRuntime.playIndex(index);queue=false},shape=RoundedCornerShape(14.dp),
                         color=if(index==state.index)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         modifier=Modifier.fillMaxWidth().testTag("playback_queue_$index")) {
                         Column(Modifier.padding(12.dp)) {

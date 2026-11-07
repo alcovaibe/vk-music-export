@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "reviews": [
+    {
+      "rule": "py/clear-text-logging-sensitive-data",
+      "path": "tools/prepare-signing.py",
+      "line": 17,
+      "source_sha256": "b0245c271e2b7bb0dcebc2afde59b8cfa0edafbd04ceb087898bb81ebc11c7e7",
+      "rationale": "GitHub workflow add-mask command registers a redaction; this is not an ordinary log message. Values are escaped, validated against newline injection and never printed by any other path."
+    },
+    {
+      "rule": "py/clear-text-storage-sensitive-data",
+      "path": "tools/prepare-signing.py",
+      "line": 21,
+      "source_sha256": "b0245c271e2b7bb0dcebc2afde59b8cfa0edafbd04ceb087898bb81ebc11c7e7",
+      "rationale": "Decoded bytes are the password-protected PKCS12 container. It is created exclusively with mode 0600 in RUNNER_TEMP, excluded from workspace/evidence, and removed in the always cleanup step. The signing key is not exported as plaintext."
+    },
+    {
+      "rule": "py/clear-text-storage-sensitive-data",
+      "path": "tools/prepare-signing.py",
+      "line": 23,
+      "source_sha256": "b0245c271e2b7bb0dcebc2afde59b8cfa0edafbd04ceb087898bb81ebc11c7e7",
+      "rationale": "GITHUB_ENV is the runner-managed environment handoff to Gradle. Decoded fields are masked first; only the isolated trusted release job receives them. The file is not part of artifacts or release evidence."
+    },
+    {
+      "rule": "java/weak-cryptographic-algorithm",
+      "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/AudioTransfer.kt",
+      "line": 135,
+      "source_sha256": "337d021cbcbcb90ec2112ccaf4c8c87589ec6a2b070f31809d10e2d0712275ce",
+      "rationale": "This is decryption of provider HLS AES-128 segments, whose wire format requires AES-CBC and PKCS padding. It is not encryption/storage of app credentials. Segment/key URLs and bounds are checked; bad padding maps to INCOMPLETE and there is no network decryption-oracle endpoint. Switching to GCM would break the provider protocol."
+    },
+    {
+      "rule": "java/android/arbitrary-apk-installation",
+      "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/UpdatePanel.kt",
+      "line": 31,
+      "source_sha256": "f98d5cc8ef3f06ea61227d3ac88c4c759f8818c6344f373003128de6590ade3b",
+      "rationale": "Intent-based installation is the explicit updater feature. The production caller first requires controller.verifiedApk(), rechecking owned file bounds, expected hash, package/version and pinned signing identity; system installer requires user action. FileProvider grants read-only access to the owned candidate. UpdateDeliveryDeviceTest exercises the real installer and invalid APK/signature cases; arbitrary user URLs are not accepted."
+    },
+    {
+      "rule": "java/android/missing-certificate-pinning",
+      "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DeviceAuth.kt",
+      "line": 231,
+      "source_sha256": "bf5c6df38f261713b61273d0be1b28814baf56b267d65ff9cfaa55a637149861",
+      "rationale": "The auth adapter uses a fixed HTTPS api.vk.com endpoint and system certificate/hostname validation. SPKI pinning is not implemented; this is an acknowledged hardening limitation, not a disabled TLS verifier. Adding a reliable provider pin-rotation policy is outside these started findings. Re-reviewed for browser/search changes: fixed VK HTTPS endpoint and system trust remain unchanged; browser selection does not grant music capabilities."
+    },
+    {
+      "rule": "java/android/missing-certificate-pinning",
+      "path": "app/src/main/java/app/alcovaibe/vkmusicexport/updates/GithubUpdates.kt",
+      "line": 195,
+      "source_sha256": "f533a5d59abf91174f971fe3e729ceec08a1df0728beb07638b9cba5fedeb908",
+      "rationale": "Updater HTTPS uses platform trust/hostname checks, fixed manifest/approved download hosts and bounded explicit redirects. APK integrity and pinned signer are verified separately before installation. TLS SPKI pinning is an acknowledged hardening limitation; it is not falsely claimed implemented."
+    },
+    {
+      "rule": "java/android/missing-certificate-pinning",
+      "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
+      "line": 161,
+      "source_sha256": "dbaeb45204790d2f419016b2f990178a1c39c640942d39f634e0ab32a945faa5",
+      "rationale": "Provider requests use fixed HTTPS api.vk.com, a method allowlist, default certificate/hostname validation and the existing session boundary. No trust-all or hostname-verification bypass is introduced. Provider SPKI pin rotation is outside this continuation; the limitation remains recorded. Re-reviewed at 4539136: capability declarations added above this call moved its location; the HTTPS request, allowlist, trust manager and session checks remain present. Re-reviewed for browser/search changes: fixed VK HTTPS endpoint and system trust remain unchanged; browser selection does not grant music capabilities."
+    }
+  ]
+}

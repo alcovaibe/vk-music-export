@@ -34,6 +34,14 @@ class ReleaseAcceptanceTest(unittest.TestCase):
         self.evidence['scenarios'].pop(SCENARIOS[-1])
         with self.assertRaises(ValueError): validate_acceptance(self.evidence,self.info,self.apk)
 
+    def test_playback_bluetooth_focus_ui_and_data_acceptance_cannot_be_omitted(self):
+        for name in ('online_and_offline_playback', 'bluetooth_media_controls', 'audio_focus_interruptions',
+                     'ui_navigation_and_accessibility', 'upgrade_user_data_integrity'):
+            item = self.evidence['scenarios'].pop(name)
+            with self.subTest(scenario=name), self.assertRaisesRegex(ValueError, name):
+                validate_acceptance(self.evidence,self.info,self.apk)
+            self.evidence['scenarios'][name] = item
+
     def test_complete_exact_acceptance_is_accepted(self):
         validate_acceptance(self.evidence,self.info,self.apk)
 

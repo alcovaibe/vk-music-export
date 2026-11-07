@@ -21,6 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -59,7 +61,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
-                IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
+                if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
                     BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
                 }
                 LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
@@ -72,7 +74,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
                 modifier=Modifier.testTag("music_bottom_navigation")) {
                 listOf(MusicDestination.LIBRARY,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->
                     NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
-                        icon={Icon(item.icon,null)},label={Text(item.label,maxLines=1)},
+                        icon={Icon(item.icon,null)},label={Text(item.label)},
                         modifier=Modifier.testTag("music_nav_${item.name}"),
                         colors=NavigationBarItemDefaults.colors(
                             selectedIconColor=Color(0xFF554739),
@@ -119,18 +121,18 @@ internal fun MusicConnectionCard(configured: Boolean,session: MusicSessionState,
 @Composable
 internal fun MusicCategoryGrid(category: LibraryCategory,counts: Map<LibraryCategory,Int?>,enabled: Boolean,onCategory:(LibraryCategory)->Unit) {
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        LibraryCategory.entries.chunked(2).forEach{pair->Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        LibraryCategory.entries.chunked(if(LocalDensity.current.fontScale>=1.3f)1 else 2).forEach{pair->Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             pair.forEach{item->
                 val selected=category==item
                 Surface(onClick={onCategory(item)},enabled=enabled,shape=RoundedCornerShape(18.dp),
                     color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                    modifier=Modifier.weight(1f).testTag("library_category_${item.name}")) {
+                    modifier=Modifier.weight(1f).testTag("library_category_${item.name}").semantics{this.selected=selected}) {
                     Row(Modifier.padding(horizontal=12.dp,vertical=12.dp).heightIn(min=38.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         Surface(color=if(selected)MaterialTheme.colorScheme.onPrimary.copy(alpha=.14f)else MaterialTheme.colorScheme.surface,
                             shape=RoundedCornerShape(12.dp)) {Box(Modifier.size(38.dp),contentAlignment=Alignment.Center){Icon(item.icon,null,Modifier.size(23.dp))}}
                         Column(Modifier.weight(1f)) {
-                            Text(item.label,style=MaterialTheme.typography.labelLarge,maxLines=1,overflow=TextOverflow.Ellipsis)
+                            Text(item.label,style=MaterialTheme.typography.labelLarge)
                             Text(counts[item]?.toString()?:"—",style=MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -186,9 +188,10 @@ internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String
 
 @Composable
 internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=null,saved: PublishedAudio?=null,downloading: Boolean=false,
-    enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
+    enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,onPlay:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
     var menu by remember{mutableStateOf(false)}
-    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(onOpen!=null)Modifier.clickable(onClick=onOpen)else Modifier)) {
+    val play=onPlay?:onOpen
+    Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(play!=null)Modifier.clickable(onClickLabel="Воспроизвести ${track.displayTitle}",role=androidx.compose.ui.semantics.Role.Button,onClick=play)else Modifier)) {
         Row(Modifier.padding(start=12.dp,end=4.dp,top=10.dp,bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
@@ -206,10 +209,10 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
                 downloading->CircularProgressIndicator(Modifier.size(28.dp).padding(3.dp),strokeWidth=3.dp)
                 saved!=null->IconButton(enabled=onOpen!=null,onClick={onOpen?.invoke()},modifier=Modifier.testTag("saved_copy_${position}_${track.id}")){
                     Icon(Icons.Default.CheckCircle,"Есть копия на устройстве",tint=MaterialTheme.colorScheme.tertiary)}
-                onDownload!=null->IconButton(enabled=enabled,onClick=onDownload){Icon(DownloadIcon,"Скачать этот трек")}
+                onDownload!=null->IconButton(enabled=enabled,onClick=onDownload){Icon(DownloadIcon,"Скачать ${track.displayTitle}, ${track.artist}")}
             }
             if(onRemove!=null||onOpen!=null)Box {
-                IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком")}
+                IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком ${track.displayTitle}, ${track.artist}")}
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                     onOpen?.let{DropdownMenuItem(text={Text("Воспроизвести файл")},onClick={menu=false;it()})}
                     onRemove?.let{DropdownMenuItem(enabled=enabled,text={Text("Удалить из музыки ВК…")},modifier=Modifier.testTag("remove_from_vk"),onClick={menu=false;it()})}

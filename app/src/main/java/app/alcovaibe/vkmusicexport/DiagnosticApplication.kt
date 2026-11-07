@@ -13,6 +13,7 @@ class DiagnosticApplication : Application(), Application.ActivityLifecycleCallba
     }
     override fun onCreate() {
         super.onCreate()
+        app.alcovaibe.vkmusicexport.music.PlaybackRuntime.initialize(this)
         Diagnostics.event("application_create", mapOf("version_name" to BuildConfig.VERSION_NAME,
             "version_code" to BuildConfig.VERSION_CODE, "package" to packageName))
         registerActivityLifecycleCallbacks(this)

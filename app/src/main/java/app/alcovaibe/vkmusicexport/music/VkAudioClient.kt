@@ -12,7 +12,22 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+internal enum class CapabilityStatus { SUPPORTED, EXPERIMENTAL, UNAVAILABLE }
+
+internal data class ApiCapabilities(
+    val library: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val catalog: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val playlists: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val friends: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val artists: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val artwork: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val directAudioStream: CapabilityStatus = CapabilityStatus.UNAVAILABLE,
+    val search: CapabilityStatus = CapabilityStatus.UNAVAILABLE
+)
+
+/** Music provider contract; authentication is supplied independently by DeviceAuthApi. */
 internal interface MusicApi {
+    val capabilities: ApiCapabilities get() = ApiCapabilities()
     suspend fun accountOwner(access: MusicAccess): Long = library(access).owner
     suspend fun friendsPage(access: MusicAccess,offset: Int): FriendsPage = throw MusicFailure(MusicError.METHOD)
     suspend fun friendProfile(access: MusicAccess,id: Long): MusicFriend = throw MusicFailure(MusicError.METHOD)
@@ -41,6 +56,7 @@ internal interface MusicApi {
         artwork(access,track)?.let{listOf(ArtworkCandidate(it,ArtworkOrigin.UNSPECIFIED))}?:emptyList()
     suspend fun searchArtwork(access: MusicAccess,query: String,offset: Int): ArtworkMatches=throw MusicFailure(MusicError.METHOD)
     suspend fun artworkRecord(access: MusicAccess,id: String): ArtworkMatch?=throw MusicFailure(MusicError.METHOD)
+    suspend fun searchMusic(access: MusicAccess,query: String,offset: Int): MetadataMatches = throw MusicFailure(MusicError.METHOD)
     suspend fun searchMetadata(access: MusicAccess,query: String,offset: Int): MetadataMatches = searchArtwork(access,query,offset).let{MetadataMatches(it.matches.map{match->match.track},it.count,it.offset,it.byLink)}
     suspend fun metadata(access: MusicAccess,id: String): NativeTrack?=throw MusicFailure(MusicError.METHOD)
     suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
@@ -70,6 +86,18 @@ private object MusicApiPacer {
 
 internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.api(),private val sessions: MusicSessionManager?=null,
     private val observe:(String,Map<String,Any?>)->Unit={t,f->Diagnostics.event(t,f)}) : MusicApi {
+    // Internal VK methods remain experimental even after a successful login.
+    override val capabilities=ApiCapabilities(CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,
+        CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,
+        CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL,CapabilityStatus.EXPERIMENTAL)
+    override suspend fun searchMusic(access: MusicAccess,query: String,offset: Int): MetadataMatches {
+        val text=MusicSearchQuery.text(query)
+        musicCheck(offset>=0&&offset<MusicSearchQuery.MAX_RESULTS,MusicError.RESPONSE)
+        val page=NativeProtocol.page(request(access,"audio.search",mapOf("q" to text,
+            "count" to MusicSearchQuery.PAGE_SIZE.toString(),"offset" to offset.toString(),
+            "auto_complete" to "0","search_own" to "0","sort" to "2")))
+        return MetadataMatches(page.tracks,page.count,offset)
+    }
     private val mutationClient=client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
         .authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).build()
     private val previews=object: java.util.LinkedHashMap<String,String>(128,.75f,true) {

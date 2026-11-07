@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 from pathlib import Path
 import runpy
@@ -31,8 +32,10 @@ class PublisherTest(unittest.TestCase):
                 (out / 'build-info.json').write_text(json.dumps({'tag':'v0.3.0-build.1024','apk':apk,
                     'commit':'a'*40,'versionName':'0.3.0','versionCode':1024}))
                 (out / 'upgrade-check.txt').write_text('PASS: data retained\n')
-                for asset in ('SHA256SUMS.txt','release-certificate.pem','sbom.cdx.json','osv.json'):
-                    (out / asset).write_text('fixture')
+                (out/'SHA256SUMS.txt').write_text(hashlib.sha256((out/apk).read_bytes()).hexdigest()+'  '+apk+'\n')
+                (out/'release-certificate.pem').write_text('public certificate fixture')
+                (out/'sbom.cdx.json').write_text(json.dumps({'bomFormat':'CycloneDX','components':[{'name':'fixture'}]}))
+                (out/'osv.json').write_text(json.dumps({'findings':[]}))
                 if include_legal:
                     for asset in ('LICENSE', 'NOTICE'):
                         (out / asset).write_text('Synthetic license fixture')

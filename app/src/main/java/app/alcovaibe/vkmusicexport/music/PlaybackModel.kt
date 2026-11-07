@@ -1,8 +1,15 @@
 package app.alcovaibe.vkmusicexport.music
 
+import kotlinx.serialization.Serializable
+
+@Serializable internal data class PlaybackExport(val folders: List<String>,val position: Int,val source: ExportSource,val occurrence: Int) {
+    fun task(track: NativeTrack)=ExportLayout.task(track,folders,position,source,occurrence)
+}
+
 /** A listening queue owns IDs and optional app-owned local files, never signed media URLs or credentials. */
-internal data class PlaybackEntry(val track: NativeTrack,val sourceLabel: String,val account: Long?=null,
-    val saved: PublishedAudio?=null,val download: AudioExportTask?=null) {
+@Serializable internal data class PlaybackEntry(val track: NativeTrack,val sourceLabel: String,val account: Long?=null,
+    val saved: PublishedAudio?=null,val export: PlaybackExport?=null,val readSessionId: String?=null) {
+    val download: AudioExportTask? by lazy{export?.task(track)}
     val offline get()=saved!=null
     override fun toString()="PlaybackEntry([metadata omitted], offline=$offline)"
 }
@@ -17,22 +24,66 @@ internal object PlaybackLists {
         val positions=entries.indices.filter{playable(entries[it])}
         return PlaybackSelection(positions.map{entries[it]},positions.indexOf(start))
     }
-    fun saved(rows: List<SavedLibraryEntry>)=rows.filter{it.present}.distinctBy{it.file.uri}.map {
+    fun saved(rows: List<SavedLibraryEntry>)=rows.filter{it.playable}.distinctBy{it.file.uri}.map {
         PlaybackEntry(it.file.track,"Сохранённая музыка",saved=it.file)
+    }
+    fun library(state: NativeMusicState,sort: MusicLibrarySort): List<PlaybackEntry> {
+        val page=state.page?:return emptyList()
+        val local=state.localPlayback?.takeIf{local->local.account>0&&local.account==state.localCatalogAccount&&
+            (state.probe==null||state.probe.owner==local.account)&&local.key==state.selected?.key&&
+            local.rows.map{row->row.track}==page.tracks&&
+            local.rows.all{row->row.source==ExportSource(local.account,"catalog",local.key)}}
+        if(local!=null)return MusicLibrarySorting.tracks(page.tracks,sort).map{entry->
+            val row=local.rows[entry.index]
+            PlaybackEntry(row.track,state.selected?.title?:"Сохранённая подборка",saved=row)
+        }
+        val owner=state.probe?.owner?:return emptyList()
+        if(owner<=0||state.selected?.key?.let{it in state.localCatalogKeys}==true||state.readSessionId==null)return emptyList()
+        val selected=state.selected
+        val kind=selected?.kind?:PlaylistKind.UNKNOWN
+        val references=if(selected==null||kind!=PlaylistKind.UNKNOWN)ExportLayout.playback(page,owner,selected,kind)else emptyList()
+        return MusicLibrarySorting.tracks(page.tracks,sort).map{row->
+            PlaybackEntry(row.value,selected?.title?:"Моя музыка",owner,export=references.getOrNull(row.index),readSessionId=state.readSessionId)
+        }
+    }
+    fun friendPositions(state: FriendMusicState)=state.page?.tracks.orEmpty().withIndex().filter{
+        state.musicQuery.isBlank()||("${it.value.artist} ${it.value.displayTitle}").contains(state.musicQuery.trim(),true)
     }
     fun friends(state: FriendMusicState): List<PlaybackEntry> {
         val viewer=state.viewerAccount?:return emptyList();val user=state.user?:return emptyList();val page=state.page?:return emptyList()
-        if(!state.complete||viewer<=0)return emptyList()
-        val tasks=FriendMusicExport.tasks(page,user,viewer,state.playlist)
+        if(viewer<=0)return emptyList()
+        val references=if(state.playlist?.kind!=PlaylistKind.UNKNOWN)FriendMusicExport.references(page,user,viewer,state.playlist)else emptyList()
         val source=state.playlist?.title?:"Музыка друга"
         val label=source+" · "+(user.handle?:user.name)
-        return page.tracks.mapIndexed {i,track->PlaybackEntry(track,label,viewer,download=tasks[i])}
+        return friendPositions(state).map {row->PlaybackEntry(row.value,label,viewer,export=references.getOrNull(row.index),readSessionId=state.readSessionId)}
+    }
+    fun artist(state: MusicArtistsState): List<PlaybackEntry> {
+        val artist=state.selected?:return emptyList()
+        val session=state.readSessionId?:return emptyList()
+        if(state.owner<=0)return emptyList()
+        val album=state.album
+        val page=(if(album!=null)state.albumTracks else state.details?.takeIf{it.artist.id==artist.id}?.tracks)?:return emptyList()
+        val references=if(album!=null) {
+            if(album.kind==PlaylistKind.UNKNOWN)emptyList()else ExportLayout.playback(page,state.owner,album)
+        } else {
+            val occurrences=mutableMapOf<String,Int>()
+            page.tracks.mapIndexed { index,track->
+                val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
+                PlaybackExport(listOf("Исполнители",ExportLayout.component(artist.name)),index+1,
+                    ExportSource(state.owner,"artist",artist.id),occurrence)
+            }
+        }
+        return page.tracks.mapIndexed { index,track->
+            PlaybackEntry(track,"Исполнитель · ${album?.title?:artist.name}",state.owner,
+                export=references.getOrNull(index),readSessionId=session)
+        }
     }
 }
 internal data class PlaybackState(val entries: List<PlaybackEntry> = emptyList(),val index: Int=0,
     val playing: Boolean=false,val buffering: Boolean=false,val playWhenReady: Boolean=false,val positionMs: Long=0,val durationMs: Long=0,
     val bufferedMs: Long=0,val seekable: Boolean=false,val shuffle: Boolean=false,val repeat: Int=0,
-    val previous: Boolean=false,val next: Boolean=false,val order: List<Int> = emptyList(),val error: String?=null,val artwork: ByteArray?=null) {
+    val previous: Boolean=false,val next: Boolean=false,val order: List<Int> = emptyList(),val error: String?=null,val artwork: ByteArray?=null,
+    val historyError: String?=null) {
     val current get()=entries.getOrNull(index)
     override fun toString()="PlaybackState(count=${entries.size}, index=$index, playing=$playing)"
 }

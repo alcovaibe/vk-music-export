@@ -67,6 +67,36 @@ internal class SharedAudioStore(internal val context: Context) {
             it.moveToFirst()&&it.getLong(0)==record.bytes
         }==true
     }.getOrDefault(false)
+    /** One bounded provider query per 100 physical files, never a hash/integrity verdict. */
+    suspend fun presence(records: List<PublishedAudio>): Map<String,SavedAvailability> {
+        require(records.size<=100)
+        val result=records.associate{it.uri to SavedAvailability.MISSING}.toMutableMap()
+        val byId=records.mapNotNull{record->
+            val id=runCatching{uri(record.uri).lastPathSegment!!}.getOrNull()
+            if(id==null){result[record.uri]=SavedAvailability.CHANGED;null}else id to record
+        }.toMap()
+        if(byId.isEmpty())return result
+        currentCoroutineContext().ensureActive()
+        val signal=android.os.CancellationSignal()
+        return suspendCancellableCoroutine{continuation->
+            continuation.invokeOnCancellation{signal.cancel()}
+            try {
+                val projection=arrayOf(MediaStore.MediaColumns._ID,MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+                    MediaStore.MediaColumns.RELATIVE_PATH,MediaStore.MediaColumns.IS_PENDING,MediaStore.MediaColumns.SIZE)
+                val selection="${MediaStore.MediaColumns._ID} IN (${byId.keys.joinToString(","){"?"}})"
+                val cursor=resolver.query(collection,projection,selection,byId.keys.toTypedArray(),null,signal)
+                if(cursor==null)byId.values.forEach{result[it.uri]=SavedAvailability.UNKNOWN}
+                cursor?.use{c->while(c.moveToNext()) {
+                    val record=byId[c.getLong(0).toString()]?:continue
+                    val path=c.getString(2).orEmpty()
+                    result[record.uri]=if(c.getString(1)==context.packageName&&c.getInt(3)==0&&
+                        (path.startsWith(ExportLayout.ROOT)||record.recoveredLocation&&path.startsWith("Music/"))&&
+                        c.getLong(4)==record.bytes)SavedAvailability.READY else SavedAvailability.CHANGED
+                }}
+                if(continuation.isActive)continuation.resumeWith(Result.success(result))
+            }catch(e: Exception){if(continuation.isActive)continuation.resumeWith(Result.failure(e))}
+        }
+    }
     /** Precise result; a mismatch never grants permission to overwrite a file. */
     suspend fun inspect(record: PublishedAudio,pending: Boolean=false): SavedFileCheck {
         try {

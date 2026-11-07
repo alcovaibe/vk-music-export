@@ -53,6 +53,10 @@ else:
     names = (info['apk'], 'SHA256SUMS.txt', 'release-certificate.pem', 'build-info.json', 'upgrade-check.txt', 'sbom.cdx.json', 'osv.json', 'LICENSE', 'NOTICE')
     assert all((Path('release-output') / name).is_file() for name in names), 'Release evidence is incomplete'
     evidence = bundle(info, apk)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('verify_evidence', Path(__file__).with_name('verify-release-evidence.py'))
+    verifier = importlib.util.module_from_spec(spec); spec.loader.exec_module(verifier)
+    verifier.verify(evidence, apk, info['commit'])
     assets = [str(apk), str(Path('release-output') / 'SHA256SUMS.txt'), str(evidence)]
     command = ['gh', 'release', 'create', tag, *assets, '--target', release_commit,
         '--title', f"VK Music Export {info['versionName']} · {info['versionCode']}" + (' RC' if channel == 'rc' else ''),

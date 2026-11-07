@@ -143,7 +143,7 @@ class AuditRegressionDeviceTest {
             val row=SharedAudioStore(context).publish(tasks[0],TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200)),store.directory(tasks[0])){}
             store.done(tasks[0],row);tasks.drop(1).forEach{store.failed(it,MusicError.NETWORK)}
             store.close();store=AudioExportStore(context)
-            assertEquals(20,store.snapshot().failures.size);assertEquals(listOf(issue),store.sourceFailures())
+            assertEquals(20,store.queuePage(DownloadsTab.ERRORS).failures.size);assertEquals(listOf(issue),store.sourceFailures())
             assertEquals(12L,store.account());store.retrySource(source,tasks)
             assertEquals(1,store.snapshot().done);assertEquals(20,store.snapshot().pending)
             assertTrue(store.sourceFailures().isEmpty());assertEquals(row.uri,store.existing(tasks[0].key)!!.uri)
@@ -178,9 +178,9 @@ class AuditRegressionDeviceTest {
             val t=task();store.replace(listOf(t),account=12);store.status("PAUSED")
             val prepared=SharedAudioStore(context).publish(t,TransferResult(fixture(root),ProcessedAudio("mp3","audio/mpeg",1200)),store.directory(t)){store.prepared(t,it)}
             store.checkpoint("artwork-transaction","preserve-me")
-            store.writableDatabase.execSQL("DROP TABLE source_failures");store.writableDatabase.version=2
+            store.writableDatabase.execSQL("DROP TABLE source_failures");legacySavedFileSchema(store.writableDatabase);store.writableDatabase.version=2
             store.close();store=AudioExportStore(context)
-            assertEquals(4,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
+            assertEquals(7,store.readableDatabase.version);assertEquals(t,store.taskRows().single().first)
             assertEquals("PAUSED",store.snapshot().status);assertEquals("preserve-me",store.checkpoint("artwork-transaction"))
             assertTrue(store.sourceFailures().isEmpty());assertEquals(12L,store.account())
             assertEquals(prepared,store.prepared().single().second)
@@ -214,12 +214,12 @@ class AuditRegressionDeviceTest {
                 credential={MusicAccess("a".repeat(64),"CI/1",accountId=12)},observe={_,_->})
             engine.recover()
             assertEquals(0,store.snapshot().done);assertEquals(0,store.snapshot().covered)
-            assertEquals(MusicError.INCOMPLETE,store.snapshot().failures.single().error)
+            assertEquals(MusicError.INCOMPLETE,store.queuePage(DownloadsTab.ERRORS).failures.single().error)
             assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status)
             assertTrue(store.reusable(t).isEmpty());assertFalse(LibraryRemovalProtocol.libraryCopy(12,t.track,row))
             store.retryFailed();store.status("QUEUED");engine.run{}
             assertEquals(1,resolutions);assertEquals(0,store.snapshot().done)
-            assertEquals(MusicError.INCOMPLETE,store.snapshot().failures.single().error)
+            assertEquals(MusicError.INCOMPLETE,store.queuePage(DownloadsTab.ERRORS).failures.single().error)
             assertEquals(row,store.existing(t.key));assertTrue(shared.valid(row))
         }finally{erase(store);store.close();root.deleteRecursively()}
     }

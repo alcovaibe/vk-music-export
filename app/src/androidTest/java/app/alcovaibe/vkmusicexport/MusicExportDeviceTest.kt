@@ -229,10 +229,15 @@ class MusicExportDeviceTest {
             }finally{reopened.close()}
         }finally{store.close();prepared?.let{cleanup(listOf(it))};base.deleteRecursively()}
     }
-    @Test fun actualMp3TransferUsesMedia3ThenSharesOneFileAcrossAlbumAndLibraryWithoutSecondNetworkRequest()=runBlocking(Dispatchers.IO) {
+    @Test fun actualMp3TransferSharesOneFileAcrossLibraryAlbumPlaylistsAndFriendsWithoutSecondRequest()=runBlocking(Dispatchers.IO) {
         val (context,base)=isolated("public-audio-engine");val store=AudioExportStore(context);val shared=SharedAudioStore(context)
         val bytes=InstrumentationRegistry.getInstrumentation().context.assets.open("native-audio/tone.mp3").use{it.readBytes()}
-        val t=track(30).copy(album=MusicAlbum("album:991","CI album"));val tasks=ExportLayout.library(NativePage(listOf(t),1))
+        val t=track(30).copy(album=MusicAlbum("album:991","CI album"))
+        val tasks=ExportLayout.library(NativePage(listOf(t),1),account=12)+
+            (1L..2L).map{ExportLayout.playlist(NativePage(listOf(t),1),
+                NativePlaylist(12,99800+it,"CI reuse $it",1,null,null,null,null,PlaylistKind.PLAYLIST),account=12).single()}+
+            (21L..22L).map{ExportLayout.task(t,listOf("Друзья","CI friend $it","Моя музыка"),1,
+                ExportSource(12,"friend_library",it.toString()))}
         var requests=0;var resolutions=0;val rows=mutableListOf<PublishedAudio>();val events=mutableListOf<String>()
         val client=NetworkClients.media().newBuilder().addInterceptor{chain->requests++
             assertNull(chain.request().header("Authorization"));assertNull(chain.request().header("Cookie"))
@@ -245,12 +250,13 @@ class MusicExportDeviceTest {
         try {
             val engine=AudioExportEngine(store,shared,File(base,"tmp"),api,AudioTransfer(client){type,fields->events.add(type+fields)},
                 credential={MusicAccess("SYNTHETIC_SECRET".repeat(8),"Client/1")},observe={type,fields->events.add(type+fields)})
-            engine.recover();store.replace(tasks);store.status("QUEUED");engine.run{}
-            assertEquals("FINISHED",store.snapshot().status);assertEquals(2,store.snapshot().done)
+            engine.recover();store.replace(tasks,account=12);store.status("QUEUED");engine.run{}
+            assertEquals("FINISHED",store.snapshot().status);assertEquals(6,store.snapshot().done)
             assertEquals(1,requests);assertEquals(1,resolutions)
             tasks.forEach{rows.add(store.existing(it.key)!!)}
             assertEquals(rows[0].sha256,rows[1].sha256);rows.forEach{assertTrue(shared.valid(it))}
-            assertEquals(rows[0].uri,rows[1].uri);assertTrue(rows.all{it.relativePath==ExportLayout.ROOT+"Моя музыка/"})
+            assertEquals(1,rows.map{it.uri}.toSet().size);assertTrue(rows.all{it.relativePath==ExportLayout.ROOT+"Моя музыка/"})
+            assertEquals(6,rows.map{it.source!!.key}.toSet().size)
             assertFalse(events.toString().contains("PRIVATE"));assertFalse(events.toString().contains("SYNTHETIC_SECRET"))
             assertEquals(0,File(base,"tmp").listFiles()!!.size)
         }finally{tasks.mapNotNull{store.existing(it.key)}.forEach{if(it !in rows)rows.add(it)};store.close();cleanup(rows);base.deleteRecursively()}
@@ -306,7 +312,7 @@ class MusicExportDeviceTest {
                 db.execSQL("INSERT INTO meta VALUES('status','PAUSED')");db.version=1
             }
             val reopened=AudioExportStore(context);store=reopened
-            assertEquals(4,reopened.readableDatabase.version);assertEquals(1,reopened.snapshot().done);assertEquals(1,reopened.snapshot().pending)
+            assertEquals(7,reopened.readableDatabase.version);assertEquals(1,reopened.snapshot().done);assertEquals(1,reopened.snapshot().pending)
             assertEquals(old,reopened.existing(tasks.first().key));assertEquals("PAUSED",reopened.snapshot().status)
             assertEquals(listOf(old),reopened.snapshot().recent) // Old schema has no separate history yet.
             val engine=AudioExportEngine(reopened,shared,File(base,"tmp"),noApi,credential={error("local copy")},observe={_,_->})

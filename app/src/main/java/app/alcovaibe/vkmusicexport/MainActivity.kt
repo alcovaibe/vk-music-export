@@ -34,6 +34,10 @@ class MainActivity : ComponentActivity() {
     private val updates: app.alcovaibe.vkmusicexport.updates.UpdateViewModel by viewModels()
     private val nativeMusic: app.alcovaibe.vkmusicexport.music.NativeMusicViewModel by viewModels()
     private fun openNotification(intent: Intent?) {
+        if(intent?.getBooleanExtra(app.alcovaibe.vkmusicexport.music.AudioExportRuntime.OPEN_EXTRA,false)==true) {
+            app.alcovaibe.vkmusicexport.music.PlaybackRuntime.expanded.value=false
+            nativeMusic.showDownloads();intent.removeExtra(app.alcovaibe.vkmusicexport.music.AudioExportRuntime.OPEN_EXTRA)
+        }
         if(intent?.getBooleanExtra(app.alcovaibe.vkmusicexport.music.PlaybackRuntime.OPEN_EXTRA,false)==true) {
             nativeMusic.dismissDownloads()
             app.alcovaibe.vkmusicexport.music.PlaybackRuntime.expanded.value=true
@@ -48,7 +52,11 @@ class MainActivity : ComponentActivity() {
             nativeMusic.openDuplicateNotification();intent.removeExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA)
         }
     }
-    override fun onNewIntent(intent: Intent){super.onNewIntent(intent);setIntent(intent);openNotification(intent)}
+    override fun onNewIntent(intent: Intent){
+        super.onNewIntent(intent)
+        // Notifications are one-shot navigation events; the saved route owns restoration.
+        openNotification(intent)
+    }
     override fun onResume(){super.onResume();nativeMusic.setForeground(true)}
     override fun onPause(){nativeMusic.setForeground(false);super.onPause()}
     override fun onStop(){nativeMusic.stopInBackground();super.onStop()}

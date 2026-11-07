@@ -46,11 +46,22 @@ fi
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
 # Preserve benchmark evidence continuously; app-owned directories are not shell
 # readable on every API, and AGP removes app data after instrumentation.
-adb logcat -v raw -s VKMetadataBench:I VKReceiptBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
+adb logcat -v raw -s VKMetadataBench:I VKReceiptBench:I VKSavedBench:I VKQueueBench:I VKPlaybackBench:I '*:S' > interface-diagnostics/metadata-benchmarks.log &
 benchmark_logcat_pid=$!
 trap 'kill "$benchmark_logcat_pid" 2>/dev/null || true' EXIT
-./gradlew --dependency-verification strict connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
-result=$?
+result=0
+# Exercise the API 33 resumption regression before the full suite, so a failure
+# prints the service/player state without first waiting for unrelated workloads.
+if [[ "$expected_api" == 33 ]]; then
+  ./gradlew --dependency-verification strict connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=app.alcovaibe.vkmusicexport.PlaybackDeviceTest#serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition' -Pandroid.testInstrumentationRunnerArguments.playbackRecreationPasses=6 -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+  result=$?
+fi
+if [[ "$result" == 0 ]]; then
+  # A successful focused run cannot stand in for the mandatory complete report.
+  rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
+  ./gradlew --dependency-verification strict connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=app.alcovaibe.vkmusicexport.UpdateDeliveryDeviceTest,app.alcovaibe.vkmusicexport.PlaybackRestartDeviceTest -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+  result=$?
+fi
 kill "$benchmark_logcat_pid" 2>/dev/null || true
 wait "$benchmark_logcat_pid" 2>/dev/null || true
 trap - EXIT
@@ -81,6 +92,22 @@ fi
 timeout 15 adb pull /data/local/tmp/vk-music-export-screenshots/ interface-screenshots/ || true
 if [[ "$result" == 0 ]]; then
   python3 tools/extract-checkpoint-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
+  result=$?
+  if [[ "$result" == 0 ]]; then
+    python3 tools/extract-saved-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
+    result=$?
+    if [[ "$result" == 0 ]]; then
+      python3 tools/extract-queue-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
+      result=$?
+      if [[ "$result" == 0 ]]; then
+        python3 tools/extract-playback-benchmarks.py interface-diagnostics/metadata-benchmarks.log "$expected_api" interface-benchmarks
+        result=$?
+      fi
+    fi
+  fi
+fi
+if [[ "$result" == 0 ]]; then
+  bash tools/playback-resumption-check.sh "$expected_api"
   result=$?
 fi
 exit "$result"

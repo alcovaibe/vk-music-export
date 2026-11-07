@@ -69,16 +69,17 @@ class DownloadContinuityDeviceTest {
                 transfer(status={when(it){"12_3"->403;"12_5"->503;else->200}},request={requests.add(it)}),
                 credential={access},observe={_,_->}).run{}
             val result=store.snapshot()
+            val failures=store.queuePage(DownloadsTab.ERRORS).failures
             assertEquals("FINISHED_WITH_ERRORS",result.status);assertFalse(result.unfinished)
             assertEquals(3,result.done);assertEquals(3,result.failed);assertEquals(0,result.pending)
-            assertEquals(listOf("12_2","12_3","12_5"),result.failures.map{it.task.track.id})
-            assertEquals(listOf(MusicError.UNAVAILABLE,MusicError.UNAVAILABLE,MusicError.HTTP),result.failures.map{it.error})
+            assertEquals(listOf("12_2","12_3","12_5"),failures.map{it.task.track.id})
+            assertEquals(listOf(MusicError.UNAVAILABLE,MusicError.UNAVAILABLE,MusicError.HTTP),failures.map{it.error})
             assertEquals(3,requests.count{it=="12_3"});assertEquals(3,requests.count{it=="12_5"})
             assertEquals(1,resolutions.count{it=="12_2"})
             for(i in listOf(0,3,5))assertTrue(shared.valid(store.existing(tasks[i].key)!!))
             assertTrue(File(dir,"tmp").listFiles().orEmpty().isEmpty())
             store.close();store=AudioExportStore(context)
-            assertEquals(result.failures,store.snapshot().failures);assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status)
+            assertEquals(failures,store.queuePage(DownloadsTab.ERRORS).failures);assertEquals("FINISHED_WITH_ERRORS",store.snapshot().status)
         }finally{store.close();cleanup(directory);dir.deleteRecursively()}
     }
 

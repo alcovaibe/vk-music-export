@@ -92,7 +92,7 @@ internal fun MusicAccessManagementScreen(
                         (session.accountId?:state.probe?.owner)?.let{AccessDetail(Icons.Default.Person,"Аккаунт ВК · ID $it")}
                         AccessDetail(AccessCalendarIcon,when {
                             session.status==SessionStatus.RENEWING->"Обновляем доступ ВК…"
-                            session.status==SessionStatus.LOGIN_REQUIRED->"Доступ нужно подключить заново через Chrome."
+                            session.status==SessionStatus.LOGIN_REQUIRED->"Доступ нужно подключить заново через браузер."
                             expiry==null->"ВК не сообщил срок действия доступа."
                             expired->"Срок действия доступа истёк."
                             else->"Действует до "+DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(expiry))
@@ -100,15 +100,15 @@ internal fun MusicAccessManagementScreen(
                         AccessDetail(Icons.Default.Refresh,if(session.renewable)"Автоматическое продление включено" else "Автопродление недоступно",
                             color=if(session.renewable&&!needsLogin)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(if(session.renewable)"Если ВК отклонит продление, потребуется войти заново."
-                            else "Новый вход через Chrome может подключить автоматическое продление.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            else "Новый вход через браузер может подключить автоматическое продление.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         if(session.status==SessionStatus.RETRY)Text("Не удалось продлить доступ. Прежние данные сохранены; приложение повторит попытку позже.",style=MaterialTheme.typography.bodyMedium)
                         Button(onClick=onCheck,enabled=enabled,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(12.dp),
                             modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("music_access_check")) {
                             Icon(Icons.Default.Check,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Проверить музыку")
                         }
                     }else {
-                        Text(if(state.accessDamaged)"Сохрани новый доступ через Chrome или удали повреждённые данные. Музыка и очередь останутся."
-                            else "Войди через Chrome, чтобы открыть свою музыку и музыкальные профили друзей.",style=MaterialTheme.typography.bodyLarge)
+                        Text(if(state.accessDamaged)"Сохрани новый доступ через браузер или удали повреждённые данные. Музыка и очередь останутся."
+                            else "Войди через браузер, чтобы открыть свою музыку и музыкальные профили друзей.",style=MaterialTheme.typography.bodyLarge)
                     }
                 }
             }
@@ -116,22 +116,22 @@ internal fun MusicAccessManagementScreen(
                 AccessCard("music_access_chrome") {
                     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Icon(AccessChromeIcon,null,Modifier.size(26.dp))
-                        Text("Вход через Chrome",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)
+                        Text("Вход через браузер",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)
                     }
-                    Text("1. Нажми «Войти через Chrome». Если в браузере уже выполнен вход в ВК, запомни показанный шестизначный код и закрой окно с кодом.",style=MaterialTheme.typography.bodyLarge)
+                    Text("1. Нажми «Войти через браузер». Если в браузере уже выполнен вход в ВК, запомни показанный шестизначный код и закрой окно с кодом.",style=MaterialTheme.typography.bodyLarge)
                     Text("2. Вернись в приложение и введи этот код в поле подтверждения.",style=MaterialTheme.typography.bodyLarge)
                     Text("3. Если в браузере входа в ВК ещё не было, сначала войди в свой аккаунт, затем вернись в приложение и начни авторизацию заново.",style=MaterialTheme.typography.bodyLarge)
                     if(state.stage!="browser_auth")OutlinedButton(onClick=onConnect,enabled=enabled,shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(12.dp),
                         colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),
                         border=BorderStroke(1.dp,if(enabled)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
                         modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("music_access_connect")) {
-                        Text(if(state.configured)"Войти заново через Chrome" else "Войти через Chrome")
+                        Text(if(state.configured)"Войти заново через браузер" else "Войти через браузер")
                     }
                     state.authPhase?.let{Text(it.label,Modifier.testTag("native_auth_phase"),style=MaterialTheme.typography.bodyMedium)}
                     if(state.busy&&state.stage=="browser_auth") {
                         if(!state.stopping&&state.authPhase in setOf(DeviceAuthPhase.READY,DeviceAuthPhase.WAITING,DeviceAuthPhase.REQUEST_OPENED))
                             Button(onClick=onConfirm,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){Text("Открыть подтверждение ВК")}
-                        Text("Срок заявки идёт и в Chrome: не более 5 минут. Проверка результата продолжается после возвращения в приложение.",style=MaterialTheme.typography.bodyMedium)
+                        Text("Срок заявки идёт и в браузере: не более 5 минут. Проверка результата продолжается после возвращения в приложение.",style=MaterialTheme.typography.bodyMedium)
                     }
                     state.authIssue?.let{Text(it.label+" Код: AUTH_"+it.name,color=MaterialTheme.colorScheme.error)}
                 }

@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 internal object AudioExportRuntime {
+    const val OPEN_EXTRA="open_music_downloads"
     const val JOB_ID=10051;const val NOTIFICATION_ID=10052;const val CHANNEL="music-downloads"
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private var readiness: RetryableReadiness?=null
@@ -121,9 +122,10 @@ internal object AudioExportRuntime {
             database.bindAccount(owner);refresh()
         }
     }
-    suspend fun retrySource(context: Context,source: ExportSource,tasks: List<AudioExportTask>,failures: List<ExportSourceFailure> = emptyList()) {
+    suspend fun retrySource(context: Context,source: ExportSource,tasks: List<AudioExportTask>,failures: List<ExportSourceFailure> = emptyList(),expectedQueueId: String?=null) {
         initialize(context);controls.withLock {
             musicCheck(!active.get()&&state.value.status!="QUEUED"&&!DuplicateCheckRuntime.transferring&&!MaintenanceRuntime.busy,MusicError.BUSY)
+            musicCheck(expectedQueueId==null||database.snapshot().queueId==expectedQueueId,MusicError.LIBRARY_CHANGED)
             queueAccess()
             database.retrySource(source,tasks);failures.forEach{database.sourceFailure(it)};refresh()
         }
@@ -169,7 +171,7 @@ internal object AudioExportRuntime {
     fun notification(context: Context,snapshot: ExportSnapshot): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL,"Скачивание музыки",NotificationManager.IMPORTANCE_LOW))
-        val open=PendingIntent.getActivity(context,0,Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val open=PendingIntent.getActivity(context,JOB_ID,Intent(context,MainActivity::class.java).putExtra(OPEN_EXTRA,true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val pause=PendingIntent.getBroadcast(context,0,Intent(context,AudioExportPauseReceiver::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val ongoing=snapshot.status in setOf("RUNNING","QUEUED")
         val text=when(snapshot.status){"FINISHED"->"Музыка сохранена";"FINISHED_WITH_ERRORS"->"Завершено с пропусками: ${snapshot.failed+snapshot.sourceIssues}";"PAUSED"->"Приостановлено. Продолжить можно в приложении";else->"Сохранено ${snapshot.done} из ${snapshot.total}"}

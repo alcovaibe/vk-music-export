@@ -32,4 +32,24 @@ class CatalogDownloadsTest {
         catch(_: CancellationException){cancelled=true}
         assertTrue(cancelled)
     }
+    @Test fun preparedTasksMustMatchTheObservedPageAndAccountBeforeHidingASource()=runBlocking {
+        val catalog=NativeCatalog(listOf(list),1)
+        assertEquals(setOf(list.key),CatalogDownloads.completed(catalog,12,rows,{page},{true},tasksFor={_,_->tasks}))
+        for(wrong in listOf(tasks.take(1),tasks.map{it.copy(track=song.copy(id="12_999"))},
+            tasks.map{it.copy(source=it.source!!.copy(account=99))}))
+            assertTrue(CatalogDownloads.completed(catalog,12,rows,{page},{true},tasksFor={_,_->wrong}).isEmpty())
+    }
+
+    @Test fun indexedMembershipReaderUsesExactAccountSourceAndPreservesDuplicateOccurrences(): Unit=runBlocking {
+        val catalog=NativeCatalog(listOf(list),1)
+        val visited=mutableListOf<String>()
+        val result=CatalogDownloads.completed(catalog,12,emptyList(),{page},{true},
+            sourceRows={playlist->visited.add(playlist.key);rows})
+        assertEquals(setOf(list.key),result)
+        assertEquals(listOf(list.key),visited)
+        assertTrue(CatalogDownloads.completed(catalog,12,emptyList(),{page},{true},
+            sourceRows={rows.map{it.copy(source=it.source!!.copy(account=13))}}).isEmpty())
+        assertTrue(CatalogDownloads.completed(catalog,12,emptyList(),{page},{true},
+            sourceRows={rows.take(1)}).isEmpty())
+    }
 }

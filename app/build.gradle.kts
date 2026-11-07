@@ -11,11 +11,20 @@ val appVersion = Properties().apply {
 val buildVersionCode = providers.environmentVariable("APP_VERSION_CODE")
     .orElse(appVersion.getProperty("versionCode")).get().toInt()
 require(buildVersionCode in 1..2_100_000_000) { "Invalid Android versionCode" }
+val r8PlaybackCheck = providers.gradleProperty("r8PlaybackCheck").orNull == "true"
 val releaseKeystore = providers.environmentVariable("RELEASE_KEYSTORE_PATH").orNull
 
 android {
     namespace = "app.alcovaibe.vkmusicexport"
     compileSdk = 37
+    testBuildType = if (r8PlaybackCheck) "release" else "debug"
+    if (r8PlaybackCheck) sourceSets.getByName("androidTest").apply {
+        // AGP 9 built-in Kotlin has a separate Kotlin source directory set.
+        // Overriding Java sources alone still compiled debug-only androidTest Kotlin in release.
+        java.setSrcDirs(listOf("src/r8AndroidTest/java"))
+        kotlin.directories.clear()
+        kotlin.directories.add("src/r8AndroidTest/java")
+    }
     defaultConfig {
         applicationId = "app.alcovaibe.vkmusicexport"
         minSdk = 29
@@ -39,9 +48,11 @@ android {
             }
         }
         release {
-            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("releaseKey")
+            if (r8PlaybackCheck) signingConfig = signingConfigs.getByName("debug")
+            else if (releaseKeystore != null) signingConfig = signingConfigs.getByName("releaseKey")
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            testProguardFiles("proguard-rules.pro")
         }
     }
     compileOptions {
@@ -107,8 +118,10 @@ tasks.register("writeDependencyInventory") {
     description = "Resolve build/test classpaths and write the exact Maven inventory for SBOM/SCA"
     doLast {
         val names = setOf("debugCompileClasspath", "debugRuntimeClasspath", "releaseCompileClasspath",
-            "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath", "releaseUnitTestRuntimeClasspath",
+            "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath",
             "debugAndroidTestRuntimeClasspath", "androidLintTool")
+        val resolvedNames = configurations.filter { it.isCanBeResolved && it.name in names }.map { it.name }.toSet()
+        check(resolvedNames == names) { "Missing required configurations: ${names - resolvedNames}" }
         val coordinates = configurations.filter { it.isCanBeResolved && it.name in names }
             .flatMap { configuration -> configuration.incoming.resolutionResult.allComponents.mapNotNull {
                 (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { id ->

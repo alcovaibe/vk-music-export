@@ -4,7 +4,8 @@ import tempfile
 import unittest
 
 
-verify = runpy.run_path(str(Path(__file__).with_name('verify-instrumentation.py')))['verify']
+verification = runpy.run_path(str(Path(__file__).with_name('verify-instrumentation.py')))
+verify = verification['verify']
 
 
 class InstrumentationReportTest(unittest.TestCase):
@@ -55,10 +56,67 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.DuplicateReceiptDeviceTest" name="walReaderCompletesWhileAnotherConnectionHoldsTheWriter"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.UpdateCheckpointDeviceTest" name="malformedCheckpointAndOutOfDirectoryPathNeverDeleteAnUnrelatedFile"/>'
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.UpdateCheckpointDeviceTest" name="corruptOwnedApkIsRemovedAndCanNeverRestoreReady"/>'
-        return f'<testsuites tests="155" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.BulkDownloadDeviceTest" name="{name}"/>' for name in verification['BULK_DOWNLOAD_TESTS'])
+        for suite, methods in verification['SAVED_PLAYBACK_TESTS'].items():
+            cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
+        for suite, methods in verification['QUEUE_DOWNLOADS_TESTS'].items():
+            cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
+        for suite, methods in verification['PLAYBACK_HISTORY_TESTS'].items():
+            cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.SourceReadDeviceTest" name="{name}"/>' for name in verification['SOURCE_READ_TESTS'])
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest" name="{name}"/>' for name in verification['FRIEND_PREVIEW_TESTS'])
+        cases += '<testcase classname="app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest" name="leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem"/>'
+        cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.SourceMembershipDeviceTest" name="{name}"/>' for name in verification['SOURCE_MEMBERSHIP_TESTS'])
+        for suite, methods in verification['LOCAL_CATALOG_TESTS'].items():
+            cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>' for name in methods)
+        return f'<testsuites tests="220" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 155)
+        self.assertEqual(self.check([self.successful_report()], '0'), 220)
+
+    def test_missing_bulk_download_scenario_is_rejected_even_with_enough_other_tests(self):
+        name=verification['BULK_DOWNLOAD_TESTS'][0]
+        report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.BulkDownloadDeviceTest" name="{name}"/>','')
+        with self.assertRaisesRegex(ValueError, 'Required bulk download'):
+            self.check([report], '0')
+
+    def test_each_missing_saved_playback_case_is_rejected(self):
+        for suite, methods in verification['SAVED_PLAYBACK_TESTS'].items():
+            for name in methods:
+                report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>','')
+                with self.subTest(suite=suite, name=name), self.assertRaisesRegex(ValueError, 'Required saved/playback'):
+                    self.check([report], '0')
+
+    def test_each_missing_queue_downloads_case_is_rejected(self):
+        for suite, methods in verification['QUEUE_DOWNLOADS_TESTS'].items():
+            for name in methods:
+                report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>','')
+                with self.subTest(suite=suite,name=name),self.assertRaisesRegex(ValueError,'Required queue/downloads'):
+                    self.check([report],'0')
+
+    def test_every_playback_history_scenario_is_required(self):
+        for suite, methods in verification['PLAYBACK_HISTORY_TESTS'].items():
+            for name in methods:
+                report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>','')
+                with self.subTest(suite=suite,name=name),self.assertRaisesRegex(ValueError,'Required playback history'):
+                    self.check([report],'0')
+
+    def test_every_source_read_scenario_is_required(self):
+        for name in verification['SOURCE_READ_TESTS']:
+            report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.SourceReadDeviceTest" name="{name}"/>','')
+            with self.subTest(name=name),self.assertRaisesRegex(ValueError,'Required source read'):
+                self.check([report],'0')
+
+    def test_every_friend_preview_lifecycle_scenario_is_required(self):
+        for name in verification['FRIEND_PREVIEW_TESTS']:
+            report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest" name="{name}"/>','')
+            with self.subTest(name=name),self.assertRaisesRegex(ValueError,'Required friend preview lifecycle'):
+                self.check([report],'0')
+
+    def test_friend_destination_lifecycle_is_required(self):
+        report=self.successful_report().replace('leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem','missing_destination_case')
+        with self.assertRaisesRegex(ValueError,'Required friend destination lifecycle'):
+            self.check([report],'0')
 
     def test_legacy_foreground_service_test_required_on_api_29_to_33(self):
         report = self.successful_report()
@@ -67,9 +125,22 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 155)
+            self.assertEqual(self.check([executed], '0', api_level=api), 220)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 155)
+        self.assertEqual(self.check([report], '0', api_level=34), 220)
+
+    def test_every_source_membership_migration_and_index_case_is_required(self):
+        for name in verification['SOURCE_MEMBERSHIP_TESTS']:
+            report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.SourceMembershipDeviceTest" name="{name}"/>','')
+            with self.subTest(name=name),self.assertRaisesRegex(ValueError,'Required source membership'):
+                self.check([report],'0')
+
+    def test_every_local_catalog_persistence_and_playback_case_is_required(self):
+        for suite, methods in verification['LOCAL_CATALOG_TESTS'].items():
+            for name in methods:
+                report=self.successful_report().replace(f'<testcase classname="app.alcovaibe.vkmusicexport.{suite}" name="{name}"/>','')
+                with self.subTest(suite=suite,name=name),self.assertRaisesRegex(ValueError,'Required local catalog'):
+                    self.check([report],'0')
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):
@@ -136,13 +207,15 @@ class InstrumentationReportTest(unittest.TestCase):
             self.check([report])
 
     def test_missing_background_job_coverage_is_rejected(self):
-        report = self.successful_report().replace('app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest', 'OtherTest')
+        report = self.successful_report()
+        for i in range(4):
+            report=report.replace(f'<testcase classname="app.alcovaibe.vkmusicexport.BackgroundCheckDeviceTest" name="job{i}"/>','')
         with self.assertRaisesRegex(ValueError, 'Required background scan'):
             self.check([report])
 
 
     def test_missing_playback_coverage_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, 'Required background playback'):
+        with self.assertRaisesRegex(ValueError, 'Required saved/playback'):
             self.check([self.successful_report().replace('app.alcovaibe.vkmusicexport.PlaybackDeviceTest', 'OtherTest')])
 
     def test_missing_artwork_session_integration_cannot_be_hidden_by_other_tests(self):

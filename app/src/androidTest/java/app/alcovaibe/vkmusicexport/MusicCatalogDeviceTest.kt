@@ -49,7 +49,7 @@ class MusicCatalogStoreDeviceTest {
                 assertEquals(PlaylistKind.ALBUM,store.catalogKinds(12)[list.key])
                 store.catalogKind(12,list,PlaylistKind.UNKNOWN)
                 assertTrue(store.catalogKinds(12).isEmpty());assertEquals(PlaylistKind.PLAYLIST,store.catalogKinds(13)[list.key])
-                assertEquals(1,store.snapshot().pending);assertEquals(4,store.readableDatabase.version)
+                assertEquals(1,store.snapshot().pending);assertEquals(7,store.readableDatabase.version)
                 store.readableDatabase.rawQuery("SELECT name,value FROM meta",null).use{c->while(c.moveToNext())assertFalse((c.getString(0)+c.getString(1)).contains("SENSITIVE_KEY"))}
             }
         }finally{base.deleteRecursively()}
@@ -138,10 +138,10 @@ class MusicCatalogViewModelDeviceTest {
             ui.runOnUiThread{model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
             ui.waitUntil(10000){!model.state.value.busy&&model.state.value.catalog!=null}
             assertEquals(listOf(0,100),offsets);assertEquals(102,model.state.value.catalog!!.lists.size)
-            assertTrue(model.state.value.catalogKinds.isEmpty())
+            assertEquals(PlaylistKind.PLAYLIST,model.state.value.catalog!!.lists.first{it.id==1L}.kind)
             ui.runOnUiThread{model.refreshCatalog()}
             ui.waitUntil(10000){!model.state.value.busy}
-            assertEquals(2,MusicCatalog.lists(model.state.value.catalog,CatalogSection.ALBUMS,model.state.value.catalogKinds).size)
+            assertEquals(2,MusicCatalog.lists(model.state.value.catalog,CatalogSection.ALBUMS).size)
             ui.runOnUiThread{model.prepare(catalogKind=PlaylistKind.ALBUM)}
             // Await the actual queue/result, not a transient idle interval between
             // canceling catalog refresh and admitting the foreground prepare operation.

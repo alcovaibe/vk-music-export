@@ -4,10 +4,19 @@ import java.util.Locale
 
 /** VK returns the library in reverse addition order; keep that order as the default. */
 internal enum class MusicLibrarySort(val title: String) {
-    DEFAULT("По умолчанию"), NEWEST("Сначала новые"), OLDEST("Сначала старые"),
+    DEFAULT("По умолчанию"), NEWEST("Сначала новые добавления"), OLDEST("Сначала старые добавления"),
     ARTIST("По исполнителю"), TITLE("По названию"), YEAR("По году")
 }
 internal object MusicLibrarySorting {
+    /** A collection has no performer/year or documented addition chronology. */
+    fun choices(tracks: List<NativeTrack>?,additionOrder: Boolean=false): List<MusicLibrarySort> =
+        MusicLibrarySort.entries.filter { choice->when(choice) {
+            MusicLibrarySort.DEFAULT,MusicLibrarySort.TITLE->true
+            MusicLibrarySort.ARTIST->tracks!=null
+            MusicLibrarySort.YEAR->tracks?.any{it.releaseYear!=null}==true
+            MusicLibrarySort.NEWEST,MusicLibrarySort.OLDEST->tracks!=null&&additionOrder
+        }}
+
     private fun russianOrder(value: String): Pair<Int,String> {
         val normalized=value.trimStart().lowercase(Locale.ROOT).replace('ё','е')
         val first=normalized.firstOrNull()
