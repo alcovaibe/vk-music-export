@@ -7,21 +7,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-
-@Composable
-internal fun LibraryRemoveButton(inLibrary: Boolean,enabled: Boolean,onClick: ()->Unit) {
-    if(inLibrary)IconButton(enabled=enabled,onClick=onClick,modifier=Modifier.testTag("remove_from_vk")) {
-        Icon(Icons.Default.Delete,"Удалить из моей музыки ВК",tint=MaterialTheme.colorScheme.error)
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
