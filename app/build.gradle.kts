@@ -52,6 +52,7 @@ android {
             else if (releaseKeystore != null) signingConfig = signingConfigs.getByName("releaseKey")
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            testProguardFiles("proguard-rules.pro")
         }
     }
     compileOptions {

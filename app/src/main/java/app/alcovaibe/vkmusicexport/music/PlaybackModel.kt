@@ -49,6 +49,12 @@ internal object PlaybackLists {
         val label=source+" · "+(user.handle?:user.name)
         return friendPositions(state).map {row->PlaybackEntry(row.value,label,viewer,export=references.getOrNull(row.index),readSessionId=state.readSessionId)}
     }
+    fun artist(tracks: List<NativeTrack>, artistName: String, owner: Long?, readSessionId: String?): List<PlaybackEntry> {
+        val label = "Исполнитель · $artistName"
+        return tracks.map { track ->
+            PlaybackEntry(track, label, account = owner, readSessionId = readSessionId)
+        }
+    }
 }
 internal data class PlaybackState(val entries: List<PlaybackEntry> = emptyList(),val index: Int=0,
     val playing: Boolean=false,val buffering: Boolean=false,val playWhenReady: Boolean=false,val positionMs: Long=0,val durationMs: Long=0,

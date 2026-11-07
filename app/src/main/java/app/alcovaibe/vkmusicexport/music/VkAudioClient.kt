@@ -12,7 +12,20 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+internal enum class CapabilityStatus { SUPPORTED, EXPERIMENTAL, UNAVAILABLE }
+
+internal data class ApiCapabilities(
+    val library: CapabilityStatus = CapabilityStatus.SUPPORTED,
+    val catalog: CapabilityStatus = CapabilityStatus.SUPPORTED,
+    val playlists: CapabilityStatus = CapabilityStatus.SUPPORTED,
+    val friends: CapabilityStatus = CapabilityStatus.SUPPORTED,
+    val artists: CapabilityStatus = CapabilityStatus.SUPPORTED,
+    val artwork: CapabilityStatus = CapabilityStatus.SUPPORTED,
+    val directAudioStream: CapabilityStatus = CapabilityStatus.EXPERIMENTAL
+)
+
 internal interface MusicApi {
+    val capabilities: ApiCapabilities get() = ApiCapabilities()
     suspend fun accountOwner(access: MusicAccess): Long = library(access).owner
     suspend fun friendsPage(access: MusicAccess,offset: Int): FriendsPage = throw MusicFailure(MusicError.METHOD)
     suspend fun friendProfile(access: MusicAccess,id: Long): MusicFriend = throw MusicFailure(MusicError.METHOD)

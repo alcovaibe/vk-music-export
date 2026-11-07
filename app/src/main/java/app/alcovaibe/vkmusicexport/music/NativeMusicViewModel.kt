@@ -87,6 +87,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun selectArtistAlbum(album: NativePlaylist?)=artistController.selectAlbum(album)
     fun backFromArtist()=artistController.back()
     fun pauseArtists()=artistController.pause()
+    fun playArtistTrack(artist: MusicArtist?, album: NativePlaylist?, tracks: List<NativeTrack>, index: Int) {
+        val owner = _state.value.probe?.owner
+        val readSessionId = _state.value.readSessionId
+        val artistName = album?.title ?: artist?.name ?: "Исполнитель"
+        val entries = PlaybackLists.artist(tracks, artistName, owner, readSessionId)
+        PlaybackRuntime.play(getApplication(), entries, index)
+    }
+    fun downloadArtistTrack(track: NativeTrack) = download(track, 0)
     private val _queueAccount=MutableStateFlow<Long?>(null);val queueAccount=_queueAccount.asStateFlow()
     private var pendingQueueRetry=false
     fun dismissQueueAccount(){_queueAccount.value=null;pendingQueueRetry=false}

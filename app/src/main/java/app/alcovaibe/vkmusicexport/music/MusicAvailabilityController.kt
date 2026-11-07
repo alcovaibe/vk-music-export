@@ -16,7 +16,8 @@ internal class MusicAvailabilityController(
     private val extra: suspend ()->List<NativeTrack>,
     private val blocked: ()->Boolean,
     private val report: (AvailabilityState)->Unit={},
-    private val pageDelayMs: Long=400
+    private val pageDelayMs: Long=400,
+    private val io: CoroutineDispatcher=Dispatchers.IO
 ) {
     private val _state=MutableStateFlow(AvailabilityState())
     val state=_state.asStateFlow()
@@ -50,7 +51,7 @@ internal class MusicAvailabilityController(
         _state.value=AvailabilityState(visible=true,running=true)
         work=scope.launch {
             try {
-                withContext(Dispatchers.IO) {
+                withContext(io) {
                     val initial=access()
                     suspend fun guard() {active(g);checked(initial);active(g)}
                     guard()

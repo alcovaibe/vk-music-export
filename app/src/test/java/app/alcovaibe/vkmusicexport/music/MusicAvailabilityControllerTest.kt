@@ -20,9 +20,9 @@ class MusicAvailabilityControllerTest {
         override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("Not a catalog read")
         override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("Not a playlist read")
     }
-    private fun controller(scope: CoroutineScope,api: Api,read: suspend ()->MusicAccess={access},
+    private fun TestScope.controller(api: Api,read: suspend ()->MusicAccess={access},
         checked: suspend(MusicAccess)->MusicAccess={it})=
-        MusicAvailabilityController(scope,api,read,checked,{listOf(item)},{false},pageDelayMs=0)
+        MusicAvailabilityController(backgroundScope,api,read,checked,{listOf(item)},{false},pageDelayMs=0,io=UnconfinedTestDispatcher(testScheduler))
 
     @Test fun pausingAvailabilityDoesNotCancelAnIndependentCatalogJob()=runTest {
         val entered=CompletableDeferred<Unit>()
@@ -30,7 +30,7 @@ class MusicAvailabilityControllerTest {
         val api=Api()
         api.resolveCall={entered.complete(Unit);gate.await()}
         val catalogJob=backgroundScope.launch {delay(100);entered.complete(Unit)}
-        val reader=controller(backgroundScope,api)
+        val reader=controller(api)
         reader.show()
         reader.check()
         withTimeout(10_000){entered.await()}
@@ -55,7 +55,7 @@ class MusicAvailabilityControllerTest {
                 withContext(NonCancellable){stale.await()}
             }else fresh.await()
         }
-        val reader=controller(backgroundScope,api)
+        val reader=controller(api)
         reader.show();reader.check()
         withTimeout(10_000){firstStarted.await()}
         reader.pause();reader.check()
@@ -74,7 +74,7 @@ class MusicAvailabilityControllerTest {
         val waiting=CompletableDeferred<Unit>()
         val api=Api()
         api.resolveCall={waiting.await()}
-        val reader=controller(backgroundScope,api,{current}){initial->
+        val reader=controller(api,{current}){initial->
             MusicReadIdentity(initial).require(current)
             current
         }
