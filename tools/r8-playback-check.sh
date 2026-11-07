@@ -35,7 +35,9 @@ for sample in 1 2 3 4 5; do
   adb shell input keyevent KEYCODE_HOME
   adb shell am start -W -n app.alcovaibe.vkmusicexport/.MainActivity > "r8-evidence/warm-$sample.txt"
 done
-adb shell dumpsys gfxinfo app.alcovaibe.vkmusicexport reset > /dev/null
+# Retain the last real cold/warm launch frames. The unauthenticated home can
+# be idle/non-scrollable; resetting here would erase every rendered sample.
+# This is launcher/home evidence, not a large-library scrolling benchmark.
 for sample in 1 2 3 4 5; do adb shell input swipe 360 1200 360 450 250; done
 adb shell dumpsys gfxinfo app.alcovaibe.vkmusicexport framestats > r8-evidence/frames.txt
 adb shell dumpsys meminfo app.alcovaibe.vkmusicexport > r8-evidence/memory.txt
