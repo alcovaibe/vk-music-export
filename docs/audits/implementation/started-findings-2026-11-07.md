@@ -27,3 +27,11 @@ UI использует `artists.busy` для действий исполнит�
 Обязательные jobs API29/36/37 требуют настоящий mapping R8, единственный исполненный (не skipped) playback testcase, фактическое `playing`/`seekable`, pause/seek/resume, STOP и новый Play, отсутствие playback error и пятесекундный фоновый sample. Пишутся first-play latency, process CPU, PSS и Java heap. Сохраняются пять cold/warm `am start -W` samples, gfxinfo framestats и meminfo. Aggregate interface требует успех и этих jobs. Нагрузочные DB/queue/history сценарии 100/4500/20000 из прежнего полного набора сохраняются.
 
 Это ещё не AndroidX Macrobenchmark, не scroll по 20000 реально отображённых треков, не профилирование сети/GC и не 1h/8h screen-off. Замеры launcher без загруженной библиотеки нельзя выдавать за показатели библиотеки 20k. Все новые численные результаты появятся только после реального запуска Actions; до него F24 частичен.
+
+## F25 — область SBOM/OSV и SAST
+
+Application inventory теперь требует наличия всех восьми выбранных конфигураций. Отдельная `writeBuildToolInventory` собирает фактически разрешённые Maven-графы project/settings plugins; пустой граф блокирует успех. `toolchain-inventory.py` фиксирует pinned Actions, checksum Gradle distribution, наблюдаемые версии Java и установленных SDK packages. Секреты/переменные окружения целиком не выгружаются.
+
+SBOM объединяет app+plugin Maven coordinates и Actions purl; OSV проверяет Maven versions и pinned Action source commits, в том числе при повторном сканировании candidate SBOM. Pagination и сетевые ошибки по-прежнему не превращаются в clean. Необрабатываемый тип candidate component отклоняется. Добавлен CodeQL security-extended для java-kotlin (реальная manual-компиляция), Python и Actions. SHA CodeQL Action закреплён; SARIF сохраняется. Отсутствие SARIF, ошибка анализа и любая находка блокируют aggregate interface; автоматических suppressions нет.
+
+Gradle/JDK/Android SDK здесь инвентаризированы, но не объявлены проверенными Maven OSV. Образ runner и транзитивные зависимости Action runtime также не покрываются этой inventory. Пока нет успешных новых resolved inventory/OSV/SAST отчётов и разбора возможных находок, F25 остаётся частичным.

@@ -113,6 +113,8 @@ tasks.register("writeDependencyInventory") {
         val names = setOf("debugCompileClasspath", "debugRuntimeClasspath", "releaseCompileClasspath",
             "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath", "releaseUnitTestRuntimeClasspath",
             "debugAndroidTestRuntimeClasspath", "androidLintTool")
+        val resolvedNames = configurations.filter { it.isCanBeResolved && it.name in names }.map { it.name }.toSet()
+        check(resolvedNames == names) { "Missing required configurations: ${names - resolvedNames}" }
         val coordinates = configurations.filter { it.isCanBeResolved && it.name in names }
             .flatMap { configuration -> configuration.incoming.resolutionResult.allComponents.mapNotNull {
                 (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { id ->

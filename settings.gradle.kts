@@ -24,3 +24,11 @@ dependencyResolutionManagement {
 
 rootProject.name = "VKMusicExport"
 include(":app")
+
+// Capture the resolved settings-plugin graph while the Settings ScriptHandler owns it.
+gradle.extra["settingsPluginCoordinates"] = buildscript.configurations.getByName("classpath")
+    .incoming.resolutionResult.allComponents.mapNotNull {
+        (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { id ->
+            "${id.group}:${id.module}:${id.version}"
+        }
+    }.toSortedSet().toList()
