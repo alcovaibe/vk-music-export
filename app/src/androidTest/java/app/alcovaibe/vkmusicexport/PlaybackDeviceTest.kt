@@ -397,7 +397,7 @@ class PlaybackDeviceTest {
         val previousObserver=PlaybackCommandDiagnostics.observer
         PlaybackCommandDiagnostics.observer={event->
             previousObserver?.invoke(event)
-            if(event.contains(":stop:caller=")&&!event.contains(":stop:caller=null"))remoteStops.add(event)
+            if(event.contains(":stop:caller=")&&!event.contains(":stop:caller=null")||event.contains(":notification-stop:id="))remoteStops.add(event)
         }
         try {
         for(pass in 1..passes)for(order in orders) {
