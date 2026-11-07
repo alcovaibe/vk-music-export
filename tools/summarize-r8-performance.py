@@ -18,14 +18,16 @@ def percentiles(values):
 
 def summarize(root, api):
     startup={}
-    for mode in ('cold','warm'):
+    for mode, metric, name in (('cold','TotalTime','cold_total_ms'),
+                               ('warm','WaitTime','warm_command_wait_ms')):
         values=[]
         for index in range(1,6):
             text=(root/f'{mode}-{index}.txt').read_text()
-            value=re.search(r'^TotalTime:\s*(\d+)\s*$',text,re.M)
-            if 'Error:' in text or not value:raise ValueError('Incomplete startup sample')
+            value=re.search(r'^'+metric+r':\s*(\d+)\s*$',text,re.M)
+            if 'Error:' in text or not re.search(r'^Status:\s*ok\s*$',text,re.M) or not value:
+                raise ValueError(f'Incomplete {mode} sample {index}; required {metric}: {text[:2000]}')
             values.append(int(value[1]))
-        startup[mode+'_total_ms']=percentiles(values)
+        startup[name]=percentiles(values)
     frames=[];header=None;discarded=0
     for row in csv.reader((root/'frames.txt').read_text().splitlines()):
         if row and row[0]=='Flags':header={key:i for i,key in enumerate(row)};continue
@@ -36,7 +38,8 @@ def summarize(root, api):
                 discarded+=1;continue
             frames.append(duration)
         except (ValueError,KeyError,IndexError):raise ValueError('Malformed frame sample')
-    return {'schema':1,'api':api,'subject':'AVD launcher/home with synthetic offline fixture; not a 20k library scroll benchmark',
+    return {'schema':2,'api':api,'subject':'AVD launcher/home with synthetic offline fixture; not a 20k library scroll benchmark',
+            'warm_metric':'ActivityManager command WaitTime; not app warm startup or TTID',
             'startup':startup,'frame_ms':percentiles(frames),'discarded_frames':discarded}
 
 

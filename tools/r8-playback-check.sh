@@ -33,8 +33,9 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 for sample in 1 2 3 4 5; do
   adb shell am force-stop app.alcovaibe.vkmusicexport
   adb shell am start -W -n app.alcovaibe.vkmusicexport/.MainActivity > "r8-evidence/cold-$sample.txt"
-  adb shell input keyevent KEYCODE_HOME
+  adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME > /dev/null
   adb shell am start -W -n app.alcovaibe.vkmusicexport/.MainActivity > "r8-evidence/warm-$sample.txt"
+  cat "r8-evidence/cold-$sample.txt" "r8-evidence/warm-$sample.txt"
 done
 # Retain the last real cold/warm launch frames. The unauthenticated home can
 # be idle/non-scrollable; resetting here would erase every rendered sample.
