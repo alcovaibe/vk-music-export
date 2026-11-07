@@ -9,6 +9,8 @@ SCENARIOS = (
     'real_vk_login_and_renewal', 'large_library_export', 'screen_off_and_process_restart',
     'network_loss_and_retry', 'account_switch_and_logout', 'upgrade_existing_archive',
     'external_players_tags_artwork_and_playlist', 'duplicate_scan_and_safe_removal',
+    'online_and_offline_playback', 'bluetooth_media_controls', 'audio_focus_interruptions',
+    'ui_navigation_and_accessibility', 'upgrade_user_data_integrity',
 )
 BUILD_INPUTS = (
     'app', 'gradle', 'config', 'build.gradle.kts', 'gradle.properties',
