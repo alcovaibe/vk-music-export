@@ -60,6 +60,7 @@ PLAYBACK_HISTORY_TESTS = {
         'malformedQueueIsRejectedAndNeverDeletesTheExistingMusicDatabase',
         'coldRestoreAcceptsRenewalRejectsIndependentLoginAndKeepsPureOfflineQueue',
         'conflatedWriterFinishesWithTheLatestStopAndDoesNotResurrectAnOlderQueue',
+        'queuedStopFollowedByNewPlayKeepsOnlyTheNewQueueAcrossReopen',
         'cursorWritesStayConstantFor1004500And20000Entries',
     ),
     'PlaybackDeviceTest': ('serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition',

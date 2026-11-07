@@ -226,7 +226,7 @@ class MusicPlaybackService : MediaSessionService() {
         super.onStartCommand(intent,flags,startId)
         if(intent?.action==PlaybackRuntime.START) {
             val request=PlaybackRuntime.take(intent.getStringExtra("request"))
-            if(request!=null)start(request)else if(entries.isEmpty())stopSelf()
+            if(request!=null)start(request)else if(entries.isEmpty())stopSelf(startId)
         }
         return START_NOT_STICKY
     }

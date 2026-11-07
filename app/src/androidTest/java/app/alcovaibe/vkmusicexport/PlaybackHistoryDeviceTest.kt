@@ -82,6 +82,21 @@ class PlaybackHistoryDeviceTest {
             withTimeout(15_000){history.flush()};assertNull(store.read())
         }finally{release.countDown();scope.coroutineContext[Job]!!.cancelAndJoin();blocked.close()}
     }
+    @Test fun queuedStopFollowedByNewPlayKeepsOnlyTheNewQueueAcrossReopen()=fixture{context,store,_->
+        val entered=CountDownLatch(1);val release=CountDownLatch(1)
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+        val blocked=PlaybackHistoryStore(context){if(it=="replace"){entered.countDown();check(release.await(10,TimeUnit.SECONDS))}}
+        val history=PlaybackHistory(context,scope,{},blocked)
+        try {
+            history.save(record(id="old"));assertTrue(entered.await(10,TimeUnit.SECONDS))
+            history.save(null)
+            val latest=record(id="new-play")
+            history.save(latest);release.countDown()
+            withTimeout(15_000){history.flush()}
+            assertEquals(latest,store.read())
+            assertEquals(latest,history.restore())
+        }finally{release.countDown();scope.coroutineContext[Job]!!.cancelAndJoin();blocked.close()}
+    }
     @Test fun cursorWritesStayConstantFor1004500And20000Entries()=fixture{_,store,writes->
         val results=mutableListOf<JsonObject>()
         for(size in listOf(100,4500,20000)) {
