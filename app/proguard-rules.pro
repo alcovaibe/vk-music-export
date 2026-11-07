@@ -16,3 +16,42 @@
 # The dedicated fixture also invokes coroutine entry points absent from app call sites.
 -keep,allowobfuscation class kotlinx.coroutines.BuildersKt** { public *; }
 -keep,allowobfuscation class kotlinx.coroutines.DelayKt { public *; }
+
+# External R8 playback instrumentation is compiled independently from the target.
+# Preserve only the concrete boundary it invokes; class names remain mapped/obfuscated.
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.PlaybackRuntime {
+    public static ** INSTANCE;
+    public *** getState(...);
+    public *** stop(...);
+    public *** play*(...);
+    public *** repeat(...);
+    public *** toggle(...);
+    public *** seek(...);
+    public *** flushHistory*(...);
+}
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.ExportLayout {
+    public static ** INSTANCE;
+    public *** task*(...);
+}
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.SharedAudioStore {
+    public <init>(...);
+    public *** publish*(...);
+}
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.NativeTrack { public <init>(...); }
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.TransferResult { public <init>(...); }
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.ProcessedAudio { public <init>(...); }
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.PlaybackEntry { public <init>(...); }
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.PublishedAudio {
+    public *** getTrack(...);
+    public *** getUri(...);
+}
+-keep,allowobfuscation class app.alcovaibe.vkmusicexport.music.PlaybackState {
+    public *** getPlaying(...);
+    public *** getSeekable(...);
+    public *** getRepeat(...);
+    public *** getPlayWhenReady(...);
+    public *** getError(...);
+    public *** getEntries(...);
+}
+-keep,allowobfuscation class kotlinx.coroutines.Dispatchers { public *; }
+-keep,allowobfuscation class kotlinx.coroutines.TimeoutKt { public *; }
