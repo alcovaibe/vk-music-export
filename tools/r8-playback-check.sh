@@ -7,11 +7,15 @@ adb logcat -c
 adb logcat -v raw -s VKR8Bench:I '*:S' > r8-evidence/playback.log &
 reader=$!
 trap 'kill "$reader" 2>/dev/null || true' EXIT
-./gradlew --dependency-verification strict -Pr8PlaybackCheck=true connectedReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+dump_crash() {
+  adb logcat -d -b crash > r8-evidence/crash.log 2>&1 || true
+  cat r8-evidence/crash.log
+}
+./gradlew --dependency-verification strict -Pr8PlaybackCheck=true connectedReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace || { dump_crash; exit 1; }
 kill "$reader" 2>/dev/null || true
 wait "$reader" 2>/dev/null || true
 trap - EXIT
-python3 tools/verify-r8-evidence.py "$api"
+python3 tools/verify-r8-evidence.py "$api" || { dump_crash; exit 1; }
 # AGP may remove the tested package after instrumentation; reinstall the same minified bytes.
 adb install -r app/build/outputs/apk/release/app-release.apk
 # Keep observed cold/warm startup and graphics data, without inferring physical-device budgets.

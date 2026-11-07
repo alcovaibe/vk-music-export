@@ -30,7 +30,9 @@ def check(paths, reviewed=None):
                 path=location.get('artifactLocation',{}).get('uri')
                 line=location.get('region',{}).get('startLine')
                 matches=[entry for entry in reviews if entry['rule']==finding.get('ruleId') and entry['path']==path and entry['line']==line]
-                if len(matches)!=1:findings.append(finding)
+                if len(matches)!=1:
+                    print(f'Unreviewed CodeQL finding: {finding.get("ruleId")} {path}:{line}', flush=True)
+                    findings.append(finding)
     if findings:raise ValueError(f'{len(findings)} CodeQL findings require review; no automatic suppression')
 
 
