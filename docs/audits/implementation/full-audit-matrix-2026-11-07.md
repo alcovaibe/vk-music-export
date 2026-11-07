@@ -157,3 +157,7 @@ MusicCatalogController теперь получает реальный NativeMusi
 Дополнительно local play action использует тот же SavedPlaybackPolicy admission, что Saved screen, чтобы чтение локальной подборки не обходило блокировку редактирования файлов. Общая сборка и все Android/security/R8 проверки нового SHA обязательны.
 
 В `048850e` build/JVM/Lint/OSV, все3 SAST и все3 R8 — success. Android suites завершились с единственным новым LocalCatalogPlaybackDeviceTest failure на обращении к некомпозированному off-screen LazyColumn item. Исправлена именно навигация теста: container.performScrollToNode, затем click; дополнительно проверяются cached owner/key/catalog до взаимодействия. Таймауты и обязательность воспроизведения не ослаблены. Basic LocalCatalog/store миграционные сценарии не отмечены как причина failure; новый полный run обязателен.
+
+## Проверка текущих документов и bundled privacy
+
+В README сверены все внутренние heading anchors и относительные ссылки: отсутствующих целей не найдено. Compatibility guide ссылается на существующий release-acceptance/PROCEDURE.md. Исторические audit/CHANGELOG не переписываются. PRIVACY.md и bundled legal/privacy.txt синхронно исправлены: default Custom Tabs browser, durable playback queue без credentials/media URLs, credential-free account-scoped local collection descriptors и их сохранение вместе с файловым учётом. Удаление данных входа не выдаётся за удаление приватного музыкального индекса или серверный отзыв сессий. Это описание фактического хранения, не новый выпуск и не ручная приёмка.
