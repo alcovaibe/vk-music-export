@@ -5,13 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import java.util.UUID
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-
-private object NativeMusicGate {val mutex=Mutex()}
 
 internal data class NativeMusicState(val initialized: Boolean=false,val configured: Boolean=false,val busy: Boolean=false,
     val stage: String="",val error: MusicError?=null,val message: String?=null,val probe: NativeProbe?=null,
@@ -38,7 +33,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
     val sessionState=sessions?.state?:MutableStateFlow(MusicSessionState()).asStateFlow()
     private var sessionMonitor: Job?=null
-    private val operations=NativeOperationJournal(application)
     private val _state=MutableStateFlow(NativeMusicState())
     private val stateScope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private val _visibleState=MutableStateFlow(_state.value)
@@ -150,151 +144,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private val _artwork=MaintenanceRuntime.artwork;val artwork=_artwork.asStateFlow()
     private val _trackMetadata=MaintenanceRuntime.metadata;val trackMetadata=_trackMetadata.asStateFlow()
-    fun showTrackMetadata() {
-        if(!_state.value.initialized||_state.value.busy)return
-        _trackMetadata.update{it.copy(visible=true)}
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val owner=vault.read()?.accountId?:return@launch
-                val saved=AudioExportStore(getApplication()).use{it.metadataRunState(owner)}?:return@launch
-                MaintenanceRuntime.updateMetadata(owner){if(it.visible&&!it.running&&!_state.value.busy)saved.copy(visible=true)else it}
-            }catch(_: Exception){_trackMetadata.update{it.copy(message="Не удалось прочитать сохранённую проверку.")}}
-        }
-    }
-    fun dismissTrackMetadata(){_trackMetadata.update{it.copy(visible=false)}}
-    fun updateSavedTrackMetadata() {
-        if(!_trackMetadata.value.visible||_trackMetadata.value.running)return
-        run("track_metadata"){g->
-            _trackMetadata.update{it.copy(running=true,message=null)}
-            try {
-                withContext(Dispatchers.IO) {
-                    AudioExportRuntime.editSaved(getApplication(),maintenance=true) {
-                        AudioExportStore(getApplication()).use{store->
-                            val shared=SharedAudioStore(getApplication())
-                            vault.read()?.accountId?.let{owner->store.metadataRun(owner)}?.let{saved->
-                                MaintenanceRuntime.updateMetadata(saved.owner){saved.state(it.visible,running=true).copy(message=null)}
-                            }
-                            ArtworkRepair(getApplication(),store,shared).recover()
-                            val initial=sessions?.current()?:access()
-                            val owner=api.library(initial).owner
-                            suspend fun checkedAccess(): MusicAccess {
-                                active(g)
-                                val current=if(sessions!=null)sessions.continueRead(initial)else access().also {
-                                    if(it.credentialId!=initial.credentialId)throw MusicReadChanged()
-                                }
-                                active(g);musicCheck(current.accountId==null||current.accountId==owner,MusicError.ACCOUNT_CHANGED)
-                                return current
-                            }
-                            suspend fun guard(){checkedAccess();Unit}
-                            guard()
-                            val repair=TrackMetadataRepair(getApplication(),store,shared,beforeWrite=::guard)
-                            val files=store.savedFiles()
-                            val pending=store.metadataRun(owner)?.takeIf{it.unfinished}?:TrackMetadataRun.start(owner,files)
-                            val batch=TrackMetadataBatch(api,::checkedAccess,find=store::metadataTarget,
-                                verify=shared::requireValid,update=repair::update,recover=repair::recover,save={store.metadataRun(it)},checkpoint=store::metadataProgress,
-                                metadataSource={store.metadataReplacement(owner,it)?.referenceId},beforeItem={maintenanceBeforeItem("track_metadata",it)},
-                                progress={snapshot,name->
-                                    MaintenanceRuntime.updateMetadata(owner){snapshot.state(it.visible,running=true).copy(name=name,message=null)}
-                                    MaintenanceRuntime.checkpoint();AudioExportRuntime.refresh()
-                                })
-                            try {
-                                val result=batch.run(pending)
-                                MaintenanceRuntime.updateMetadata(owner){result.state(it.visible,running=true)}
-                            }finally {
-                                withContext(NonCancellable+Dispatchers.IO) {
-                                    SharedPlaylistStore(getApplication(),store).repairLocations()
-                                    AudioExportRuntime.refresh()
-                                }
-                            }
-                        }
-                    }
-                }
-            }catch(e: CancellationException){_trackMetadata.update{it.copy(message="Проверка приостановлена. Нажми «Продолжить», чтобы вернуться к необработанной записи.")};throw e}
-             catch(e: Exception) {
-                MaintenanceRuntime.markPaused()
-                val code=(e as? MusicFailure)?.code
-                _trackMetadata.update{it.copy(message=when {
-                    e is MusicReadChanged->"Доступ ВК изменился. Сохранённую проверку можно продолжить после входа в тот же аккаунт."
-                    code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS)->"ВК требует повторный вход. Подключись заново и нажми «Продолжить». Готовые позиции сохранены."
-                    else->(code?.label?:"Обработка остановлена.")+" Прогресс сохранён; проверку можно продолжить."
-                })}
-            }finally {
-                _trackMetadata.update{it.copy(running=false,name=null)}
-                Diagnostics.event("audio_track_metadata",mapOf("updated" to _trackMetadata.value.updated,"unavailable" to _trackMetadata.value.unavailable,
-                    "skipped" to _trackMetadata.value.skipped,"failed" to _trackMetadata.value.failed))
-            }
-        }
-    }
-    fun showArtwork(){if(_state.value.initialized&&!_state.value.busy)_artwork.update{it.copy(visible=true)}}
-    fun dismissArtwork(){_artwork.update{it.copy(visible=false)}}
-    fun addSavedArtwork() {
-        if(!_artwork.value.visible||_artwork.value.running)return
-        run("artwork"){g->
-            val diagnostic=ArtworkDiagnostics{type,fields->Diagnostics.event(type,fields)}
-            var outcome="STOPPED"
-            if(MaintenanceRuntime.isResuming("artwork"))_artwork.update{it.copy(visible=true,running=true,message=null,current=null)}
-            else _artwork.value=ArtworkState(visible=true,running=true)
-            try {
-                withContext(Dispatchers.IO) {
-                    AudioExportRuntime.editSaved(getApplication(),maintenance=true) {
-                        AudioExportStore(getApplication()).use{store->
-                            val shared=SharedAudioStore(getApplication())
-                            var lease: MusicAccess?=null
-                            suspend fun checkedAccess(): MusicAccess {
-                                active(g)
-                                val first=lease?:throw MusicFailure(MusicError.ACCESS)
-                                return (sessions?.continueRead(first)?:access().also{musicCheck(it.credentialId==first.credentialId,MusicError.ACCESS)}).also{active(g)}
-                            }
-                            val repair=ArtworkRepair(getApplication(),store,shared,onStep={diagnostic.step=it},beforeWrite={checkedAccess();Unit})
-                            diagnostic.step=ArtworkStep.RECOVERY;repair.recover()
-                            val saved=store.savedFiles()
-                            val ready=saved.filter{it.coverEmbedded}.map{it.uri}.toSet()
-                            val files=saved.filter{it.uri !in ready}.distinctBy{it.uri}
-                            if(files.isNotEmpty())lease=sessions?.current()?:access()
-                            val batch=MaintenanceRuntime.batch("artwork",lease?.accountId?:0,files)
-                            if(batch.resumed)_artwork.update{it.copy(total=batch.rows.size)}
-                            else _artwork.value=ArtworkState(visible=_artwork.value.visible,running=true,total=batch.rows.size,readySkipped=ready.size)
-                            MaintenanceRuntime.checkpoint()
-                            val source=ArtworkLoader(api,onAttempt=diagnostic::candidate,onStep={diagnostic.step=it})
-                            for((index,original) in batch.rows.withIndex()) {
-                                if(index<batch.next)continue
-                                val row=store.existing(original.taskKey)?:original
-                                active(g);maintenanceBeforeItem("artwork",index);diagnostic.item=index+1;diagnostic.step=ArtworkStep.VERIFY_FILE
-                                _artwork.update{it.copy(current="${row.track.artist} — ${row.track.displayTitle}")}
-                                _artwork.update{it.copy(issues=it.issues.filterNot{issue->issue.item==index+1})}
-                                try {
-                                    musicCheck(row.uri==original.uri&&row.track.id==original.track.id,MusicError.INCOMPLETE)
-                                    val changed=repair.add(row,source,::checkedAccess)
-                                    val marked=store.existing(row.taskKey)?.coverEmbedded==true
-                                    _artwork.update{when{changed->it.copy(added=it.added+1);marked->it.copy(existing=it.existing+1);else->it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.displayTitle,ArtworkSkipReason.NO_COVER))}}
-                                    diagnostic.result(if(changed)"ADDED" else if(marked)"EXISTING" else "NO_COVER")
-                                }catch(e: CancellationException){throw e}
-                                 catch(e: Exception) {
-                                    val unavailable=(e as? MusicFailure)?.code==MusicError.UNAVAILABLE&&diagnostic.step==ArtworkStep.RESOLVE_COVER
-                                    if(unavailable) {
-                                        _artwork.update{it.copy(missing=it.missing+1,skipped=it.skipped+ArtworkSkip(index+1,row.track.artist,row.track.displayTitle,ArtworkSkipReason.TRACK_UNAVAILABLE,row.taskKey))};diagnostic.result("UNAVAILABLE",e)
-                                    }else {
-                                        val issue=artworkIssue(index+1,row.displayName,diagnostic.step,e,row.track.artist,row.track.displayTitle)
-                                        _artwork.update{it.copy(issues=it.issues+issue)}
-                                        diagnostic.result("FAILED",e)
-                                        try{repair.recover()}catch(recovery: Exception){diagnostic.step=ArtworkStep.RECOVERY;throw recovery}
-                                        if((e as? MusicFailure)?.code in setOf(MusicError.ACCESS,MusicError.INVALID_ACCESS,MusicError.DENIED,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT,MusicError.STORAGE,MusicError.NETWORK,MusicError.TLS,MusicError.TIMEOUT)||e is java.io.IOException)throw e
-                                        _artwork.update{it.copy(failed=it.failed+1)}
-                                    }
-                                }
-                                _artwork.update{it.copy(processed=index+1)}
-                                MaintenanceRuntime.advance(index+1);AudioExportRuntime.refresh()
-                            }
-                        }
-                    }
-                }
-                active(g);outcome="COMPLETED"
-                _artwork.update{it.copy(message="Обработка завершена. Музыка повторно не скачивалась.")}
-            }catch(e: CancellationException){outcome="INTERRUPTED";_artwork.update{it.copy(message="Обработка прервана. Продолжи обработку из приложения. Готовые обложки и прогресс сохранены.")};throw e}
-             catch(e: Exception){MaintenanceRuntime.markPaused();diagnostic.result("STOPPED",e);_artwork.update{it.copy(message="Обработка остановлена (${(e as? MusicFailure)?.code?.name?:"STORAGE"}). Уже готовые файлы сохранены; при незавершённой записи резервная копия остаётся до восстановления.")}}
-            finally{_artwork.update{it.copy(running=false,current=null,resumable=MaintenanceRuntime.isResuming("artwork"))};diagnostic.summary(outcome,_artwork.value)}
-        }
-    }
+    fun showTrackMetadata()=maintenanceCoordinator.showTrackMetadata()
+    fun dismissTrackMetadata()=maintenanceCoordinator.dismissTrackMetadata()
+    fun updateSavedTrackMetadata()=maintenanceCoordinator.updateSavedTrackMetadata()
+    fun showArtwork()=maintenanceCoordinator.showArtwork()
+    fun dismissArtwork()=maintenanceCoordinator.dismissArtwork()
+    fun addSavedArtwork()=maintenanceCoordinator.addSavedArtwork()
     private val _metadataLookup=MutableStateFlow(MetadataLookupState());val metadataLookup=_metadataLookup.asStateFlow()
     private fun metadataLookupUpdate(id: String,block:(MetadataLookupState)->MetadataLookupState){_metadataLookup.update{if(it.id==id)block(it)else it}}
     fun showMetadataLookup(target: TrackMetadataTarget) {
@@ -638,84 +493,16 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun checkUnavailableTracks()=availabilityController.check()
     fun pauseAvailability()=availabilityController.pause()
     private val _savedFiles=MaintenanceRuntime.files;val savedFiles=_savedFiles.asStateFlow()
-    fun showSavedFiles(){if(_state.value.initialized&&!_state.value.busy)_savedFiles.update{it.copy(visible=true)}}
-    fun dismissSavedFiles(){_savedFiles.update{it.copy(visible=false)}}
-    fun selectSavedFile(row: PublishedAudio){if(!_state.value.busy)_savedFiles.update{it.copy(selecting=row)}}
-    fun cancelSavedFileSelection(){_savedFiles.update{it.copy(selecting=null)}}
-    fun backSavedFiles() {
-        if(_state.value.busy)return
-        _savedFiles.update{it.copy(preview=null,forget=null,selecting=null)}
-    }
-    fun requestForgetFile(row: PublishedAudio){if(!_state.value.busy)_savedFiles.update{it.copy(forget=row)}}
-    private fun savedFileWork(background: Boolean=false,block: suspend(Int,AudioExportStore,SharedAudioStore,SavedFileRecovery)->Unit) {
-        run(if(background)"saved_files_background" else "saved_files"){g->
-            _savedFiles.update{it.copy(running=true,message=null)}
-            try {
-                withContext(Dispatchers.IO){AudioExportRuntime.editSaved(getApplication(),maintenance=background){
-                    AudioExportStore(getApplication()).use{store->
-                        val shared=SharedAudioStore(getApplication());val recovery=SavedFileRecovery(getApplication(),store,shared)
-                        ArtworkRepair(getApplication(),store,shared).recover();recovery.recover()
-                        block(g,store,shared,recovery)
-                        SharedPlaylistStore(getApplication(),store).repairLocations();AudioExportRuntime.refresh()
-                    }
-                }}
-            }catch(e: CancellationException){_savedFiles.update{it.copy(message="Проверка прервана. Восстановленные связи сохранены.")};throw e}
-             catch(e: Exception){
-                if(background)MaintenanceRuntime.markPaused()
-                val code=(e as? MusicFailure)?.code?:MusicError.STORAGE
-                _savedFiles.update{it.copy(message=(e as? SavedFileFailure)?.reason?.label?:code.label)}
-                Diagnostics.event("audio_file_recovery",mapOf("outcome" to "FAILED","code" to code.name,"file_reason" to (e as? SavedFileFailure)?.reason?.name))
-            }finally{_savedFiles.update{it.copy(running=false,resumable=MaintenanceRuntime.isResuming("saved_files_background"))}}
-        }
-    }
-    fun checkSavedFiles(search: Boolean=MaintenanceRuntime.savedSearch()) {
-        savedFileWork(background=true){g,store,shared,recovery->
-            val batch=MaintenanceRuntime.batch("saved_files_background",0,store.savedFiles().distinctBy{it.uri},search)
-            var restored=if(batch.resumed)_savedFiles.value.restored else 0
-            if(!batch.resumed)_savedFiles.update{it.copy(processed=0,total=batch.rows.size,problems=emptyList(),preview=null,forget=null,restored=0)}
-            batch.rows.forEachIndexed{index,original->
-                if(index<batch.next)return@forEachIndexed
-                val row=store.existing(original.taskKey)?:original
-                active(g);maintenanceBeforeItem("saved_files_background",index)
-                var reason=shared.inspect(row).reason
-                var searchReason: SavedFileReason?=null
-                if(reason!=SavedFileReason.OK&&search) {
-                    val result=recovery.search(row)
-                    if(result==SavedFileReason.OK){restored++;reason=SavedFileReason.OK}else searchReason=result
-                }
-                Diagnostics.event("audio_file_check",mapOf("item" to index+1,"reason" to reason.name,"search_reason" to searchReason?.name,"search" to search))
-                _savedFiles.update{it.copy(processed=index+1,restored=restored,
-                    problems=if(reason==SavedFileReason.OK)it.problems else it.problems+SavedFileProblem(row,reason,searchReason))}
-                MaintenanceRuntime.advance(index+1)
-            }
-            _savedFiles.update{it.copy(message="Проверка завершена. Файлы не изменялись.")}
-        }
-    }
-    fun previewSavedFile(uri: android.net.Uri) {
-        val before=_savedFiles.value.selecting?:return
-        _savedFiles.update{it.copy(selecting=null)}
-        savedFileWork{g,_,_,recovery->
-            val preview=recovery.preview(before,uri);active(g)
-            _savedFiles.update{it.copy(preview=preview,forget=null)}
-        }
-    }
-    fun confirmSavedFile() {
-        val preview=_savedFiles.value.preview?:return
-        savedFileWork{g,_,_,recovery->
-            active(g);recovery.confirm(preview)
-            _savedFiles.update{it.copy(preview=null,restored=it.restored+1,problems=it.problems.filterNot{p->p.row.taskKey==preview.before.taskKey},
-                message="Копия восстановлена в Music/VK Music Export/Восстановленные. Исходный файл сохранён.")}
-            Diagnostics.event("audio_file_recovery",mapOf("outcome" to "IMPORTED","exact" to preview.exact))
-        }
-    }
-    fun confirmForgetFile() {
-        val row=_savedFiles.value.forget?:return
-        savedFileWork{g,store,_,_->
-            active(g);store.forgetFile(row)
-            _savedFiles.update{it.copy(forget=null,problems=it.problems.filterNot{p->p.row.taskKey==row.taskKey},message="Запись убрана. Файлы на телефоне и музыка ВК сохранены.")}
-            Diagnostics.event("audio_file_recovery",mapOf("outcome" to "FORGOTTEN"))
-        }
-    }
+    fun showSavedFiles()=savedFilesCoordinator.showSavedFiles()
+    fun dismissSavedFiles()=savedFilesCoordinator.dismissSavedFiles()
+    fun selectSavedFile(row: PublishedAudio)=savedFilesCoordinator.selectSavedFile(row)
+    fun cancelSavedFileSelection()=savedFilesCoordinator.cancelSavedFileSelection()
+    fun backSavedFiles()=savedFilesCoordinator.backSavedFiles()
+    fun requestForgetFile(row: PublishedAudio)=savedFilesCoordinator.requestForgetFile(row)
+    fun checkSavedFiles(search: Boolean=MaintenanceRuntime.savedSearch())=savedFilesCoordinator.checkSavedFiles(search)
+    fun previewSavedFile(uri: android.net.Uri)=savedFilesCoordinator.previewSavedFile(uri)
+    fun confirmSavedFile()=savedFilesCoordinator.confirmSavedFile()
+    fun confirmForgetFile()=savedFilesCoordinator.confirmForgetFile()
     private val _removal=MutableStateFlow(LibraryRemovalState());val removal=_removal.asStateFlow()
     fun dismissRemoval() {
         if(_removal.value.phase==LibraryRemovalPhase.CHECKING)cancel()
@@ -789,14 +576,23 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         }
     }
-    private var work: Job?=null
-    private val authOpened=MutableStateFlow(false)
-    private var authSession: DeviceSession?=null
-    private var authCodes: Channel<DeviceConfirmationCode>?=null
-    private var operationOwner: Int?=null
+    private val operationCoordinator=MusicOperationCoordinator(application,viewModelScope,_state,maintenanceLauncher,
+        prepareOperation=::prepareOperation,resetAuth=::resetAuth)
+    private val authCoordinator=MusicAuthCoordinator(_state,deviceAuth,api,authForeground,authClock,authPollMs,authBrowser,
+        operation=::run,active=::active,isCurrent={it==generation},
+        save={credential->withContext(Dispatchers.IO){vault.save(credential)}},reload={sessions?.reload();Unit},
+        acceptProbe=::acceptProbe,stopOnline=PlaybackRuntime::stopOnline)
+    private val maintenanceCoordinator=MusicMaintenanceCoordinator(application,viewModelScope,_state,api,
+        operation=::run,active=::active,savedAccount={vault.read()?.accountId},
+        currentAccess={sessions?.current()?:access()},
+        continueRead={initial->sessions?.continueRead(initial)?:access().also {
+            if(it.credentialId!=initial.credentialId)throw MusicReadChanged()
+        }},maintenanceBeforeItem=maintenanceBeforeItem)
+    private val savedFilesCoordinator=MusicSavedFilesCoordinator(application,_state,::run,::active,maintenanceBeforeItem)
+    private val work: Job? get()=operationCoordinator.work
     private var catalogVerificationWork: Job?=null
     private var lastLibraryRefreshMs=0L
-    @Volatile private var generation=0
+    private val generation: Int get()=operationCoordinator.generation
     init {
         stateScope.launch {
             combine(_state,MaintenanceRuntime.status){own,task->visibleState(own,task)}.collect{_visibleState.value=it}
@@ -821,7 +617,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 val loaded=withContext(Dispatchers.IO){
                     MaintenanceRuntime.initialize(application)
                     DuplicateCheckRuntime.initialize(application)
-                    val interrupted=if(NativeMusicGate.mutex.tryLock())try{operations.recover()}finally{NativeMusicGate.mutex.unlock()}else false
+                    val interrupted=operationCoordinator.recover()
                     val access=runCatching{vault.read()}
                     access.getOrNull()?.accountId?.takeIf{it>0}?.let{owner->
                         try{AudioExportStore(application).use{store->
@@ -843,21 +639,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
              catch(_: Exception){_state.value=NativeMusicState(initialized=true,error=MusicError.STORAGE)}
         }
     }
-    private fun run(stage: String,block: suspend (Int)->Unit) {
-        if(MaintenanceRuntime.busy){_state.update{it.copy(error=MusicError.BUSY)};return}
-        val maintenance=stage in MaintenanceRuntime.stages
-        if(DuplicateCheckRuntime.transferring&&stage!="duplicates_delete"){
-            _state.update{it.copy(error=MusicError.BUSY)};return
-        }
-        // A user-initiated queue must take precedence over an automatic catalog refresh.
-        // Cancel the old reader, then wait for its cleanup under NativeMusicGate below.
-        val preemptBackground=stage=="prepare"&&_state.value.busy&&
-            _state.value.stage in setOf("catalog_refresh","resume_refresh")
-        if(preemptBackground)work?.cancel()
-        if(!_state.value.initialized||(_state.value.busy&&!preemptBackground)){
-            Diagnostics.event("native_music_operation_ignored",mapOf("stage" to stage,"reason" to if(_state.value.busy)"busy" else "initializing"))
-            return
-        }
+    private fun resetAuth()=authCoordinator.reset()
+    private fun prepareOperation(stage: String): MusicOperationCleanup {
         // Cancel background verification before any foreground operation. Await its
         // completion before touching the download database: cancellation alone does
         // not guarantee that an in-flight SQLite/file read has released its handles.
@@ -883,70 +666,16 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         val lookupRunId=_artworkLookup.value.id.takeIf{stage.startsWith("cover_lookup_")}
         val metadataRunId=_metadataLookup.value.id.takeIf{stage.startsWith("metadata_lookup_")}
         val duplicateRunId=_duplicates.value.scanId.takeIf{stage=="duplicates_delete"}
-        val g=++generation;val id=UUID.randomUUID().toString()
-        operationOwner=g
-        _state.update{it.copy(busy=true,stage=stage,error=null,message=null,authIssue=null,
-            authCodeIssue=null,authCodePending=false,stopping=false,preparing=null,waitingForSlot=NativeMusicGate.mutex.isLocked,
-            authPhase=if(stage=="browser_auth")DeviceAuthPhase.PREPARING else null)}
-        Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "start"))
-        if(stage=="browser_auth")Diagnostics.event("native_auth_phase",mapOf("phase" to DeviceAuthPhase.PREPARING.name))
-        val operation: suspend()->Unit={
-            var outcome="failed"
-            try {
-                if(maintenance)MaintenanceRuntime.awaitAdmission()
-                // An old Activity/operation may still be finishing its non-cancellable cleanup.
-                // Wait for that owner instead of failing the user's next attempt with BUSY.
-                NativeMusicGate.mutex.withLock {
-                    cancelledVerification?.join()
-                    active(g);_state.update{it.copy(waitingForSlot=false)}
-                    try {
-                        withContext(Dispatchers.IO){operations.begin(id)}
-                        block(g);active(g);outcome="completed"
-                        Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "completed"))
-                    }catch(e: CancellationException){outcome="interrupted";throw e}
-                    finally {
-                        withContext(NonCancellable+Dispatchers.IO){runCatching{operations.finish(id,outcome)}}
-                    }
-                }
-            }catch(e: CancellationException){outcome="interrupted";throw e}
-             catch(e: DeviceAuthFailure) {
-                if(g==generation) {
-                    _state.update{it.copy(authPhase=DeviceAuthPhase.FAILED,authIssue=e.issue,error=e.musicError)}
-                    Diagnostics.event("native_auth_failed",mapOf("code" to e.issue.name,"vk_code" to e.remoteCode,"music_code" to e.musicError?.name))
-                }
-             }
-             catch(e: Exception){
-                if(maintenance)MaintenanceRuntime.markPaused()
-                if(g==generation) {
-                    val error=(e as? MusicFailure)?.code?:MusicError.STORAGE
-                    _state.update{it.copy(error=error,authPhase=if(stage=="browser_auth")DeviceAuthPhase.FAILED else it.authPhase,
-                        authIssue=if(stage=="browser_auth")DeviceAuthIssue.RESPONSE else it.authIssue)}
-                    Diagnostics.event("native_music_operation",mapOf("stage" to stage,"phase" to "failed","code" to error.name,"vk_code" to (e as? MusicFailure)?.remoteCode))
-                }
-            }finally {
+        return MusicOperationCleanup(cancelledVerification) {
                 if(metadataRunId!=null)metadataLookupUpdate(metadataRunId){if(it.busy)it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Повтори поиск.")else it}
                 if(lookupRunId!=null)lookupUpdate(lookupRunId){if(it.busy)it.copy(phase=LookupPhase.READY,choice=null,message="Операция прервана. Повтори поиск.") else it}
                 // Cancellation can happen while waiting for the shared gate, before block() starts.
                 if(duplicateRunId!=null)_duplicates.update{if(it.scanId==duplicateRunId&&it.busy)
                     it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message="Проверка прервана до завершения. Готовые проверки сохранены; поиск можно продолжить.") else it}
-                if(maintenance||stage in setOf("metadata_lookup_apply","cover_lookup_apply","saved_files"))withContext(NonCancellable+Dispatchers.IO){runCatching{MaintenanceRuntime.checkpoint()}}
-                if(operationOwner==g){
-                    operationOwner=null;work=null
-                    authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
-                    _state.update{it.copy(busy=false,stage="",stopping=false,waitingForSlot=false,
-                        authCodePending=false,authCodeIssue=null,preparing=null,
-                        libraryRefreshing=if(it.stopping)false else it.libraryRefreshing,
-                        catalogRefreshing=if(it.stopping)false else it.catalogRefreshing,
-                        libraryStale=it.libraryStale||(it.stopping&&it.libraryRefreshing&&it.page!=null),
-                        catalogStale=it.catalogStale||(it.stopping&&it.catalogRefreshing&&it.catalog!=null),
-                        message=if(it.stopping)"Операция остановлена. Готовые файлы сохранены." else it.message)}
-                }
-            }
         }
-        work=if(maintenance)MaintenanceRuntime.launch(getApplication(),stage,id,maintenanceLauncher,operation)
-            else viewModelScope.launch(start=CoroutineStart.UNDISPATCHED){operation()}
     }
-    private suspend fun active(g: Int){currentCoroutineContext().ensureActive();if(g!=generation)throw CancellationException()}
+    private fun run(stage: String,block: suspend(Int)->Unit)=operationCoordinator.run(stage,block)
+    private suspend fun active(g: Int)=operationCoordinator.active(g)
     private suspend fun access(): MusicAccess=withContext(Dispatchers.IO){vault.read()?:throw MusicFailure(MusicError.ACCESS)}
     fun setForeground(value: Boolean) {
         friends.setForeground(value)
@@ -962,86 +691,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(_state.value.stage=="browser_auth")Diagnostics.event("native_auth_lifecycle",
             mapOf("foreground" to value,"detector" to if(value)"activity_onResume" else "activity_onPause"))
     }
-    private fun authPhase(phase: DeviceAuthPhase) {
-        if(_state.value.authPhase==phase)return
-        _state.update{it.copy(authPhase=phase,
-            authCodePending=if(phase==DeviceAuthPhase.AWAITING_APPROVAL)false else it.authCodePending)}
-        Diagnostics.event("native_auth_phase",mapOf("phase" to phase.name))
-    }
-    fun authenticate() {
-        Diagnostics.button("native_auth_start")
-        run("browser_auth") {g->
-            authSession=null;authOpened.value=false
-            authPhase(DeviceAuthPhase.PREPARING)
-            val device="VK Music Export / "+android.os.Build.MANUFACTURER.take(24)+" "+android.os.Build.MODEL.take(48)
-            val session=deviceAuth.begin(device);active(g);authSession=session
-            authPhase(DeviceAuthPhase.READY)
-            val codes=Channel<DeviceConfirmationCode>(1);authCodes=codes
-            val access=try {
-                awaitDeviceAccess(deviceAuth,session,authOpened,authForeground,authClock,authPollMs,codes,
-                    onIncorrectCode={if(g==generation)_state.update{it.copy(authCodeIssue=DeviceCodeIssue.INCORRECT,authCodePending=false)}},
-                    onPhase={if(g==generation)authPhase(it)})
-            }finally{codes.cancel();if(authCodes===codes)authCodes=null}
-            active(g);authPhase(DeviceAuthPhase.VERIFYING)
-            val result=try{api.library(access)}catch(e: CancellationException){throw e}
-                catch(e: MusicFailure){throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,e.remoteCode,e.code)}
-            active(g);authForeground.first{it};active(g)
-            if(access.renewal!=null&&access.renewal.owner!=result.owner)
-                throw DeviceAuthFailure(DeviceAuthIssue.MUSIC_CHECK,musicError=MusicError.ACCESS)
-            // Only a real successful audio.get may replace an already saved credential.
-            PlaybackRuntime.stopOnline()
-            try{withContext(Dispatchers.IO){vault.save(access.withSession(verifiedAt=System.currentTimeMillis(),accountId=result.owner))}}
-            catch(e: CancellationException){throw e}
-            catch(_: Exception){throw DeviceAuthFailure(DeviceAuthIssue.STORAGE)}
-            active(g)
-            sessions?.reload()
-            _state.update{it.copy(configured=true,accessDamaged=false)}
-            acceptProbe(g,access,result);active(g)
-            authPhase(DeviceAuthPhase.CONNECTED)
-        }
-    }
-    fun openAuthChrome(context: android.content.Context) {
-        Diagnostics.button("native_auth_open_chrome")
-        val s=authSession
-        if(!_state.value.busy||_state.value.stopping||_state.value.stage!="browser_auth"||s==null)return
-        if(authClock()>=s.expiresAt) {
-            _state.update{it.copy(authIssue=DeviceAuthIssue.EXPIRED)}
-            return
-        }
-        val opened=authBrowser(context,s.url)
-        Diagnostics.event("native_auth_browser_dispatch",mapOf("accepted" to opened,"auth_status" to "not_proven"))
-        if(opened)authOpened.value=true
-        _state.update{it.copy(authIssue=if(opened)null else DeviceAuthIssue.BROWSER)}
-        if(opened && _state.value.authPhase==DeviceAuthPhase.READY)authPhase(DeviceAuthPhase.WAITING)
-    }
-    fun submitAuthCode(raw: String) {
-        val s=_state.value
-        if(!s.busy||s.stopping||s.authPhase!=DeviceAuthPhase.ENTER_CODE||s.authCodePending||!authForeground.value)return
-        val code=DeviceConfirmationCode.from(raw)
-        if(code==null){_state.update{it.copy(authCodeIssue=DeviceCodeIssue.FORMAT)};return}
-        val codes=authCodes?:return
-        Diagnostics.button("native_auth_submit_code")
-        // Main.immediate may resume the receiver and finish validation inside trySend.
-        // Publish pending first so a fast result cannot be overwritten by a stale true.
-        _state.update{it.copy(authCodeIssue=null,authCodePending=true)}
-        if(!codes.trySend(code).isSuccess)_state.update{it.copy(authCodePending=false)}
-    }
-    fun configure(token: String,agent: String) {
-        Diagnostics.button("native_music_save_access")
-        if(!NativeProtocol.validAccess(token,agent)){_state.update{it.copy(error=MusicError.INVALID_ACCESS)};return}
-        run("configure") {g->
-            val candidate=MusicAccess(token,agent)
-            val proof=api.library(candidate);active(g)
-            PlaybackRuntime.stopOnline()
-            withContext(Dispatchers.IO){
-                active(g)
-                vault.save(candidate.withSession(verifiedAt=System.currentTimeMillis(),accountId=proof.owner))
-            };active(g)
-            _state.update{it.copy(configured=true,accessDamaged=false)}
-            sessions?.reload()
-            acceptProbe(g,candidate,proof)
-        }
-    }
+    fun authenticate()=authCoordinator.authenticate()
+    fun openAuthChrome(context: android.content.Context)=authCoordinator.openAuthChrome(context)
+    fun submitAuthCode(raw: String)=authCoordinator.submitAuthCode(raw)
+    fun configure(token: String,agent: String)=authCoordinator.configure(token,agent)
     private var initialMusicReadAttempted=false
     fun openInitialMusic() {
         if(initialMusicReadAttempted||!_state.value.initialized||!_state.value.configured||_state.value.busy)return
@@ -1438,7 +1091,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(!_state.value.busy||_state.value.stopping)return
         if(detector=="native_stop_button")Diagnostics.button("native_music_cancel")
         Diagnostics.event("native_music_cancel",mapOf("detector" to detector))
-        generation++;authSession=null;authOpened.value=false;authCodes?.cancel();authCodes=null
+        operationCoordinator.invalidate();authCoordinator.reset()
         _state.update{it.copy(stopping=true,authPhase=null,authIssue=null,authCodeIssue=null,
             authCodePending=false,message="Завершаем остановку операции…")}
         work?.cancel()
