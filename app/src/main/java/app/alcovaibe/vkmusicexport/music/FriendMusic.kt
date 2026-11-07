@@ -12,7 +12,7 @@ internal data class FriendsPage(val items: List<MusicFriend>,val count: Int)
 internal enum class FriendMusicTab(val title: String) { TRACKS("Треки"),PLAYLISTS("Плейлисты"),ALBUMS("Альбомы") }
 internal data class FriendMusicProblem(val code: MusicError,val remoteCode: Int?=null,val httpStatus: Int?=null,val field: String?=null,val position: Int?=null) {
     val message get()=when {
-        remoteCode==201->"Пользовательские настройки приватности не разрешают вам доступ к аудиозаписям этого друга."
+        remoteCode==201->"ВК не разрешил получить аудиозаписи при текущем подключении. Точная причина недоступности неизвестна."
         code==MusicError.DENIED->"ВК не разрешил этому подключению получить данный музыкальный раздел."
         code==MusicError.METHOD->"Этот метод недоступен текущему подключению ВК."
         code==MusicError.ACCESS||code==MusicError.INVALID_ACCESS->"Нужно подключить ВК заново."

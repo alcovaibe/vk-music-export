@@ -75,4 +75,26 @@ class FriendMusicTest {
         assertTrue(FriendMusicProblem.from(MusicFailure(MusicError.METHOD,3)).description.contains("недоступен"))
         assertFalse(FriendMusicProblem.from(IllegalStateException("PRIVATE_TOKEN https://private")).description.contains("PRIVATE"))
     }
+    @Test fun providerDenialsDoNotClaimPrivacyAndAreNotEmptySuccessOrNetworkFailure() {
+        for(code in listOf(201,15,7,5)) {
+            val failure=try {
+                NativeProtocol.envelope("""{"error":{"error_code":$code,"error_msg":"PRIVATE_TOKEN"}}""")
+                error("Expected API rejection")
+            }catch(e: MusicFailure){e}
+            val problem=FriendMusicProblem.from(failure)
+            assertEquals(code,problem.remoteCode)
+            assertTrue(problem.codeText.contains(code.toString()))
+            assertFalse(problem.message.contains("приватности"))
+            assertFalse(problem.message.contains("PRIVATE_TOKEN"))
+            assertFalse(problem.message.contains("по сети"))
+        }
+        val denied=FriendMusicProblem.from(MusicFailure(MusicError.DENIED,httpStatus=403))
+        assertEquals("HTTP 403",denied.codeText)
+        assertTrue(denied.message.contains("не разрешил"))
+        val empty=NativeProtocol.page(Json.parseToJsonElement("""{"count":0,"items":[]}"""))
+        assertEquals(0,empty.count);assertTrue(empty.tracks.isEmpty())
+        val network=FriendMusicProblem.from(MusicFailure(MusicError.NETWORK))
+        assertTrue(network.message.contains("по сети"))
+        assertFalse(network.message==denied.message)
+    }
 }

@@ -142,7 +142,15 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         lifecycle.lifecycle.addObserver(observer)
         onDispose{lifecycle.lifecycle.removeObserver(observer);model.friends.setPreviewVisible(false)}
     }
-    var sort by rememberSaveable {mutableStateOf(MusicLibrarySort.DEFAULT)}
+    val sortPreferences=remember(context){context.getSharedPreferences("music_sort",android.content.Context.MODE_PRIVATE)}
+    val sortContext=if(state.selected!=null)"collection_tracks" else category.name
+    val sortChoices=MusicLibrarySorting.choices(
+        if(state.selected!=null||category==LibraryCategory.TRACKS)state.page?.tracks.orEmpty() else null,
+        additionOrder=state.selected==null&&category==LibraryCategory.TRACKS)
+    var selectedSort by rememberSaveable(sortContext) {mutableStateOf(
+        runCatching{MusicLibrarySort.valueOf(sortPreferences.getString(sortContext,null).orEmpty())}
+            .getOrDefault(MusicLibrarySort.DEFAULT))}
+    val sort=selectedSort.takeIf{it in sortChoices}?:MusicLibrarySort.DEFAULT
     var sortOpen by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
     val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
@@ -206,7 +214,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     fun choose(value: LibraryCategory) {
         if(state.busy||backgroundCheck)return
         if(category==LibraryCategory.ARTISTS&&value!=category)model.pauseArtists()
-        category=value;sort=MusicLibrarySort.DEFAULT
+        category=value
         when(value) {
             LibraryCategory.TRACKS->model.section(CatalogSection.LIBRARY)
             LibraryCategory.PLAYLISTS->model.section(CatalogSection.PLAYLISTS)
@@ -374,7 +382,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                         Text(state.selected?.title?:if(category==LibraryCategory.TRACKS)"${state.probe?.library?.count?:0} треков" else category.label,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
                         TextButton(enabled=!state.busy,onClick={sortOpen=true},modifier=Modifier.testTag("library_sort")) {
-                            Text("Сортировка");Icon(Icons.Default.KeyboardArrowDown,"Выбрать порядок",Modifier.size(18.dp))
+                            Text(sort.title);Icon(Icons.Default.KeyboardArrowDown,"Выбрать порядок",Modifier.size(18.dp))
                         }
                         if(category==LibraryCategory.TRACKS)IconButton(onClick={toolsOpen=!toolsOpen},modifier=Modifier.testTag("library_tools")){Icon(Icons.Default.MoreVert,"Инструменты библиотеки")}
                     }
@@ -495,8 +503,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(sortOpen)ModalBottomSheet(onDismissRequest={sortOpen=false},modifier=Modifier.testTag("library_sort_sheet")) {
         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp)) {
             Text("Сортировка",style=MaterialTheme.typography.titleLarge)
-            MusicLibrarySort.entries.forEach{choice->
-                TextButton(onClick={sort=choice;sortOpen=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("sort_${choice.name}")) {
+            sortChoices.forEach{choice->
+                TextButton(onClick={selectedSort=choice;sortPreferences.edit().putString(sortContext,choice.name).apply();sortOpen=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("sort_${choice.name}")) {
                     Text(choice.title,modifier=Modifier.weight(1f))
                     if(sort==choice)Icon(Icons.Default.Check,null)
                 }
