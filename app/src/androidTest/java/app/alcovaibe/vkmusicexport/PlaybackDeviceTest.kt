@@ -60,6 +60,11 @@ class PlaybackDeviceTest {
         val field=service.javaClass.getDeclaredField("player").apply{isAccessible=true}
         return field.get(service) as ExoPlayer
     }
+    @Suppress("DEPRECATION")
+    private fun notificationFor(token: android.media.session.MediaSession.Token)=app.getSystemService(NotificationManager::class.java)
+        .activeNotifications.singleOrNull {
+            it.notification.extras.getParcelable<android.media.session.MediaSession.Token>(Notification.EXTRA_MEDIA_SESSION)==token
+        }
     private fun fixture(block:(List<PlaybackEntry>)->Unit) {
         val trace=CopyOnWriteArrayList<String>()
         PlaybackCommandDiagnostics.observer={event->
@@ -388,6 +393,13 @@ class PlaybackDeviceTest {
         val orders=listOf<List<Int>?>(null,listOf(0,1,2),listOf(0,2,1),listOf(1,0,2),listOf(1,2,0),listOf(2,0,1),listOf(2,1,0))
         val passes=InstrumentationRegistry.getArguments().getString("playbackRecreationPasses")?.toInt()?:1
         require(passes in 1..10)
+        val remoteStops=CopyOnWriteArrayList<String>()
+        val previousObserver=PlaybackCommandDiagnostics.observer
+        PlaybackCommandDiagnostics.observer={event->
+            previousObserver?.invoke(event)
+            if(event.contains(":stop:caller=")&&!event.contains(":stop:caller=null"))remoteStops.add(event)
+        }
+        try {
         for(pass in 1..passes)for(order in orders) {
             PlaybackCommandDiagnostics.record{"recreation-pass=$pass,order=$order"}
             ui.runOnUiThread{PlaybackRuntime.playIndex(2)}
@@ -420,7 +432,9 @@ class PlaybackDeviceTest {
             assertTrue(PlaybackRuntime.state.value.shuffle);assertEquals(saved.repeat,PlaybackRuntime.state.value.repeat)
             ui.runOnUiThread{PlaybackRuntime.playIndex(1)}
             awaitState(10_000,"select second track after resume",saved.order){PlaybackRuntime.state.value.index==1&&PlaybackRuntime.state.value.playing}
+            assertTrue("No STOP was requested during service recreation: $remoteStops",remoteStops.isEmpty())
         }
+        }finally{PlaybackCommandDiagnostics.observer=previousObserver}
     }
 
     @Test fun currentSessionStopFromControllersNotificationAndHardwareStillAllowsExplicitResume()=fixture {rows->
@@ -430,17 +444,20 @@ class PlaybackDeviceTest {
         val controller=androidx.media3.session.MediaController.Builder(app,session.token)
             .setApplicationLooper(android.os.Looper.getMainLooper()).buildAsync().get(20,java.util.concurrent.TimeUnit.SECONDS)
         val legacy=android.media.session.MediaController(app,session.platformToken)
+        val notificationToken=session.platformToken
         try {
-            for(kind in listOf("modern","legacy","notification","hardware"))for(select in listOf(false,true)) {
+            for(kind in listOf("modern","legacy","notification","widget","hardware"))for(select in listOf(false,true)) {
                 PlaybackCommandDiagnostics.record{"stop-resume-case=$kind,select=$select"}
+                var dismiss: android.app.PendingIntent?=null
+                if(kind=="notification")ui.waitUntil(10_000){
+                    dismiss=notificationFor(notificationToken)?.notification?.deleteIntent;dismiss!=null
+                }
                 ui.runOnUiThread {
                     when(kind) {
                         "modern"->controller.stop()
                         "legacy"->legacy.transportControls.stop()
-                        "notification"->androidx.media3.session.PlaybackPendingIntentBuilder(app,Player.COMMAND_STOP,MusicPlaybackService::class.java)
-                            .setSessionId(session.id)
-                            .setExtras(android.os.Bundle().apply{putBoolean(androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,true)})
-                            .build().send()
+                        "notification"->checkNotNull(dismiss).send()
+                        "widget"->androidx.media3.session.PlaybackPendingIntentBuilder(app,Player.COMMAND_STOP,MusicPlaybackService::class.java).build().send()
                         else->{
                             legacy.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_MEDIA_STOP))
                             legacy.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_MEDIA_STOP))
@@ -458,6 +475,73 @@ class PlaybackDeviceTest {
                 ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==index}
             }
         }finally{ui.runOnUiThread{controller.release()}}
+    }
+
+    @Test fun oldNotificationIdentityCannotTargetARecreatedPlaybackService()=fixture {rows->
+        start(rows)
+        lateinit var oldSession: androidx.media3.session.MediaSession
+        ui.runOnUiThread {
+            oldSession=checkNotNull(PlaybackRuntime.service).sessions.single()
+            PlaybackRuntime.toggle(app);PlaybackRuntime.seek(321)
+        }
+        ui.waitUntil(10_000){!PlaybackRuntime.state.value.playWhenReady&&PlaybackRuntime.state.value.positionMs==321L}
+        val manager=app.getSystemService(NotificationManager::class.java)
+        val oldToken=oldSession.platformToken
+        ui.waitUntil(10_000){notificationFor(oldToken)?.notification?.deleteIntent!=null}
+        val old=checkNotNull(notificationFor(oldToken))
+        val oldDismiss=checkNotNull(old.notification.deleteIntent)
+        runBlocking(Dispatchers.IO){withTimeout(15_000){PlaybackRuntime.flushHistory()}}
+        val saved=PlaybackRuntime.state.value
+        ui.runOnUiThread{app.stopService(android.content.Intent(app,MusicPlaybackService::class.java))}
+        ui.waitUntil(10_000){PlaybackRuntime.service==null}
+        ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+        ui.waitUntil(20_000){PlaybackRuntime.state.value.playing}
+        lateinit var current: androidx.media3.session.MediaSession
+        ui.runOnUiThread{current=checkNotNull(PlaybackRuntime.service).sessions.single()}
+        val currentToken=current.platformToken
+        ui.waitUntil(10_000){notificationFor(currentToken)?.notification?.deleteIntent!=null}
+        val live=checkNotNull(notificationFor(currentToken))
+        assertNotEquals("SystemUI must not look up a new controller under an old notification key",old.id,live.id)
+        assertNotEquals(oldSession.id,current.id)
+        assertNotEquals("Old PendingIntent must retain its original session address",oldDismiss,live.notification.deleteIntent)
+        ui.waitUntil(10_000){manager.activeNotifications.none{it.id==old.id}}
+        val rejected=CopyOnWriteArrayList<String>()
+        val previous=PlaybackCommandDiagnostics.observer
+        PlaybackCommandDiagnostics.observer={event->
+            previous?.invoke(event)
+            if(event.contains("ignored-old-stop:"))rejected.add(event)
+        }
+        try {
+            oldDismiss.send()
+            ui.waitUntil(10_000){rejected.any{it.contains(oldSession.id)&&it.contains(old.id.toString())}}
+            // Also cover an old explicitly addressed STOP without dismissal extras.
+            val addressed=androidx.media3.session.PlaybackPendingIntentBuilder.createMediaButtonIntent(app,
+                Player.COMMAND_STOP,null,oldSession.id,MusicPlaybackService::class.java)
+            app.startService(addressed)
+            ui.waitUntil(10_000){rejected.any{it.contains("target=${addressed.data}")}}
+            ui.runOnUiThread {
+                assertSame(current,checkNotNull(PlaybackRuntime.service).sessions.single())
+                assertTrue(player().playWhenReady);assertNotEquals(Player.STATE_IDLE,player().playbackState)
+            }
+            assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
+            assertEquals(saved.order,PlaybackRuntime.state.value.order)
+            // STOP -> Play on the same service also retires the old notification.
+            val liveDismiss=checkNotNull(live.notification.deleteIntent)
+            liveDismiss.send()
+            ui.waitUntil(10_000) {
+                var idle=false;ui.runOnUiThread{idle=player().playbackState==Player.STATE_IDLE}
+                idle&&!PlaybackRuntime.state.value.playing
+            }
+            ui.runOnUiThread{PlaybackRuntime.toggle(app)}
+            ui.waitUntil(20_000){PlaybackRuntime.state.value.playing}
+            ui.waitUntil(10_000){notificationFor(currentToken)?.id?.let{it!=live.id}==true}
+            val resumed=checkNotNull(notificationFor(currentToken))
+            assertNotEquals(liveDismiss,resumed.notification.deleteIntent)
+            liveDismiss.send()
+            ui.waitUntil(10_000){rejected.any{it.contains(current.id)&&it.contains(live.id.toString())}}
+            ui.runOnUiThread{assertSame(current,checkNotNull(PlaybackRuntime.service).sessions.single());assertTrue(player().playWhenReady)}
+            assertEquals(saved.entries,PlaybackRuntime.state.value.entries)
+        }finally{PlaybackCommandDiagnostics.observer=previous}
     }
 
 }

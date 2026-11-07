@@ -64,7 +64,8 @@ PLAYBACK_HISTORY_TESTS = {
     ),
     'PlaybackDeviceTest': ('serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition',
         'artworkMetadataUpdateDoesNotRepublishTheChildTimelineOrResolveAgain',
-        'currentSessionStopFromControllersNotificationAndHardwareStillAllowsExplicitResume'),
+        'currentSessionStopFromControllersNotificationAndHardwareStillAllowsExplicitResume',
+        'oldNotificationIdentityCannotTargetARecreatedPlaybackService'),
 }
 
 

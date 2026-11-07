@@ -1,6 +1,7 @@
 package app.alcovaibe.vkmusicexport.music
 
 import android.app.PendingIntent
+import android.app.NotificationManager
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -13,6 +14,11 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaNotification
+import androidx.media3.session.PlaybackPendingIntentBuilder
+import androidx.media3.session.CommandButton
+import com.google.common.collect.ImmutableList
 import app.alcovaibe.vkmusicexport.MainActivity
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.SettableFuture
@@ -20,10 +26,26 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Foreground media playback is intentionally separate from dataSync/file-maintenance services. */
 @androidx.annotation.OptIn(UnstableApi::class)
 class MusicPlaybackService : MediaSessionService() {
+    // A delayed SystemUI removal looks up the controller by notification key.
+    // A new service must not reuse the previous service's key or PendingIntents.
+    private val notificationSessionId=UUID.randomUUID().toString()
+    private var notificationId=nextNotificationId()
+    private val retiredNotificationIds=mutableSetOf<Int>()
+    private var destroyed=false
+    private var keepIdleNotification=false
+    private companion object {
+        const val NOTIFICATION_STOP="app.alcovaibe.vkmusicexport.STOP_PLAYBACK_NOTIFICATION"
+        // Separate from the app's fixed job IDs and Media3's shutdown notification.
+        // Randomize the initial namespace to avoid immediate reuse after process death.
+        val notificationIds=AtomicInteger(kotlin.random.Random.nextInt(1 shl 30))
+        fun nextNotificationId()=0x40000000 or (notificationIds.incrementAndGet() and 0x3fffffff)
+    }
     private fun trace(event: () -> String) = PlaybackCommandDiagnostics.record {
         "${SystemClock.elapsedRealtime()}:service=${System.identityHashCode(this)}:queue=$serial:${event()}"
     }
@@ -55,6 +77,19 @@ class MusicPlaybackService : MediaSessionService() {
     private val offlineSourceFactory by lazy{PlaybackMediaSource.factory(this,offline=true)}
     override fun onCreate() {
         super.onCreate()
+        val notificationProvider=DefaultMediaNotificationProvider.Builder(this).setNotificationIdProvider{notificationId}.build()
+        setMediaNotificationProvider(object: MediaNotification.Provider by notificationProvider {
+            override fun createNotification(session: MediaSession,buttons: ImmutableList<CommandButton>,
+                actions: MediaNotification.ActionFactory,callback: MediaNotification.Provider.Callback): MediaNotification {
+                val generation=notificationId
+                val notification=notificationProvider.createNotification(session,buttons,actions) {changed->
+                    if(!destroyed&&notificationId==generation)callback.onNotificationChanged(scopedNotification(changed,generation))
+                }
+                return scopedNotification(notification,generation)
+            }
+        })
+        setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_NEVER)
+        trace{"notification-generation:id=$notificationId,session=$notificationSessionId"}
         PlaybackRuntime.initialize(this)
         val delegate=PlaybackMediaSource.factory(this)
         val factory=object: MediaSource.Factory by delegate {
@@ -80,12 +115,22 @@ class MusicPlaybackService : MediaSessionService() {
                 }
                 core.stop()
             }
-            override fun prepare(){trace{"prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}"};core.prepare()}
+            override fun prepare(){
+                if(core.playbackState==Player.STATE_IDLE) {
+                    val previous=notificationId;notificationId=nextNotificationId();retiredNotificationIds.add(previous)
+                    getSystemService(NotificationManager::class.java).cancel(previous)
+                    // The notification controller may still report the previous IDLE state.
+                    // It must not cancel the fresh notification while this preparation starts.
+                    updateIdleNotificationMode(true)
+                    trace{"notification-generation:id=$notificationId,previous=$previous"}
+                }
+                trace{"prepare:state=${core.playbackState},index=${core.currentMediaItemIndex}"};core.prepare()
+            }
             override fun seekTo(mediaItemIndex: Int,positionMs: Long){trace{"seek:index=$mediaItemIndex,state=${core.playbackState}"};core.seekTo(mediaItemIndex,positionMs)}
         }
         val activity=PendingIntent.getActivity(this,6701,Intent(this,MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP).putExtra(PlaybackRuntime.OPEN_EXTRA,true),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        mediaSession=MediaSession.Builder(this,player).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
+        mediaSession=MediaSession.Builder(this,player).setId(notificationSessionId).setSessionActivity(activity).setCallback(object: MediaSession.Callback {
             override fun onConnect(session: MediaSession,controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
                 trace{"connect:caller=${controller.packageName},uid=${controller.uid},version=${controller.controllerVersion},notification=${session.isMediaNotificationController(controller)}"}
                 if(!controller.isTrusted&&controller.packageName!=packageName)return MediaSession.ConnectionResult.reject()
@@ -103,7 +148,10 @@ class MusicPlaybackService : MediaSessionService() {
                 resumeFromHistory(isForPlayback)
         }).build().also{addSession(it)}
         player.addListener(object: Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int){trace{"state=$playbackState,index=${player.currentMediaItemIndex},ready=${player.playWhenReady}"}}
+            override fun onPlaybackStateChanged(playbackState: Int){
+                updateIdleNotificationMode(player.playbackState!=Player.STATE_IDLE)
+                trace{"state=$playbackState,index=${player.currentMediaItemIndex},ready=${player.playWhenReady}"}
+            }
             override fun onEvents(player: Player,events: Player.Events){publish(
                 events.contains(Player.EVENT_TIMELINE_CHANGED)||events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED),
                 events.contains(Player.EVENT_POSITION_DISCONTINUITY)||events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)||events.contains(Player.EVENT_IS_PLAYING_CHANGED))}
@@ -142,15 +190,70 @@ class MusicPlaybackService : MediaSessionService() {
             }
         }
     }
+    override fun onUpdateNotificationAsync(session: MediaSession,startInForegroundRequired: Boolean): ListenableFuture<Void?> {
+        val update=super.onUpdateNotificationAsync(session,startInForegroundRequired)
+        if(retiredNotificationIds.isNotEmpty())update.addListener({
+            if(!destroyed&&retiredNotificationIds.isNotEmpty()) {
+                // An initial cancel may precede Media3 moving foreground ownership
+                // to the new ID. Retry after that update, without a timer or sleep.
+                val manager=getSystemService(NotificationManager::class.java)
+                retiredNotificationIds.forEach(manager::cancel)
+                retiredNotificationIds.retainAll(manager.activeNotifications.map{it.id}.toSet())
+            }
+        },androidx.core.content.ContextCompat.getMainExecutor(this))
+        return update
+    }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo)=mediaSession
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
         trace { "intent:action=${intent?.action},id=$startId:"+buttonDetails(intent) }
+        if(intent?.action==NOTIFICATION_STOP) {
+            if(intent.data==notificationStopUri(notificationId)&&entries.isNotEmpty()) {
+                // Apply this addressed user command on the main thread now. Routing it
+                // through a second asynchronous controller queue could overtake a new Play.
+                trace{"notification-stop:id=$notificationId"}
+                player.pause();player.stop();publish(forceCheckpoint=true)
+            }else {
+                trace{"ignored-old-stop:target=${intent.data}"}
+                if(entries.isEmpty())stopSelf(startId)
+            }
+            return START_NOT_STICKY
+        }
+        if(isStaleNotificationStop(intent)) {
+            trace{"ignored-old-stop:target=${intent?.data}"}
+            if(entries.isEmpty())stopSelf(startId)
+            return START_NOT_STICKY
+        }
         super.onStartCommand(intent,flags,startId)
         if(intent?.action==PlaybackRuntime.START) {
             val request=PlaybackRuntime.take(intent.getStringExtra("request"))
             if(request!=null)start(request)else if(entries.isEmpty())stopSelf()
         }
         return START_NOT_STICKY
+    }
+    private fun updateIdleNotificationMode(keep: Boolean) {
+        if(keepIdleNotification==keep)return
+        keepIdleNotification=keep
+        setShowNotificationForIdlePlayer(if(keep)SHOW_NOTIFICATION_FOR_IDLE_PLAYER_ALWAYS else SHOW_NOTIFICATION_FOR_IDLE_PLAYER_NEVER)
+    }
+    private fun notificationStopUri(generation: Int)=Uri.Builder().scheme("vkmusic").authority("notification-stop")
+        .appendPath(notificationSessionId).appendPath(generation.toString()).build()
+    private fun scopedNotification(notification: MediaNotification,generation: Int): MediaNotification {
+        val intent=Intent(this,MusicPlaybackService::class.java).setAction(NOTIFICATION_STOP).setData(notificationStopUri(generation))
+        notification.notification.deleteIntent=PendingIntent.getService(this,generation,intent,PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return MediaNotification(generation,notification.notification)
+    }
+    @Suppress("DEPRECATION")
+    private fun isStaleNotificationStop(intent: Intent?): Boolean {
+        if(intent?.action!=Intent.ACTION_MEDIA_BUTTON)return false
+        val key=intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+        if(key?.keyCode!=KeyEvent.KEYCODE_MEDIA_STOP)return false
+        val current=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
+            notificationSessionId,MusicPlaybackService::class.java).data
+        val fallback=PlaybackPendingIntentBuilder.createMediaButtonIntent(this,Player.COMMAND_STOP,null,
+            null,MusicPlaybackService::class.java).data
+        val dismissed=intent.getBooleanExtra(MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,false)
+        // Unaddressed hardware/widget events retain Media3's normal fallback.
+        return intent.data!=current&&(dismissed||intent.data!=null&&intent.data!=fallback)
     }
     @Suppress("DEPRECATION")
     private fun buttonDetails(intent: Intent?): String {
@@ -318,9 +421,12 @@ class MusicPlaybackService : MediaSessionService() {
     internal fun repeat(){player.repeatMode=when(player.repeatMode){Player.REPEAT_MODE_OFF->Player.REPEAT_MODE_ALL;Player.REPEAT_MODE_ALL->Player.REPEAT_MODE_ONE;else->Player.REPEAT_MODE_OFF};publish()}
     internal fun stopPlayback(){serial++;queueId=null;pendingOrder=null;entries=emptyList();artWork?.cancel();player.stop();player.clearMediaItems();stopSelf()}
     override fun onDestroy() {
+        destroyed=true
         trace{"destroy"}
         saveCheckpoint(force=true)
         scope.cancel();artWork?.cancel();mediaSession?.release();mediaSession=null;player.release()
+        getSystemService(NotificationManager::class.java).cancel(notificationId)
+        retiredNotificationIds.forEach{getSystemService(NotificationManager::class.java).cancel(it)};retiredNotificationIds.clear()
         if(PlaybackRuntime.service===this){PlaybackRuntime.service=null;PlaybackRuntime.publish(PlaybackRuntime.state.value.copy(playing=false,buffering=false,playWhenReady=false))}
         super.onDestroy()
     }
