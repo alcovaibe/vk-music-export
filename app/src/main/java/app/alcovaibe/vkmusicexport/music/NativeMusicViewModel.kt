@@ -576,19 +576,19 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         }
     }
-    private val operationCoordinator=MusicOperationCoordinator(application,viewModelScope,_state,maintenanceLauncher,
+    private val operationCoordinator: MusicOperationCoordinator=MusicOperationCoordinator(application,viewModelScope,_state,maintenanceLauncher,
         prepareOperation=::prepareOperation,resetAuth=::resetAuth)
-    private val authCoordinator=MusicAuthCoordinator(_state,deviceAuth,api,authForeground,authClock,authPollMs,authBrowser,
+    private val authCoordinator: MusicAuthCoordinator=MusicAuthCoordinator(_state,deviceAuth,api,authForeground,authClock,authPollMs,authBrowser,
         operation=::run,active=::active,isCurrent={it==generation},
         save={credential->withContext(Dispatchers.IO){vault.save(credential)}},reload={sessions?.reload();Unit},
         acceptProbe=::acceptProbe,stopOnline=PlaybackRuntime::stopOnline)
-    private val maintenanceCoordinator=MusicMaintenanceCoordinator(application,viewModelScope,_state,api,
+    private val maintenanceCoordinator: MusicMaintenanceCoordinator=MusicMaintenanceCoordinator(application,viewModelScope,_state,api,
         operation=::run,active=::active,savedAccount={vault.read()?.accountId},
         currentAccess={sessions?.current()?:access()},
         continueRead={initial->sessions?.continueRead(initial)?:access().also {
             if(it.credentialId!=initial.credentialId)throw MusicReadChanged()
         }},maintenanceBeforeItem=maintenanceBeforeItem)
-    private val savedFilesCoordinator=MusicSavedFilesCoordinator(application,_state,::run,::active,maintenanceBeforeItem)
+    private val savedFilesCoordinator: MusicSavedFilesCoordinator=MusicSavedFilesCoordinator(application,_state,::run,::active,maintenanceBeforeItem)
     private val work: Job? get()=operationCoordinator.work
     private var catalogVerificationWork: Job?=null
     private var lastLibraryRefreshMs=0L
@@ -639,7 +639,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
              catch(_: Exception){_state.value=NativeMusicState(initialized=true,error=MusicError.STORAGE)}
         }
     }
-    private fun resetAuth()=authCoordinator.reset()
+    private fun resetAuth(): Unit=authCoordinator.reset()
     private fun prepareOperation(stage: String): MusicOperationCleanup {
         // Cancel background verification before any foreground operation. Await its
         // completion before touching the download database: cancellation alone does
@@ -674,8 +674,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     it.copy(phase=DuplicatePhase.BLOCKED,consent=null,message="Проверка прервана до завершения. Готовые проверки сохранены; поиск можно продолжить.") else it}
         }
     }
-    private fun run(stage: String,block: suspend(Int)->Unit)=operationCoordinator.run(stage,block)
-    private suspend fun active(g: Int)=operationCoordinator.active(g)
+    private fun run(stage: String,block: suspend(Int)->Unit): Unit=operationCoordinator.run(stage,block)
+    private suspend fun active(g: Int): Unit=operationCoordinator.active(g)
     private suspend fun access(): MusicAccess=withContext(Dispatchers.IO){vault.read()?:throw MusicFailure(MusicError.ACCESS)}
     fun setForeground(value: Boolean) {
         friends.setForeground(value)

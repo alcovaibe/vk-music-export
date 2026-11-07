@@ -99,23 +99,26 @@ class MusicAuthCoordinatorTest {
         assertEquals(DeviceAuthPhase.CONNECTED,f.state.value.authPhase)
     }
 
-    @Test fun cancelledRequestCannotReuseBufferedConfirmationCode()=runTest {
+    @Test fun cancelledRequestCannotReuseAcceptedConfirmationCode()=runTest {
         val f=Fixture(this)
         f.pollCheck={DeviceCheck.VerificationRequired}
         f.coordinator.authenticate()
         f.coordinator.openBrowser{true}
         runCurrent()
         assertEquals(DeviceAuthPhase.ENTER_CODE,f.state.value.authPhase)
+        f.coordinator.submitAuthCode("123456")
+        runCurrent()
+        assertEquals(1,f.validations)
         f.foreground.value=false
         f.coordinator.submitAuthCode("123456")
-        assertEquals(0,f.validations)
+        assertEquals(1,f.validations)
         f.cancel()
         f.coordinator.submitAuthCode("123456")
         f.foreground.value=true
         f.coordinator.authenticate()
         f.coordinator.openBrowser{true}
         runCurrent()
-        assertEquals(0,f.validations);assertTrue(f.saved.isEmpty())
+        assertEquals(1,f.validations);assertTrue(f.saved.isEmpty())
         f.cancel()
     }
 
