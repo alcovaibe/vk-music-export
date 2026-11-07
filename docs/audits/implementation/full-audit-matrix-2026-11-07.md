@@ -90,3 +90,15 @@ Candidate artifact ID: 13578083080; GitHub artifact digest: `0352e24a8c429ef392b
 ### Разделение пользовательского поиска и repair lookup
 
 Глобальный search больше не наследует лимит repair-поиска обложек (20/100). У него собственная валидация запроса, страница до 100 и явно показанный предел просмотра 20000 результатов; offset продолжает фактическую страницу. Метод ВК остаётся прежним allowlisted audio.search, без расширения авторизации. Добавлен регрессионный сценарий перехода за первые 100 записей. Старые lookup обложек/метаданных не меняются. Runtime-проверка выполняется следующим CI.
+
+## Фактический прогон 1ac130d
+
+[42384061603](https://github.com/alcovaibe/vk-music-export/actions/runs/42384061603):
+build success (JVM/Lint/release R8 compilation/OSV), все SAST java-kotlin/Python/Actions success, channel-delivery и все девять updater jobs API29–37 success.
+Ошибки OSV из AGP classpath после адресных обновлений больше не блокируют этот run.
+R8 instrumentation ещё не принят: Trace-ошибка устранена, следующий crash — `NoSuchMethodError <init>(I)V` из `TestDirCalculator$outputDir$2`, т.е. отдельно сжатый test runner обращается к Kotlin runtime из target APK с изменённой ABI-сигнатурой.
+Добавлено scoped keep публичной бинарной границы kotlin.jvm.internal (с разрешённым obfuscation через общую mapping), без отключения R8 приложения или тестового APK.
+Один interface API36 job не стартовал из-за ошибки чтения ZIP при установке Android Emulator, до запуска тестов; это инфраструктурный отказ, а не результат тестирования.
+Новый R8/Android run ещё обязателен.
+
+Android suites API31/34 выполнили тесты, но FriendsMusicDeviceTest ещё требовал прежний текст о настройках приватности (F21). Обновлено точное ожидаемое нейтральное сообщение; проверки remote code, отмены и смены доступа в том же сценарии сохранены. Это изменение утверждённого UX-контракта, не увеличение timeout и не удаление теста.

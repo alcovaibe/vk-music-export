@@ -165,7 +165,7 @@ class FriendsMusicDeviceTest {
         ui.onNodeWithTag("friend_35").performClick();ui.waitUntil(15000){!model.friends.state.value.busy&&model.friends.state.value.problems.isNotEmpty()}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("friend_music_problem"))
         ui.onNodeWithText("Доступ к музыке запрещён").assertIsDisplayed()
-        ui.onNodeWithTag("friend_problem_message").assertTextEquals("Пользовательские настройки приватности не разрешают вам доступ к аудиозаписям этого друга.")
+        ui.onNodeWithTag("friend_problem_message").assertTextEquals("ВК не разрешил получить аудиозаписи при текущем подключении. Точная причина недоступности неизвестна.")
         ui.onNodeWithTag("friend_problem_code").assertDoesNotExist()
         ui.onAllNodes(hasText("Открыть в ВК") and hasAnyAncestor(hasTestTag("friend_music_problem"))).assertCountEquals(0)
         for(tag in listOf("friend_problem_message")) {
