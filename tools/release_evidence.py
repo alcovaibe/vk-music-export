@@ -7,7 +7,7 @@ import shutil
 import zipfile
 
 CORE=('SHA256SUMS.txt','build-info.json','upgrade-check.txt','release-certificate.pem','sbom.cdx.json','osv.json','LICENSE','NOTICE')
-ALLOWED={'.json','.xml','.txt','.ndjson','.png','.html','.css','.js','.csv'}
+ALLOWED={'.sarif','.json','.xml','.txt','.ndjson','.png','.html','.css','.js','.csv'}
 
 
 def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-input'), upgrades=Path('upgrade-results')):
@@ -17,6 +17,7 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
         if not path.is_file() or path.is_symlink():
             raise ValueError('Release evidence is incomplete: '+name)
         files['release/'+name]=path
+    if (output/'toolchain.json').is_file():files['release/toolchain.json']=output/'toolchain.json'
     # Account acceptance is never inferred from a CI job or an owner exception.
     acceptance=Path('docs/release-acceptance/current.json')
     acceptance_state='not_recorded'
@@ -35,6 +36,12 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
                 if path.is_file() and path.suffix in ALLOWED:
                     files[prefix+'/'+path.relative_to(root).as_posix()]=path
     if os.environ.get('GITHUB_ACTIONS')=='true':
+        if 'release/toolchain.json' not in files:raise ValueError('Missing durable toolchain inventory')
+        origin=ci/'ci-origin.json'
+        if not origin.is_file():raise ValueError('Missing durable CI origin')
+        origin_data=json.loads(origin.read_text())
+        if str(origin_data['verification_run'])!=str(info.get('verificationRun',os.environ.get('GITHUB_RUN_ID',''))) or origin_data['verification_commit']!=info.get('releaseCommit',info['commit']):
+            raise ValueError('CI origin does not match release source/run')
         from channel_contract import validate_manifest
         checked_path=ci/'Update-channel-fixtures/channel-verification.json'
         if not checked_path.is_file():
@@ -54,6 +61,13 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
                     or proof['system_installer'] is not True or proof['private_marker_preserved'] is not True
                     or proof['process_restart'] is not True or proof['offline_restore'] is not True):
                 raise ValueError(f'Inconsistent updater evidence API {api}')
+        for api in (29,36,37):
+            if f'ci/R8-playback-API-{api}/r8-evidence/playback-api-{api}.json' not in files:
+                raise ValueError(f'Missing durable R8 evidence API {api}')
+        for language in ('java-kotlin','python','actions'):
+            if not any(name.startswith(f'ci/SAST-{language}/') and name.endswith('.sarif') for name in files):
+                raise ValueError('Missing durable SAST evidence: '+language)
+        if not any(name.startswith('ci/Dependency-evidence/') for name in files):raise ValueError('Missing resolved dependency evidence')
         if not any(name.startswith('ci/Android-reports/') and name.endswith('.xml') for name in files):
             raise ValueError('Missing durable unit/lint/build evidence')
     if len(files)>20000 or sum(p.stat().st_size for p in files.values())>500*1024*1024:
@@ -61,7 +75,7 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
     # Explicitly close file handles, including on Windows.
     def hash_file(path):
         with path.open('rb') as stream: return hashlib.file_digest(stream,'sha256').hexdigest()
-    manifest={'schema':1,'source_commit':info['commit'],'tag':info['tag'],'version_code':info['versionCode'],
+    manifest={'schema':2 if os.environ.get('GITHUB_ACTIONS')=='true' else 1,'source_commit':info['commit'],'tag':info['tag'],'version_code':info['versionCode'],
         'apk':{'name':apk.name,'size':apk.stat().st_size,'sha256':hash_file(apk)},
         'build_run':str(info.get('buildRun','')),'verification_run':str(info.get('verificationRun',os.environ.get('GITHUB_RUN_ID',''))),
         'manual_acceptance':acceptance_state,

@@ -581,6 +581,25 @@ jobs:
         with:
           pattern: Update-*
           path: release-evidence-input/
+      - name: Preserve R8 playback evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: R8-*
+          path: release-evidence-input/
+      - name: Preserve SAST evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: SAST-*
+          path: release-evidence-input/
+      - name: Preserve full resolved dependency graphs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: Dependency-evidence
+          path: release-evidence-input/Dependency-evidence/
+      - name: Record public CI provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/record-ci-origin.py
       - name: Generate public dependency evidence
         run: |
           ./gradlew --dependency-verification strict writeDependencyInventory writeBuildToolInventory

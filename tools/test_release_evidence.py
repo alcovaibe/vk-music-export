@@ -13,6 +13,9 @@ class EvidenceTest(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.apk=self.root/'fixture.apk';self.apk.write_bytes(b'public APK fixture')
         for name in CORE: (self.root/name).write_text('public evidence fixture')
+        (self.root/'toolchain.json').write_text('{}')
+        (self.root/'ci').mkdir()
+        (self.root/'ci/ci-origin.json').write_text(json.dumps({'verification_run':os.environ.get('GITHUB_RUN_ID',''),'verification_commit':'a'*40}))
         self.info={'tag':'v0.12.1-build.1433','commit':'a'*40,'versionCode':1433}
         p=patch.dict(os.environ,{'GITHUB_ACTIONS':'false'});p.start();self.addCleanup(p.stop)
     def build(self): return bundle(self.info,self.apk,self.root,self.root/'ci',self.root/'upgrades')
@@ -31,7 +34,7 @@ class EvidenceTest(unittest.TestCase):
     def test_ci_requires_all_nine_interface_and_updater_reports(self):
         with patch.dict(os.environ,{'GITHUB_ACTIONS':'true'}),self.assertRaisesRegex(ValueError,'API 29'): self.build()
     def test_symlink_is_never_archived(self):
-        (self.root/'ci').mkdir();(self.root/'ci/link.txt').symlink_to(self.apk)
+        (self.root/'ci/link.txt').symlink_to(self.apk)
         with self.assertRaisesRegex(ValueError,'Symlink'): self.build()
     def test_complete_ci_bundle_checks_each_updater_subject_and_preserves_raw_reports(self):
         manifest={'schemaVersion':1,'platform':'android','channel':'stable','applicationId':'app.alcovaibe.vkmusicexport',
@@ -47,6 +50,12 @@ class EvidenceTest(unittest.TestCase):
             (directory/'result.json').write_text(json.dumps({'api':api,'to':1433,'sha256':'a'*64,
                 'system_installer':True,'private_marker_preserved':True,'process_restart':True,'offline_restore':True}))
         (ci/'Android-reports').mkdir();(ci/'Android-reports/unit.xml').write_text('<testsuite/>')
+        for api in (29,36,37):
+            folder=ci/f'R8-playback-API-{api}/r8-evidence';folder.mkdir(parents=True)
+            (folder/f'playback-api-{api}.json').write_text('{}')
+        for language in ('java-kotlin','python','actions'):
+            folder=ci/f'SAST-{language}';folder.mkdir();(folder/'analysis.sarif').write_text('{}')
+        folder=ci/'Dependency-evidence';folder.mkdir();(folder/'inventory.txt').write_text('fixture')
         with patch.dict(os.environ,{'GITHUB_ACTIONS':'true'}):
             with zipfile.ZipFile(self.build()) as z: self.assertIn('ci/Update-delivery-API-37/result.json',z.namelist())
             proof=ci/'Update-delivery-API-37/result.json';value=json.loads(proof.read_text());value['sha256']='b'*64;proof.write_text(json.dumps(value))
