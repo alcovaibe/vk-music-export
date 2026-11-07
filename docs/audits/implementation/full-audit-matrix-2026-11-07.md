@@ -82,3 +82,7 @@ Candidate artifact ID: 13578083080; GitHub artifact digest: `0352e24a8c429ef392b
 Происхождение значений — генерация Gradle в указанном GitHub job, не независимая криптографическая аттестация автора Maven-пакетов.
 
 Также исправлена пропущенная ссылка `openDeviceAuthChrome` в DeviceConfirmationDeviceTest, из-за которой androidTest compilation `400de2d` падала до исполнения тестов. Проверка package pinning/redirect flags сохранена; выбор провайдера инъецируется в intent-контракт, а production использует только проверенный default browser. Выполнен поиск старого launcher и изменённых UI-подписей по всем существующим androidTest Kotlin-файлам.
+
+### Проверка 58285f1
+
+Новый compile выявил пропущенные imports Compose semantics/contentDescription для добавленного фильтра подборок. Исправлены imports; это ошибка этой итерации, не дефект исходной базы. Новый compile/test run обязателен. Широкий dontwarn, R8, Lint и тестовые gates не отключались.
