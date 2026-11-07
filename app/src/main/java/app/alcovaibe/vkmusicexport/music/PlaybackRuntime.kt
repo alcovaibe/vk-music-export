@@ -32,7 +32,8 @@ internal object PlaybackRuntime {
         val g=generation
         scope.launch {
             try {
-                val record=history!!.restore()
+                // Even metadata-only cold restore must honor the current login boundary.
+                val record=verifiedRestore()
                 if(g==generation&&service?.hasQueue!=true&&pending==null&&record!=null){restored=record;mutable.value=record.pausedState()}
             }catch(e: CancellationException){throw e}catch(_: Exception) {
                 if(g==generation)mutable.update{it.copy(historyError="Не удалось восстановить прошлое прослушивание. Выбери трек заново.")}
@@ -45,7 +46,16 @@ internal object PlaybackRuntime {
         if(service!==owner||pending!=null)return
         restored=record;history?.save(record)
     }
-    internal suspend fun restoreHistory(): PlaybackCheckpoint?=history?.restore()
+    private suspend fun verifiedRestore(): PlaybackCheckpoint? {
+        val candidate=history?.restore()?:return null
+        if(candidate.entries.all{it.offline})return candidate
+        val application=app?:return null
+        val current=withContext(Dispatchers.IO){MusicAccessStore(application).read()}
+        // Verified renewal retains readSessionId; logout and independent login cannot
+        // expose an old online queue even in SystemUI's metadata-only resumption path.
+        return candidate.takeIf{it.accepts(current)}
+    }
+    internal suspend fun restoreHistory(): PlaybackCheckpoint?=verifiedRestore()
     internal suspend fun flushHistory(){history?.flush()}
     fun prepare(context: Context,start: Int=-1,build: ()->List<PlaybackEntry>) {
         initialize(context);val application=context.applicationContext;val g=++generation
@@ -118,6 +128,20 @@ internal object PlaybackRuntime {
     fun stop(){generation++;pending=null;restored=null;service?.stopPlayback();expanded.value=false;mutable.value=PlaybackState();history?.save(null)}
     fun stopOnline() {
         generation++ // Also fences a cold asynchronous restore during login/logout.
-        if(state.value.entries.any{!it.offline}||pending?.selection?.entries?.any{!it.offline}==true)stop()
+        if(restored?.entries?.any{!it.offline}==true||state.value.entries.any{!it.offline}||
+            pending?.selection?.entries?.any{!it.offline}==true) {
+            stop()
+            return
+        }
+        // Logout can arrive before asynchronous cold restoration has published UI
+        // state. Clear a durable online record even when there is no visible queue.
+        val g=generation
+        scope.launch {
+            try {
+                val candidate=history?.restore()
+                if(g==generation&&candidate?.entries?.any{!it.offline}==true)history?.save(null)
+            }catch(e: CancellationException){throw e}
+             catch(_: Exception){if(g==generation)mutable.update{it.copy(historyError="Не удалось очистить старое прослушивание.")}}
+        }
     }
 }
