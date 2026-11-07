@@ -28,7 +28,7 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
-    private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthChrome,
+    private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthBrowser,
     private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null,private val maintenanceBeforeItem: suspend(String,Int)->Unit={_,_->},private val queueStart: (suspend(Boolean)->Unit)?=null): AndroidViewModel(application) {
     private val vault=MusicAccessStore(application)
     private val exportReads=ExportReadCache(authClock)
@@ -76,6 +76,19 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 "reason" to (e as? ArtistLoadingFailure)?.reason?.name,"method" to (e as? ArtistLoadingFailure)?.method,
                 "pages" to (e as? ArtistLoadingFailure)?.pages,"sections" to (e as? ArtistLoadingFailure)?.sections,
                 "blocks" to (e as? ArtistLoadingFailure)?.blocks,"artist_pool" to (e as? ArtistLoadingFailure)?.pool))})
+    private val searchController=MusicSearchController(viewModelScope,api,
+        access={sessions?.current()?:access()},
+        checked={initial->sessions?.continueRead(initial)?:access().also{MusicReadIdentity(initial).require(it)}})
+    val musicSearch=searchController.state
+    fun setSearchActive(active: Boolean)=searchController.setActive(active)
+    fun searchMusic(query: String)=searchController.query(query)
+    fun retryMusicSearch()=searchController.retry()
+    fun moreMusicSearch()=searchController.more()
+    fun playSearchTrack(snapshot: MusicSearchState,index: Int)=
+        PlaybackRuntime.play(getApplication(),searchController.entries(snapshot),index)
+    fun downloadSearchTrack(snapshot: MusicSearchState,index: Int) {
+        searchController.entries(snapshot).getOrNull(index)?.let(::downloadPlayback)
+    }
     val artists=artistController.state
     private val savedRepository=SavedLibrary(application,viewModelScope)
     val savedLibrary=savedRepository.rows.asStateFlow()
@@ -488,7 +501,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     step=="search"&&code in setOf(MusicError.METHOD,MusicError.DENIED)->"ВК не разрешил этот запрос. Можно попробовать HTTPS-ссылку на отдельную песню."
                     e is ArtworkFetchFailure->artworkIssue(0,"",ArtworkStep.FETCH_COVER,e).reason
                     e is SavedFileFailure->e.reason.label
-                    code==MusicError.ACCESS->"Доступ ВК изменился или отклонён. Выполни поиск заново; при необходимости подключись через Chrome."
+                    code==MusicError.ACCESS->"Доступ ВК изменился или отклонён. Выполни поиск заново; при необходимости подключись через браузер."
                     else->code.label
                 }
                 lookupUpdate(id){it.copy(phase=LookupPhase.READY,choice=null,message=message)}
@@ -826,7 +839,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         catalogVerificationWork=null
         cancelledVerification?.cancel()
         _state.update{if(it.catalogVerifying)it.copy(catalogVerifying=false)else it}
-        if(stage in setOf("browser_auth","configure","forget")){exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset();availabilityController.reset()}
+        if(stage in setOf("browser_auth","configure","forget")){exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset();availabilityController.reset();searchController.reset()}
         if(stage in setOf("duplicates_delete","remove_confirm"))exportReads.clear()
         if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
         if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
@@ -1346,8 +1359,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     fun cancel(){if(MaintenanceRuntime.busy)MaintenanceRuntime.pause()else stop("native_stop_button")}
-    fun stopForWindow(){artistController.pause();availabilityController.pause();_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();if(_state.value.stage !in MaintenanceRuntime.stages)stop("native_window_closed")}
+    fun stopForWindow(){searchController.pause();artistController.pause();availabilityController.pause();_metadataLookup.value=MetadataLookupState();_artworkLookup.value=ArtworkLookupState();if(_state.value.stage !in MaintenanceRuntime.stages)stop("native_window_closed")}
     fun stopInBackground() {
+        searchController.pause()
         friends.pauseRead()
         artistController.pause()
         availabilityController.pause()

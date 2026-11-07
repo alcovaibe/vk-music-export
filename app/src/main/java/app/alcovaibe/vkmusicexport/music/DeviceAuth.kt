@@ -1,10 +1,6 @@
 package app.alcovaibe.vkmusicexport.music
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.os.SystemClock
-import androidx.browser.customtabs.CustomTabsIntent
 import app.alcovaibe.vkmusicexport.diagnostics.Diagnostics
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -17,8 +13,8 @@ import javax.net.ssl.SSLException
 
 internal enum class DeviceAuthPhase(val label: String) {
     PREPARING("Создаём одноразовую заявку ВК…"),
-    READY("Заявка готова. Открой подтверждение в Chrome."),
-    WAITING("Подтверди вход в Chrome и вернись в приложение."),
+    READY("Заявка готова. Открой подтверждение в браузере."),
+    WAITING("Подтверди вход в браузере и вернись в приложение."),
     REQUEST_OPENED("ВК отметил открытие заявки. Подтверди запрос и вернись в приложение."),
     ENTER_CODE("ВК запросил код подключения. Введи код со страницы VK ID здесь, в приложении."),
     VALIDATING_CODE("Отправляем код подключения ВК…"),
@@ -35,7 +31,7 @@ internal enum class DeviceAuthIssue(val label: String) {
     PARTIAL("ВК выдал неполную сессию. Этот способ входа пока не поддерживается; доступ не сохранён."),
     UNSUPPORTED_TOKEN("ВК выдал другой тип токена. Его обмен пока не поддерживается; доступ не сохранён."),
     TOKEN_EXCHANGE("ВК подтвердил вход, но завершить обмен токена не удалось. Доступ не сохранён; поделись JSON-отчётом попытки."),
-    BROWSER("Не удалось открыть Google Chrome. Включи его и повтори."),
+    BROWSER("Не найден доступный браузер по умолчанию с поддержкой Custom Tabs. Выбери подходящий браузер в настройках Android и повтори."),
     NETWORK("Не удалось связаться с ВК. Проверь сеть и VPN."),
     TLS("Не удалось проверить защищённое соединение с ВК."),
     HTTP("ВК отклонил сетевой запрос входа."),
@@ -285,7 +281,7 @@ internal class VkDeviceAuthClient(private val client: OkHttpClient=NetworkClient
         VkWebTokenExchange(client,now,observe).exchange(session,result)
 }
 
-/** No polling while Chrome/app is backgrounded. Expiration also covers waiting for the user's gesture. */
+/** No polling while браузере/app is backgrounded. Expiration also covers waiting for the user's gesture. */
 internal suspend fun awaitDeviceAccess(api: DeviceAuthApi,session: DeviceSession,opened: StateFlow<Boolean>,
     foreground: StateFlow<Boolean>,now: ()->Long,pollMs: Long=5000,
     confirmationCodes: ReceiveChannel<DeviceConfirmationCode>?=null,onIncorrectCode: ()->Unit={},
@@ -357,14 +353,3 @@ internal suspend fun awaitDeviceAccess(api: DeviceAuthApi,session: DeviceSession
     }
 }
 
-internal fun openDeviceAuthChrome(context: Context,url: String): Boolean = try {
-    val safe=DeviceAuthProtocol.browserUrl(url)
-    val tab=CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF)
-        .setSendToExternalDefaultHandlerEnabled(false).build()
-    tab.intent.setPackage("com.android.chrome")
-    if(context !is android.app.Activity)tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    tab.launchUrl(context,Uri.parse(safe.toString()))
-    Diagnostics.event("native_auth_browser_provider",mapOf("package" to "com.android.chrome",
-        "mode" to "chrome_custom_tab","entry_host" to safe.host,"auth_status" to "not_proven"))
-    true
-}catch(_: Exception){false}

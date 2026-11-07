@@ -129,6 +129,18 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
+    val searchState by model.musicSearch.collectAsState()
+    var searchOpen by rememberSaveable {mutableStateOf(false)}
+    DisposableEffect(lifecycle,model,searchOpen) {
+        model.setSearchActive(searchOpen&&lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        val observer=LifecycleEventObserver{_,event->when(event) {
+            Lifecycle.Event.ON_RESUME->model.setSearchActive(searchOpen)
+            Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.setSearchActive(false)
+            else->Unit
+        }}
+        lifecycle.lifecycle.addObserver(observer)
+        onDispose{lifecycle.lifecycle.removeObserver(observer);model.setSearchActive(false)}
+    }
     var aboutOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
@@ -163,6 +175,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var presentationWasOpen by remember{mutableStateOf(downloadsOpen)}
     LaunchedEffect(downloadsOpen) {
         if(downloadsOpen) {
+            searchOpen=false
             if(destination!=MusicDestination.DOWNLOADS)downloadsOrigin=destination
             aboutOpen=false;accessOpen=false;destination=MusicDestination.DOWNLOADS
         }else if(presentationWasOpen&&destination==MusicDestination.DOWNLOADS)destination=downloadsOrigin
@@ -243,6 +256,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
         onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
         onConfirm={model.openAuthChrome(context)},onForget=model::forget,onCancel=model::cancel)
+    else if(searchOpen)MusicSearchScreen(searchState,model::searchMusic,model::retryMusicSearch,model::moreMusicSearch,
+        onBack={searchOpen=false},onPlay={model.playSearchTrack(searchState,it)},
+        onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,
+        playback=playback,onPlayer={PlaybackRuntime.expanded.value=true})
     else MusicLibraryScaffold(
         title=when(destination) {
             MusicDestination.SAVED->"Сохранённое"
@@ -257,6 +274,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         listState=if(destination==MusicDestination.DOWNLOADS)downloadsScroll else if(destination==MusicDestination.FRIENDS&&friendState.user==null)friendsRootScroll else null,
         onBack=::back,showBack=destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
         menuItems={closeMenu->
+            DropdownMenuItem(text={Text("Поиск музыки")},modifier=Modifier.testTag("open_music_search"),onClick={closeMenu();searchOpen=true})
             DropdownMenuItem(text={Text(if(destination==MusicDestination.FRIENDS)"Обновить" else "Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck&&!friendState.busy,onClick={closeMenu();if(destination==MusicDestination.FRIENDS)model.friends.refresh()else model.checkAccess()})
             DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();if(destination==MusicDestination.DOWNLOADS){destination=downloadsOrigin;model.dismissDownloads()};onUpdates()})
             HorizontalDivider()
@@ -552,7 +570,7 @@ internal fun DeviceConfirmationScreen(state: NativeMusicState,onSubmit: (String)
                 Text(if(submitting)"Проверяем код…" else "Подтвердить код")
             }
             if(submitting)LinearProgressIndicator(Modifier.fillMaxWidth())
-            TextButton(enabled=!submitting,onClick={clear();onBrowser()}){Text("Показать страницу VK ID в Chrome")}
+            TextButton(enabled=!submitting,onClick={clear();onBrowser()}){Text("Показать страницу VK ID в браузере")}
             Text("Код относится только к этой заявке. При неверном коде можно повторить ввод; новая заявка автоматически не создаётся.",style=MaterialTheme.typography.bodySmall)
             TextButton(onClick={cancel()},modifier=Modifier.testTag("native_auth_cancel_code")){Text("Отменить подключение")}
         }

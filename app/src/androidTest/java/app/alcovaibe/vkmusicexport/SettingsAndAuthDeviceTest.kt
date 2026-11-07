@@ -43,19 +43,20 @@ class NativeBrowserAuthDeviceTest {
     @Test fun approvedPairingSurvivesChromeBackgroundAndSavesOnlyAfterMusicSucceeds()=exercise(false)
     @Test fun approvedPairingWithMusicDeniedKeepsPreviousEncryptedCredential()=exercise(true)
 
-    @Test fun retainedAuthLauncherTargetsChromeAndDoesNotFallBackToAnotherBrowser() {
+    @Test fun authLauncherPinsVerifiedDefaultBrowserAndDoesNotFallBackAfterFailure() {
         val instrumentation=InstrumentationRegistry.getInstrumentation();var attempts=0
+        val provider=authBrowserPackage(instrumentation.targetContext)
         val context=object: android.content.ContextWrapper(instrumentation.targetContext) {
             override fun startActivity(intent: android.content.Intent,options: android.os.Bundle?)=startActivity(intent)
             override fun startActivity(intent: android.content.Intent) {
-                attempts++;assertEquals("com.android.chrome",intent.`package`)
+                attempts++;assertEquals(provider,intent.`package`)
                 assertEquals("https://qr.vk.ru/s?q=SYNTHETIC",intent.dataString)
                 assertTrue(intent.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK!=0)
                 throw android.content.ActivityNotFoundException("Synthetic unavailable Chrome")
             }
         }
-        instrumentation.runOnMainSync{assertFalse(openDeviceAuthChrome(context,"https://qr.vk.ru/s?q=SYNTHETIC"))}
-        assertEquals(1,attempts)
+        instrumentation.runOnMainSync{assertFalse(openDeviceAuthBrowser(context,"https://qr.vk.ru/s?q=SYNTHETIC"))}
+        assertEquals(if(provider==null)0 else 1,attempts)
     }
 
     private fun exercise(denied: Boolean) {

@@ -9,7 +9,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <queries><package android:name="com.android.chrome" /></queries>
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+    </queries>
     <application
         android:name=".DiagnosticApplication"
         android:allowBackup="false"

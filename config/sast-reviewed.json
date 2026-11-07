@@ -39,9 +39,9 @@
     {
       "rule": "java/android/missing-certificate-pinning",
       "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/DeviceAuth.kt",
-      "line": 235,
-      "source_sha256": "3275628ec2b98de133da39b94ea13c63740b2d15f0ccc69d7da2ce00dc4a16f8",
-      "rationale": "The auth adapter uses a fixed HTTPS api.vk.com endpoint and system certificate/hostname validation. SPKI pinning is not implemented; this is an acknowledged hardening limitation, not a disabled TLS verifier. Adding a reliable provider pin-rotation policy is outside these started findings."
+      "line": 231,
+      "source_sha256": "bf5c6df38f261713b61273d0be1b28814baf56b267d65ff9cfaa55a637149861",
+      "rationale": "The auth adapter uses a fixed HTTPS api.vk.com endpoint and system certificate/hostname validation. SPKI pinning is not implemented; this is an acknowledged hardening limitation, not a disabled TLS verifier. Adding a reliable provider pin-rotation policy is outside these started findings. Re-reviewed for browser/search changes: fixed VK HTTPS endpoint and system trust remain unchanged; browser selection does not grant music capabilities."
     },
     {
       "rule": "java/android/missing-certificate-pinning",
@@ -53,9 +53,9 @@
     {
       "rule": "java/android/missing-certificate-pinning",
       "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
-      "line": 152,
-      "source_sha256": "f23b6e890208190b995571bcc92df935c0e1a73b780ee453e93ce9093bd60e88",
-      "rationale": "Provider requests use fixed HTTPS api.vk.com, a method allowlist, default certificate/hostname validation and the existing session boundary. No trust-all or hostname-verification bypass is introduced. Provider SPKI pin rotation is outside this continuation; the limitation remains recorded. Re-reviewed at 4539136: capability declarations added above this call moved its location; the HTTPS request, allowlist, trust manager and session checks remain present."
+      "line": 160,
+      "source_sha256": "b7e157832e31a8cd17bb53ec6d3149b7f9791f5d6c2bf85cd688d6a2c7aa22b8",
+      "rationale": "Provider requests use fixed HTTPS api.vk.com, a method allowlist, default certificate/hostname validation and the existing session boundary. No trust-all or hostname-verification bypass is introduced. Provider SPKI pin rotation is outside this continuation; the limitation remains recorded. Re-reviewed at 4539136: capability declarations added above this call moved its location; the HTTPS request, allowlist, trust manager and session checks remain present. Re-reviewed for browser/search changes: fixed VK HTTPS endpoint and system trust remain unchanged; browser selection does not grant music capabilities."
     }
   ]
 }
