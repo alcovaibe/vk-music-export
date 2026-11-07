@@ -79,4 +79,32 @@ class PlaybackListsTest {
         assertNull(PlaybackLists.select(PlaybackLists.artist(restricted),0))
         assertEquals(2,PlaybackLists.select(PlaybackLists.artist(restricted),1)!!.entries.single().download!!.position)
     }
+
+    @Test fun localCollectionPreservesRepeatedOccurrencesWithoutSessionOrOnlineDownloadAuthority() {
+        val list=NativePlaylist(12,8,"Local collection",2,null,null,null,null,PlaylistKind.ALBUM)
+        val first=saved().copy(taskKey="first",source=ExportSource(12,"catalog",list.key))
+        val second=first.copy(taskKey="second",occurrence=2)
+        val files=listOf(first,second)
+        val state=NativeMusicState(probe=NativeProbe(12,NativePage(emptyList(),0)),selected=list,
+            page=NativePage(files.map{it.track},2),localCatalogKeys=setOf(list.key),localCatalogAccount=12,
+            localPlayback=LocalCollectionPlayback(12,list.key,files))
+        val rows=PlaybackLists.library(state,MusicLibrarySort.DEFAULT)
+        assertEquals(2,rows.size);assertEquals(files,rows.map{it.saved})
+        assertTrue(rows.all{it.offline&&it.account==null&&it.readSessionId==null&&it.download==null})
+        assertEquals(1,PlaybackLists.select(rows,1)!!.start)
+        assertEquals(2,PlaybackLists.select(rows,1)!!.entries.size)
+    }
+    @Test fun wrongAccountSourceOrPageCannotTurnLocalMetadataIntoAnOnlineQueue() {
+        val list=NativePlaylist(12,8,"Local collection",1,null,null,null,null,PlaylistKind.ALBUM)
+        val file=saved().copy(source=ExportSource(12,"catalog",list.key))
+        val state=NativeMusicState(probe=NativeProbe(12,NativePage(emptyList(),0)),selected=list,
+            page=NativePage(listOf(file.track),1),readSessionId="new-independent-session",
+            localCatalogKeys=setOf(list.key),localCatalogAccount=12,localPlayback=LocalCollectionPlayback(12,list.key,listOf(file)))
+        val original=state.localPlayback!!
+        val invalid=listOf(original.copy(account=13),original.copy(key="playlist:12:9"),
+            original.copy(rows=listOf(file.copy(source=ExportSource(13,"catalog",list.key)))),
+            original.copy(rows=listOf(file.copy(track=song.copy(id="12_999")))))
+        for(local in invalid)
+            assertTrue(PlaybackLists.library(state.copy(localPlayback=local),MusicLibrarySort.DEFAULT).isEmpty())
+    }
 }

@@ -259,6 +259,11 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
             };null
         }
     }
+    /** Atomic metadata read/modify/write across separate store connections. */
+    @Synchronized fun updateCheckpoint(name: String,update:(String?)->String)=transaction {
+        val previous=get(name);val next=update(previous)
+        if(next!=previous)put(name,next)
+    }
     @Synchronized fun checkpoints(prefix: String): List<Pair<String,String>> = readableDatabase.rawQuery(
         "SELECT name,value FROM meta WHERE name GLOB ? ORDER BY rowid",arrayOf(prefix+"*")).use{c->buildList{
             while(c.moveToNext())add(c.getString(0) to c.getString(1))

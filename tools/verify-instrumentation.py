@@ -104,6 +104,18 @@ SOURCE_MEMBERSHIP_TESTS = [
 ]
 
 
+LOCAL_CATALOG_TESTS = {
+    "LocalCatalogDeviceTest": [
+        "accountScopedSnapshotsRetainRemovedSourcesNamesAndRepeatedOrderAcrossReopen",
+        "currentRemoteSourceIsNotDuplicatedAndMissingMembershipRemainsPartial",
+        "malformedDescriptorNeverDeletesMembershipOrExposesAnotherAccountSnapshot"
+    ],
+    "LocalCatalogPlaybackDeviceTest": [
+        "coldModelRestoresCachedAlbumAndPlaysRepeatedLocalFilesWithoutRemotePlaylist"
+    ]
+}
+
+
 def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
@@ -149,6 +161,10 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
     for method in FRIEND_PREVIEW_TESTS:
         if ('app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest', method) not in executed:
             raise ValueError(f'Required friend preview lifecycle test did not execute: {method}')
+    for suite, methods in LOCAL_CATALOG_TESTS.items():
+        for method in methods:
+            if (f'app.alcovaibe.vkmusicexport.{suite}', method) not in executed:
+                raise ValueError(f'Required local catalog integration test did not execute: {suite}.{method}')
     for method in SOURCE_MEMBERSHIP_TESTS:
         if ('app.alcovaibe.vkmusicexport.SourceMembershipDeviceTest', method) not in executed:
             raise ValueError(f'Required source membership test did not execute: {method}')

@@ -28,9 +28,17 @@ internal object PlaybackLists {
         PlaybackEntry(it.file.track,"Сохранённая музыка",saved=it.file)
     }
     fun library(state: NativeMusicState,sort: MusicLibrarySort): List<PlaybackEntry> {
-        val owner=state.probe?.owner?:return emptyList()
         val page=state.page?:return emptyList()
-        if(owner<=0||state.readSessionId==null)return emptyList()
+        val local=state.localPlayback?.takeIf{local->local.account>0&&local.account==state.localCatalogAccount&&
+            (state.probe==null||state.probe.owner==local.account)&&local.key==state.selected?.key&&
+            local.rows.map{row->row.track}==page.tracks&&
+            local.rows.all{row->row.source==ExportSource(local.account,"catalog",local.key)}}
+        if(local!=null)return MusicLibrarySorting.tracks(page.tracks,sort).map{entry->
+            val row=local.rows[entry.index]
+            PlaybackEntry(row.track,state.selected?.title?:"Сохранённая подборка",saved=row)
+        }
+        val owner=state.probe?.owner?:return emptyList()
+        if(owner<=0||state.selected?.key?.let{it in state.localCatalogKeys}==true||state.readSessionId==null)return emptyList()
         val selected=state.selected
         val kind=selected?.let{MusicCatalog.kind(it,state.catalogKinds)}?:PlaylistKind.UNKNOWN
         val references=if(selected==null||kind!=PlaylistKind.UNKNOWN)ExportLayout.playback(page,owner,selected,kind)else emptyList()

@@ -100,6 +100,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val queue by AudioExportRuntime.state.collectAsState()
     val queueWorking=queue.status in setOf("RUNNING","QUEUED")
     val canPrepare=!state.busy&&!backgroundCheck&&!queue.unfinished&&!queueWorking
+    val canPrepareLibrary=canPrepare&&state.probe!=null&&state.readSessionId!=null&&state.localPlayback==null
     var notifications by remember{mutableStateOf(android.os.Build.VERSION.SDK_INT<33||ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)}
     val notificationPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){notifications=it}
     fun startMaintenance(action: ()->Unit) {
@@ -208,7 +209,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     val localError by model.savedLibraryError.collectAsState()
 
-    LaunchedEffect(state.initialized,state.busy) {if(state.initialized&&state.configured&&state.probe==null&&!state.busy&&state.error==null)model.openMusic()}
+    LaunchedEffect(state.initialized,state.busy) {if(state.initialized&&state.configured&&(state.probe==null||state.readSessionId==null)&&!state.busy&&state.error==null)model.openInitialMusic()}
     LaunchedEffect(state.stage) {if(state.stage=="browser_auth")accessOpen=true}
     val friendTasks=remember(friendState.page,friendState.user,friendState.playlist,friendState.viewerAccount) {
         val page=friendState.page;val user=friendState.user;val viewer=friendState.viewerAccount
@@ -254,7 +255,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     fun playLibrary(index: Int=-1) {
         PlaybackRuntime.prepare(context,index){PlaybackLists.library(playbackSnapshot,playbackSort)}
     }
-    val canPlayLibrary=state.page?.tracks?.any{it.duration>0&&!it.restricted&&it.metadataError==null}==true&&state.readSessionId!=null
+    val canPlayLibrary=state.localPlayback?.let{SavedPlaybackPolicy.allowed(state)&&it.rows.isNotEmpty()}
+        ?:(state.page?.tracks?.any{it.duration>0&&!it.restricted&&it.metadataError==null}==true&&state.readSessionId!=null)
     Box(Modifier.fillMaxSize()) {
     if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
         onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
@@ -399,9 +401,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }
             }else {
-                if(state.probe!=null)item("library_actions") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                if(state.probe!=null||state.localCatalogAccount!=null)item("library_actions") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                        Text(state.selected?.title?:if(category==LibraryCategory.TRACKS)"${state.probe?.library?.count?:0} треков" else category.label,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
+                        Text(state.selected?.title?:if(category==LibraryCategory.TRACKS)state.probe?.library?.count?.let{"$it треков"}?:"Моя музыка ещё не проверена" else category.label,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
                         TextButton(enabled=!state.busy,onClick={sortOpen=true},modifier=Modifier.testTag("library_sort")) {
                             Text(sort.title);Icon(Icons.Default.KeyboardArrowDown,"Выбрать порядок",Modifier.size(18.dp))
                         }
@@ -416,19 +418,19 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                 style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier=Modifier.testTag("library_stale"))
                         if(toolsOpen) {
-                            Button(enabled=canPrepare,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
+                            Button(enabled=canPrepareLibrary,onClick={model.prepare(libraryAlbums=false)},modifier=Modifier.fillMaxWidth()){Text("Скачать всю мою музыку")}
                             OutlinedButton(enabled=state.probe!=null&&!backgroundCheck&&(!state.busy||state.stage in setOf("catalog_refresh","resume_refresh")),onClick=model::showAvailability,modifier=Modifier.fillMaxWidth().testTag("check_unavailable")){Text("Проверить недоступные треки")}
                             OutlinedButton(enabled=!state.busy&&!backgroundCheck,onClick=model::showDuplicates,
                                 modifier=Modifier.fillMaxWidth().testTag("reopen_duplicates")) {
                                 Text("Дубликаты: проверка и результаты")
                             }
-                            OutlinedButton(enabled=canPrepare,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
+                            OutlinedButton(enabled=canPrepareLibrary,onClick={model.prepare(libraryAlbums=true)},modifier=Modifier.fillMaxWidth()){Text("Скачать мою музыку и группы по альбомам")}
                         }
                     }else {
                         if(state.selected!=null) {
                             TextButton(enabled=!state.busy,onClick={model.section(state.catalogSection)}){Text("Назад к подборкам")}
-                            Button(enabled=canPrepare,onClick={model.prepare()},modifier=Modifier.fillMaxWidth()){Text(if(state.selected?.kind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
-                        }else if(MusicCatalog.visible(state).isNotEmpty())Button(enabled=canPrepare,onClick={model.prepare(catalogKind=state.catalogSection.kind)},modifier=Modifier.fillMaxWidth().testTag("catalog_download_category")) {
+                            Button(enabled=canPrepare&&state.localPlayback==null&&state.readSessionId!=null,onClick={model.prepare()},modifier=Modifier.fillMaxWidth()){Text(if(state.selected?.kind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
+                        }else if(MusicCatalog.visible(state).isNotEmpty())Button(enabled=canPrepareLibrary,onClick={model.prepare(catalogKind=state.catalogSection.kind)},modifier=Modifier.fillMaxWidth().testTag("catalog_download_category")) {
                             Text(if(category==LibraryCategory.ALBUMS)"Скачать все альбомы" else "Скачать все плейлисты")
                         }
                         if(state.catalog==null)Text("Каталог ещё не загружен.",style=MaterialTheme.typography.bodySmall)
@@ -467,6 +469,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::checkAccess){Text("Проверить музыку")}
                         TextButton(enabled=!state.busy&&!backgroundCheck,onClick=model::refreshCatalog){Text("Обновить каталог")}
                     }
+                    state.localPlayback?.let{local->
+                        Text("Локальная подборка · сохранённых позиций: "+local.rows.size+
+                            ". Доступность файлов проверяется при воспроизведении. Состав ВК не подтверждён.",
+                            style=MaterialTheme.typography.bodySmall,modifier=Modifier.testTag("local_collection_notice"))
+                    }
                     if(category==LibraryCategory.TRACKS||state.selected!=null) {
                         FilledTonalButton(onClick={playLibrary()},enabled=canPlayLibrary,
                             shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth().heightIn(min=54.dp).testTag("library_play")) {
@@ -476,8 +483,18 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 }}
                 if(category!=LibraryCategory.TRACKS&&state.selected==null) {
                     val lists=MusicLibrarySorting.collections(MusicCatalog.visible(state,onlyPending=onlyPendingCollections),sort)
-                    itemsIndexed(lists,key={_,list->"catalog_${list.key}"}){_,list->MusicCollectionRow(list.title,"${list.count} треков · "+if(list.key in state.hiddenCatalog)"Offline" else "Доступно online",!state.busy,
-                        tag="catalog_list_${list.owner}_${list.id}"){model.select(list)}}
+                    itemsIndexed(lists,key={_,list->"catalog_${list.key}"}){_,list->
+                        val localCount=state.localCounts[list.key]?:0
+                        val status=when {
+                            list.key in state.localCatalogKeys->"Сохранено позиций: $localCount · ВК не подтверждена"
+                            list.key in state.hiddenCatalog->"Offline"
+                            localCount in 1 until list.count->"Частично сохранено: $localCount/${list.count}"
+                            localCount>0->"Сохранено позиций: $localCount · требуется проверка"
+                            else->"В каталоге ВК"
+                        }
+                        MusicCollectionRow(list.title,"${list.count} треков · "+status,!state.busy,
+                            tag="catalog_list_${list.owner}_${list.id}"){model.select(list)}
+                    }
                     if(state.catalogSection==CatalogSection.UNKNOWN)item("unknown_note"){Text("ВК не сообщил тип этих подборок; ручной выбор не нужен.")}
                     if(MusicCatalog.visible(state,CatalogSection.UNKNOWN).isNotEmpty())item("unknown") {
                         TextButton(enabled=!state.busy,onClick={model.section(CatalogSection.UNKNOWN)}){Text("Подборки без типа")}
@@ -487,13 +504,16 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     val rows=MusicLibrarySorting.tracks(page.tracks,sort)
                     if(page.tracks.size!=page.count)item("tracks_count"){Text("Показано ${page.tracks.size} из ${page.count}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)}
                     itemsIndexed(rows,key={_,entry->"track_${entry.index}_${entry.value.id}"}){displayIndex,entry->
-                        val track=entry.value;val position=entry.index+1;val saved=savedById[track.id]?.file
-                        MusicTrackRow(track,position,preview=model.previewArtwork(track),saved=saved,
+                        val track=entry.value;val position=entry.index+1
+                        val localRow=state.localPlayback?.takeIf{it.account==state.probe?.owner&&it.key==state.selected?.key}
+                            ?.rows?.getOrNull(entry.index)?.takeIf{it.track==track}
+                        val saved=localRow?:savedById[track.id]?.file
+                        MusicTrackRow(track,position,preview=if(localRow==null)model.previewArtwork(track)else null,saved=saved,
                             downloading=queue.status=="RUNNING"&&queue.account==state.probe?.owner&&queue.currentTask?.track?.id==track.id,
-                            enabled=canPrepare,onDownload={model.download(track,position)},
+                            enabled=canPrepare&&localRow==null,onDownload=if(localRow==null)({model.download(track,position)})else null,
                             onRemove=if(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY)({model.inspectRemoval(track)})else null,
-                            onOpen=saved?.let{({openFile(it)})},
-                            onPlay=if(state.readSessionId!=null&&track.metadataError==null&&!track.restricted&&track.duration>0)
+                            onOpen=if(localRow!=null)({playLibrary(displayIndex)})else saved?.let{({openFile(it)})},
+                            onPlay=if(localRow!=null||state.readSessionId!=null&&track.metadataError==null&&!track.restricted&&track.duration>0)
                                 ({playLibrary(displayIndex)})else saved?.let{({openFile(it)})})
                     }
                 }
