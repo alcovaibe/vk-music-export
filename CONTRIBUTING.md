@@ -57,11 +57,11 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 | Область | Основные компоненты и обязанности |
 | --- | --- |
 | Интерфейс | Jetpack Compose, `MainActivity`, `NativeMusicViewModel`, панели музыкальных операций |
-| Вход и доступ | `VkDeviceAuthClient`, `DeviceTokenExchange.kt`, `MusicAccessStore`, `MusicSessionManager` |
+| Вход и доступ | `MusicAuthCoordinator`, `VkDeviceAuthClient`, `DeviceTokenExchange.kt`, `MusicAccessStore`, `MusicSessionManager` |
 | Каталог | `VkAudioClient`, `MusicSourceReader`, `MusicCatalogController`, `MusicPagination`, `MusicCatalog`, `LocalCatalogSnapshots`; классификация, read identity и локальные snapshots |
 | Поиск | `MusicSearchController`, `MusicSearchScreen`; debounce, pagination, session/generation и отдельные состояния отказов |
 | Друзья | `FriendMusicController`, независимые состояния разделов профиля, подготовка общей очереди |
-| Обработка файлов в фоне | `MaintenanceService`, `MaintenanceRuntime`, контрольные точки названий, обложек и проверки файлов |
+| Обработка файлов в фоне | `MusicMaintenanceCoordinator`, `MusicSavedFilesCoordinator`, `MaintenanceService`, `MaintenanceRuntime`; контрольные точки названий, обложек и проверки файлов |
 | Очередь | `AudioExportJob`, `AudioExportEngine`, `AudioExportStore`, системные UIDT-задачи |
 | Воспроизведение | `MusicPlaybackService`, Media3 ExoPlayer/MediaSession, `PlaybackMediaSource`, отдельная очередь прослушивания и мини-плеер |
 | Передача и аудио | OkHttp, `AudioTransfer`, Media3, `AndroidAudioProcessor`, проверки HLS и длительности |
@@ -69,6 +69,7 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 | Обложки | `EmbeddedArtwork`, `ArtworkLoader`, `ArtworkRepair`, `ArtworkLookup` |
 | Дубликаты | `MusicDuplicates`, `DuplicateCheckJob`, `DuplicateScanCache`, `DuplicateAudioHasher` |
 | Обновления | `UpdateProtocol`, `GithubUpdates`, `UpdateController`, отдельный FileProvider APK |
+| Допуск и отмена операций | `MusicOperationCoordinator`: generation, журнал, ожидание предыдущего владельца и retained maintenance; независимые readers не входят в этот gate |
 | Диагностика | `Diagnostics`, `RunJournal`, `NativeOperationJournal`, ограниченный FileProvider отчётов |
 
 ## Каталоги и музыка друзей

@@ -10,16 +10,16 @@
 
 ## Подтверждённый код и CI
 
-[Полный run42394667381][CI] — **success**, source `cd6a50ace7d86b1b22d76f06653e0d062fe154a5`.
+[Полный run42401058839][CI] — **success**, source `003229d22725535bef13fe1f5f62110be142542d`.
 На этом SHA прошли:
 
-- 166 Python host tests; JVM debug, Lint debug/release и release/R8 compilation.
+- 166 Python host tests; JVM debug (включая 6 новых MusicAuthCoordinatorTest), Lint debug/release и release/R8 compilation.
 - OSV: 279 resolved dependencies, findings0; SAST Java/Kotlin, Python и Actions.
-- Все9 interface API29–37; Android verifier подтвердил239 distinct tests без failures/skips (например API36).
+- Все9 interface API29–37; Android verifier подтвердил239 distinct tests без failures/skips (например API32).
 - Все9 updater API29–37, channel-delivery, все3 dedicated R8 playback API29/36/37.
 - Aggregate interface и отдельный update-channel consistency — success. Release job — skipped.
 
-Последующие изменения этого отчёта, README и CONTRIBUTING являются Markdown-only: Android/build inputs указанного SHA сохраняются.
+После F26 последующие изменения этого отчёта, архитектурной заметки и CONTRIBUTING являются Markdown-only: Android/build inputs указанного SHA сохраняются.
 Их отдельный текущий Actions run виден в [истории ветки](https://github.com/alcovaibe/vk-music-export/actions?query=branch%3Afix%2Faudit-stage0-release-delivery-20261104).
 Успех одного SHA не объявляется автоматическим успехом будущего изменения кода.
 
@@ -58,7 +58,7 @@ JVM tests — в `app/src/test/java/app/alcovaibe/vkmusicexport/music/`; Android
 | F23 | P2 | Недостаточная accessibility приёмка | Labels/semantics/state/progress, явные действия, постоянная search label и live errors | MusicLibraryUi.kt, MusicSearchScreen.kt, PlaybackUi.kt | MusicAccessibilityDeviceTest, navigation/recreate и large-text tests; [CI] | Частично | TalkBack/Switch Access/IME/landscape на физическом устройстве не проверены. |
 | F24 | P2 | Нет minified playback/performance evidence | R8 остаётся включён для app/test; исправлены shared ABI, JUnit return type и сбор реальных измерений | tools/r8-playback-check.sh, tools/verify-r8-evidence.py, tools/summarize-r8-performance.py | R8 API29/36/37 success; first-play/CPU/PSS/heap, 5 cold и 5 hot-return command samples; [CI] | Частично; R8 автопроверен | Hot WaitTime не является warm TTID; launcher frames не являются20k scroll Macrobenchmark. 1h/8h OEM, profiling и полноценный Macrobenchmark остаются открыты. |
 | F25 | P2 | Неполные dependency/SAST gates | App/build-tool inventories, адресные исправления7 AGP records, reviewed added checksums, exact SAST source reviews; strict verification сохранён | build.gradle.kts, gradle/verification-metadata.xml, tools/dependency-audit.py, config/sast-reviewed.json | OSV279 resolved deps: no findings; SAST Kotlin/Java, Python, Actions success; [CI] | Выявленные blockers устранены | Это не полное доказательство безопасности runner/runtime. Raw findings не удаляются; pinning limitations не объявлены исправленными. |
-| F26 | P2 | Монолитный ViewModel/общий gate | Artists/availability/previews/search выделены; catalog controller реально подключён, host owns scheduler/lifecycle; continuation identity fenced | MusicCatalogController.kt, NativeMusicViewModel.kt | Controller: renewal/login/account/non-cooperative cancellation/local-only contracts; [CI] | Частичная extraction | Auth/Maintenance и общий admission ещё требуют отдельного продолжения. Полная архитектурная перепись не заявляется. |
+| F26 | P2 | Монолитный ViewModel/общий gate | Auth, retained maintenance, saved-file recovery и operation admission вынесены в четыре production coordinators; существующие независимые screen readers сохранены | MusicAuthCoordinator.kt, MusicMaintenanceCoordinator.kt, MusicSavedFilesCoordinator.kt, MusicOperationCoordinator.kt; [границы](f26-coordinator-extraction.md) | 6 новых auth contracts; прежние lifecycle/session/cancellation/retained-maintenance device suites; [CI] | Поэтапная extraction автопроверена | Общий admission сохранён для согласования journal/SQLite cleanup; единственный владелец файловых изменений AudioExportRuntime.editSaved. Индивидуальные lookup/removal screens и catalog refresh policy остаются возможным продолжением; полный rewrite не заявляется. |
 | F27 | P3 | Evidence исчезает по CI retention | Manifest/ZIP verifier/provenance и публикация release-evidence.zip предусмотрены для следующего разрешённого выпуска | tools/release_evidence.py, tools/verify-release-evidence.py, tools/publish-release.py | Integrity/traversal/subject/duplicate synthetic tests; [CI] | Частично | У текущего Latest только APK/SHA256SUMS. Новый evidence asset и проверка после retention не выполнялись: публикация не разрешена этой задачей. |
 | F28 | P3 | Текущие руководства отставали от кода | README, compatibility/acceptance guide, CONTRIBUTING и обе privacy copies описывают новые contracts/storage; Windows wrapper приведён | README.md, CONTRIBUTING.md, PRIVACY.md, app/src/main/assets/legal/privacy.txt | Сверены code/Latest/channel; README anchors и relative targets; bundled privacy copies идентичны | Обновлено | Это документация ветки, не объявление принятой stable. Локальная Windows-сборка не выполнялась; исторические CHANGELOG/audit не переписывались. |
 | F29 | P3 | Меню предлагало неприменимые сортировки | Collections default/title; tracks artist/title, year только по данным, addition order только library; label/preferences по контексту | MusicLibrarySorting.kt, NativeMusicPanel.kt | MusicLibrarySortingTest и Android navigation/recreate; [CI] | Автопроверено | Год по названию не угадывается; недоступный вариант имеет явный effective fallback. |
@@ -79,15 +79,14 @@ Read-only повторно подтверждён active ruleset26682452, strict
 1. F04: подтверждённый разрешённый provider/partner scope. Experimental protocol и capabilities не являются доказательством прав.
 2. F05/F23: live VK и физическая приёмка точного APK по [PROCEDURE.md](../../release-acceptance/PROCEDURE.md), включая account switches, long background, Bluetooth/audio focus, UI/accessibility, upgrade/data и сторонние проигрыватели.
 3. F24: полноценный20k scroll Macrobenchmark/profiling и длительная OEM работа. Полученные AVD startup/home/R8 данные не подменяют их.
-4. F26: дальнейшая отдельная extraction auth/maintenance/admission. Каталог подключён production, но общий host gate не устранён целиком.
-5. F27: следующий отдельно разрешённый выпуск durable evidence и наблюдение после retention. Самостоятельная публикация здесь не выполняется.
-6. F03: политика обязательных одобрений/второго reviewer; текущее значение0 зафиксировано, настройки без разрешения не менялись.
-7. Полный независимый повторный построчный review всех production/test файлов; отсутствие новых сбоев CI не объявляется таким review.
+4. F27: следующий отдельно разрешённый выпуск durable evidence и наблюдение после retention. Самостоятельная публикация здесь не выполняется.
+5. F03: политика обязательных одобрений/второго reviewer; текущее значение0 зафиксировано, настройки без разрешения не менялись.
+6. Полный независимый повторный построчный review всех production/test файлов; отсутствие новых сбоев CI не объявляется таким review.
 
 `docs/release-acceptance/current.json` остаётся **pending**, source_commit пустой, все13 сценариев неподтверждены.
 Статусы не повышались по наличию тестового файла, старому запуску, отменённому job или синтетическим данным вместо ручных.
 
-[CI]: https://github.com/alcovaibe/vk-music-export/actions/runs/42394667381
+[CI]: https://github.com/alcovaibe/vk-music-export/actions/runs/42401058839
 [Latest]: https://github.com/alcovaibe/vk-music-export/releases/latest
 [channel]: https://github.com/alcovaibe/vk-music-export/blob/main/docs/updates/android.json
 [Ruleset]: https://api.github.com/repos/alcovaibe/vk-music-export/rulesets/26682452
