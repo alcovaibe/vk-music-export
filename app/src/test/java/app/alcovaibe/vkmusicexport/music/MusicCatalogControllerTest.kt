@@ -44,7 +44,7 @@ class MusicCatalogControllerTest {
                 }
             },
             active={g->currentCoroutineContext().ensureActive();if(g!=generation)throw CancellationException()},
-            localPlayback={_,_->local},remember={_,read->remembered.add(read);Unit})
+            isCurrent={it==generation},localPlayback={_,_->local},remember={_,read->remembered.add(read);Unit})
         fun invalidate(){generation++;work?.cancel();state.update{it.copy(busy=false,page=null,localPlayback=null)}}
     }
     @Test fun selectSectionUpdatesSectionAndResetsPlaylist()=runTest {

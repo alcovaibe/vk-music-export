@@ -161,3 +161,5 @@ MusicCatalogController теперь получает реальный NativeMusi
 ## Проверка текущих документов и bundled privacy
 
 В README сверены все внутренние heading anchors и относительные ссылки: отсутствующих целей не найдено. Compatibility guide ссылается на существующий release-acceptance/PROCEDURE.md. Исторические audit/CHANGELOG не переписываются. PRIVACY.md и bundled legal/privacy.txt синхронно исправлены: default Custom Tabs browser, durable playback queue без credentials/media URLs, credential-free account-scoped local collection descriptors и их сохранение вместе с файловым учётом. Удаление данных входа не выдаётся за удаление приватного музыкального индекса или серверный отзыв сессий. Это описание фактического хранения, не новый выпуск и не ручная приёмка.
+
+Исправление compile `f0a303c`: при extraction в partial callback оставалась прямая ссылка на generation host. Передан явный isCurrent(g) callback из того же NativeMusicViewModel и тестового scheduler; active(g) и повторные identity checks сохранены. Это исправление ошибки extraction, не снятие защиты от позднего результата. Новый полный run обязателен.

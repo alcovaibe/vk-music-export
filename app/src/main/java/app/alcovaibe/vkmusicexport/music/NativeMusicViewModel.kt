@@ -85,7 +85,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val catalogController=MusicCatalogController(_state,api,exportReads,
         access={access()},
         checked={initial->sessions?.continueRead(initial)?:access().also{MusicReadIdentity(initial).require(it)}},
-        operation={stage,block->run(stage,block)},active={active(it)},
+        operation={stage,block->run(stage,block)},active={active(it)},isCurrent={it==generation},
         localPlayback={owner,list->withContext(Dispatchers.IO){AudioExportStore(getApplication()).use{
             LocalCatalogSnapshots(it).availablePlayback(owner,list.key,presence={files->SharedAudioStore(getApplication()).presence(files)})
         }}},

@@ -18,6 +18,7 @@ internal class MusicCatalogController(
     private val checked: suspend(MusicAccess)->MusicAccess,
     private val operation: (String,suspend(Int)->Unit)->Unit,
     private val active: suspend(Int)->Unit,
+    private val isCurrent: (Int)->Boolean,
     private val localPlayback: suspend(Long,NativePlaylist)->LocalCollectionPlayback?,
     private val remember: suspend(Long,PlaylistObservation)->Unit,
     private val report: (String,Map<String,Any?>)->Unit={_,_->}
@@ -54,7 +55,7 @@ internal class MusicCatalogController(
                 if(before.readSessionId==null||a.readSessionId!=before.readSessionId)throw MusicReadChanged()
                 val read=MusicSourceReader(api,exportReads).playlist(a,probe.owner,displayed,guard={active(g)},
                     progress={n,total->_state.update{it.copy(preparing="Получено треков: $n/$total")}},
-                    partial={part->if(g==generation)_state.update{old->if(old.selected?.key==displayed.key)old.copy(page=part)else old}})
+                    partial={part->if(isCurrent(g))_state.update{old->if(old.selected?.key==displayed.key)old.copy(page=part)else old}})
                 active(g)
                 val current=checked(a);MusicReadIdentity(a).require(current)
                 musicCheck(current.accountId==null||current.accountId==owner,MusicError.ACCOUNT_CHANGED)
