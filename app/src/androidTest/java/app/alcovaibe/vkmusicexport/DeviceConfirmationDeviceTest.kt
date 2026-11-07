@@ -65,15 +65,15 @@ class DeviceConfirmationUiDeviceTest {
         ui.runOnIdle{assertEquals(0,ui.activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)}
     }
 
-    @Test fun confirmationDispatchIsPinnedToChromeAndDisablesDefaultExternalRedirectHandling() {
+    @Test fun confirmationDispatchPinsSelectedBrowserAndDisablesDefaultExternalRedirectHandling() {
         ui.setContent{Text("Browser dispatch fixture")}
         awaitTestWindowFocus(ui.activity)
         Intents.init()
         try {
             Intents.intending(hasAction(Intent.ACTION_VIEW)).respondWith(ActivityResult(Activity.RESULT_CANCELED,null))
-            ui.runOnIdle{assertTrue(openDeviceAuthChrome(ui.activity,"https://qr.vk.ru/s?q=SYNTHETIC_ONE_TIME_LINK"))}
+            ui.runOnIdle{assertTrue(openDeviceAuthBrowser(ui.activity,"https://qr.vk.ru/s?q=SYNTHETIC_ONE_TIME_LINK"){ "org.mozilla.firefox" })}
             awaitTestWindowFocus(ui.activity)
-            Intents.intended(allOf(hasAction(Intent.ACTION_VIEW),hasPackage("com.android.chrome"),
+            Intents.intended(allOf(hasAction(Intent.ACTION_VIEW),hasPackage("org.mozilla.firefox"),
                 hasExtra(CustomTabsIntent.EXTRA_SEND_TO_EXTERNAL_DEFAULT_HANDLER,false),
                 hasExtra(CustomTabsIntent.EXTRA_SHARE_STATE,CustomTabsIntent.SHARE_STATE_OFF),
                 hasExtraWithKey(CustomTabsIntent.EXTRA_SESSION)))

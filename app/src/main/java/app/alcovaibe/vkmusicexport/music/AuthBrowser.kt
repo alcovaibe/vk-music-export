@@ -32,9 +32,11 @@ internal fun authBrowserPackage(context: Context): String? {
     }.distinctBy{it.packageName}
     return AuthBrowserPolicy.select(defaultPackage,candidates)
 }
-internal fun openDeviceAuthBrowser(context: Context,url: String): Boolean = try {
+internal fun openDeviceAuthBrowser(context: Context,url: String): Boolean =
+    openDeviceAuthBrowser(context,url,::authBrowserPackage)
+internal fun openDeviceAuthBrowser(context: Context,url: String,selectProvider:(Context)->String?): Boolean = try {
     val safe=DeviceAuthProtocol.browserUrl(url)
-    val provider=authBrowserPackage(context)
+    val provider=selectProvider(context)
     if(provider==null)false else {
         val tab=CustomTabsIntent.Builder().setShowTitle(true).setShareState(CustomTabsIntent.SHARE_STATE_OFF)
             .setSendToExternalDefaultHandlerEnabled(false).build()

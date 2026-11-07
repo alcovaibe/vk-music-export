@@ -71,3 +71,14 @@
 - `ff58303`: точечная R8 tracing-граница, обновления AGP classpath, candidate verification workflow и точная SARIF location.
 - `0f0ac41`: видимость скачанных подборок, явный фильтр и отмена скрытых preview/search readers.
 - Этот документ и процедура приёмки находятся в следующем отдельном коммите. Итоговые новые CI-результаты ещё ожидаются.
+
+## Проверка кандидата dependency verification
+
+[42383489564](https://github.com/alcovaibe/vk-music-export/actions/runs/42383489564), source `4cfb915`: candidate job success.
+Просмотрен полный diff: только 19 добавленных строк, без удаления/замены прежних hashes.
+Добавлены JAR/POM jose4j 0.9.6 и jdom2 2.0.6.1, а также отсутствовавший JAR checker-qual 2.5.8.
+Это новые явно закреплённые checksums; обычные Android jobs продолжают работать с `--dependency-verification strict`.
+Candidate artifact ID: 13578083080; GitHub artifact digest: `0352e24a8c429ef392b764b9509c2d3df4c2e417b73c26593fef79c165e738f0`.
+Происхождение значений — генерация Gradle в указанном GitHub job, не независимая криптографическая аттестация автора Maven-пакетов.
+
+Также исправлена пропущенная ссылка `openDeviceAuthChrome` в DeviceConfirmationDeviceTest, из-за которой androidTest compilation `400de2d` падала до исполнения тестов. Проверка package pinning/redirect flags сохранена; выбор провайдера инъецируется в intent-контракт, а production использует только проверенный default browser. Выполнен поиск старого launcher и изменённых UI-подписей по всем существующим androidTest Kotlin-файлам.
