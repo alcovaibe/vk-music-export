@@ -87,14 +87,19 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun selectArtistAlbum(album: NativePlaylist?)=artistController.selectAlbum(album)
     fun backFromArtist()=artistController.back()
     fun pauseArtists()=artistController.pause()
-    fun playArtistTrack(artist: MusicArtist?, album: NativePlaylist?, tracks: List<NativeTrack>, index: Int) {
-        val owner = _state.value.probe?.owner
-        val readSessionId = _state.value.readSessionId
-        val artistName = album?.title ?: artist?.name ?: "Исполнитель"
-        val entries = PlaybackLists.artist(tracks, artistName, owner, readSessionId)
-        PlaybackRuntime.play(getApplication(), entries, index)
+    private fun artistEntries(snapshot: MusicArtistsState): List<PlaybackEntry> {
+        val current=artistController.state.value
+        val own=_state.value
+        if(snapshot!=current||own.stage in setOf("browser_auth","configure","forget")||
+            snapshot.owner!=own.probe?.owner||snapshot.readSessionId!=own.readSessionId)return emptyList()
+        return PlaybackLists.artist(snapshot)
     }
-    fun downloadArtistTrack(track: NativeTrack) = download(track, 0)
+    fun playArtistTrack(snapshot: MusicArtistsState,index: Int) {
+        PlaybackRuntime.play(getApplication(),artistEntries(snapshot),index)
+    }
+    fun downloadArtistTrack(snapshot: MusicArtistsState,index: Int) {
+        artistEntries(snapshot).getOrNull(index)?.let(::downloadPlayback)
+    }
     private val _queueAccount=MutableStateFlow<Long?>(null);val queueAccount=_queueAccount.asStateFlow()
     private var pendingQueueRetry=false
     fun dismissQueueAccount(){_queueAccount.value=null;pendingQueueRetry=false}

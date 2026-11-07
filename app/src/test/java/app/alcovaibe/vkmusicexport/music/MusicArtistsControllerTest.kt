@@ -11,6 +11,11 @@ class MusicArtistsControllerTest {
     private val artist=MusicArtist("1","Исполнитель")
     private inner class Api: MusicApi {
         var load: suspend()->List<MusicArtist> = {listOf(artist)}
+        var detailReads=0
+        override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
+            detailReads++
+            return MusicArtistDetails(artist,NativePage(listOf(NativeTrack("12_7","Song","Artist",180)),1),emptyList())
+        }
         override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit)=load()
         override suspend fun library(access: MusicAccess)=error("Not a library read")
         override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("Not a catalog read")
@@ -48,5 +53,34 @@ class MusicArtistsControllerTest {
             ready.complete(Unit);runCurrent()
             assertEquals(!independent,controller.state.value.loaded)
         }
+    }
+    @Test fun displayedArtistCannotBeReadThroughAnotherLoginEvenForSameAccount()=runTest {
+        for(independent in listOf(false,true)) {
+            val api=Api();var current=access
+            val controller=MusicArtistsController(backgroundScope,api,{12},{current},
+                {initial->MusicReadIdentity(initial).require(current);current},{false})
+            controller.show();runCurrent()
+            assertEquals(access.readSessionId,controller.state.value.readSessionId)
+            current=MusicAccess("b".repeat(64),"CI",accountId=12,readSessionId=if(independent)"other" else access.readSessionId)
+            controller.select(artist);runCurrent()
+            assertEquals(if(independent)0 else 1,api.detailReads)
+            assertEquals(!independent,controller.state.value.details!=null)
+            if(independent)assertEquals(MusicError.ACCESS,controller.state.value.error)
+        }
+    }
+
+    @Test fun partialSubscriptionsRetainTheirSessionForOpeningVerifiedRows()=runTest {
+        val api=object: MusicApi by Api() {
+            override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> {
+                progress(listOf(artist),1)
+                awaitCancellation()
+            }
+        }
+        val controller=MusicArtistsController(backgroundScope,api,{12},{access},{it},{false},artistTimeoutMs=100)
+        controller.show();advanceTimeBy(101);runCurrent()
+        assertEquals(MusicError.TIMEOUT,controller.state.value.error)
+        assertEquals(access.readSessionId,controller.state.value.readSessionId)
+        controller.select(artist);runCurrent()
+        assertNotNull(controller.state.value.details)
     }
 }

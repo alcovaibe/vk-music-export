@@ -142,12 +142,17 @@ class MusicLibraryRedesignDeviceTest {
         screenshot("redesign-artists")
         ui.onNodeWithTag("followed_artist_creed").performClick()
         ui.waitUntil(10_000){model.artists.value.details!=null&&!model.artists.value.busy}
+        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_1_12_1"))
+        ui.onNodeWithTag("music_track_1_12_1").assertHasClickAction()
+        ui.onNodeWithContentDescription("Скачать Миражи (hehehe Cover sped up), Егор Крид",useUnmergedTree=true).assertExists()
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("artist_album_12_4"))
         screenshot("redesign-artist-details")
         ui.onNodeWithTag("artist_album_12_4").performClick()
         ui.waitUntil(10_000){model.artists.value.albumTracks!=null&&!model.artists.value.busy}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_3_12_3"))
         ui.onNodeWithText("Ночной рейс").assertIsDisplayed()
+        ui.onNodeWithTag("music_track_3_12_3").assertHasClickAction()
+        ui.onNodeWithContentDescription("Скачать Ночной рейс (Remix), MAREVO",useUnmergedTree=true).assertExists()
         ui.onNodeWithContentDescription("Назад").performClick()
         ui.runOnIdle{assertNull(model.artists.value.album);assertNotNull(model.artists.value.selected)}
         ui.onNodeWithContentDescription("Назад").performClick()

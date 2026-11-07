@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.*
 
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
-    val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null,val errorDetails: String?=null,val busy: Boolean=false,val stage: String="",val progress: String?=null)
+    val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null,val errorDetails: String?=null,val busy: Boolean=false,val stage: String="",val progress: String?=null,
+    val readSessionId: String?=null)
 
 /** Screen-owned artist reads never acquire the file/maintenance gate. */
 internal class MusicArtistsController(
@@ -42,6 +43,8 @@ internal class MusicArtistsController(
             try {
                 val a=access()
                 musicCheck(a.accountId==null||a.accountId==owner,MusicError.ACCOUNT_CHANGED)
+                checked(a);active(g)
+                _artists.update{it.copy(readSessionId=a.readSessionId)}
                 val rows=withTimeout(artistTimeoutMs){api.followedArtists(a,owner){partial,requests->
                     if(g==generation) {
                         _artists.update{it.copy(artists=partial.distinctBy{artist->artist.id},requests=requests)}
@@ -49,7 +52,7 @@ internal class MusicArtistsController(
                     }
                 }};active(g)
                 checked(a);active(g)
-                _artists.value=MusicArtistsState(owner,true,rows.distinctBy{it.id},busy=true,stage="artists")
+                _artists.value=MusicArtistsState(owner,true,rows.distinctBy{it.id},busy=true,stage="artists",readSessionId=a.readSessionId)
             }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.")}}
             catch(e: CancellationException){if(g==generation)_artists.update{it.copy(message="Загрузка подписок приостановлена. Уже полученные исполнители доступны.")};throw e}
             catch(e: Exception){active(g);report(e);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
@@ -65,6 +68,7 @@ internal class MusicArtistsController(
             try {
                 val a=access()
                 musicCheck(a.accountId==null||a.accountId==s.owner,MusicError.ACCOUNT_CHANGED)
+                musicCheck(s.readSessionId==a.readSessionId,MusicError.ACCESS)
                 val details=withTimeout(artistTimeoutMs){api.artistDetails(a,artist)};active(g)
                 checked(a);active(g)
                 _artists.update{it.copy(details=details)}
@@ -86,6 +90,7 @@ internal class MusicArtistsController(
             try {
                 val a=access()
                 musicCheck(a.accountId==null||a.accountId==s.owner,MusicError.ACCOUNT_CHANGED)
+                musicCheck(s.readSessionId==a.readSessionId,MusicError.ACCESS)
                 val page=withTimeout(artistTimeoutMs){MusicPagination.tracks({offset->active(g);api.playlistPage(checked(a),album,offset)})}
                 checked(a);active(g);_artists.update{it.copy(albumTracks=page)}
             }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил запрос вовремя. Повтори загрузку.")}}

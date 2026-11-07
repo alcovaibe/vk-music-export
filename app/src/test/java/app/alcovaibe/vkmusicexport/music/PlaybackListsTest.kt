@@ -43,4 +43,40 @@ class PlaybackListsTest {
         assertFalse(entry.toString().contains("content:"));assertFalse(entry.toString().contains("Частное"))
         assertFalse(PlaybackState(entries=listOf(entry)).toString().contains(song.title))
     }
+
+    private val artist=MusicArtist("artist-1","Исполнитель")
+    private fun artistState()=MusicArtistsState(owner=12,selected=artist,readSessionId="read-1",
+        details=MusicArtistDetails(artist,NativePage(listOf(song,song),2),emptyList()))
+
+    @Test fun artistQueueUsesItsOwnSnapshotAndPreservesRepeatedOccurrences() {
+        val rows=PlaybackLists.artist(artistState())
+        assertEquals(2,rows.size)
+        assertTrue(rows.all{it.account==12L&&it.readSessionId=="read-1"})
+        val tasks=rows.map{it.download!!}
+        assertEquals(listOf(1,2),tasks.map{it.position})
+        assertEquals(listOf(1,2),tasks.map{it.occurrence})
+        assertTrue(tasks.all{it.source==ExportSource(12,"artist",artist.id)&&it.folders==listOf("Исполнители",artist.name)})
+        assertNotEquals(tasks[0].key,tasks[1].key)
+        assertNotEquals(ExportLayout.single(NativePage(listOf(song),1),song,1,12).key,tasks[0].key)
+    }
+
+    @Test fun artistAlbumUsesTheSameDownloadIdentityAsTheCatalog() {
+        val album=NativePlaylist(34,7,"Альбом",2,null,null,null,null,PlaylistKind.ALBUM)
+        val page=NativePage(listOf(song,song),2)
+        val state=artistState().copy(album=album,albumTracks=page)
+        assertEquals(ExportLayout.playlist(page,album,account=12),PlaybackLists.artist(state).map{it.download})
+        assertTrue(PlaybackLists.artist(state.copy(albumTracks=null)).isEmpty())
+        val unknown=NativePlaylist(34,7,"Альбом",2,null,null,null,null,PlaylistKind.UNKNOWN)
+        assertTrue(PlaybackLists.artist(state.copy(album=unknown)).all{it.download==null})
+    }
+
+    @Test fun artistQueueRequiresAccountSessionAndMatchingArtistDetails() {
+        val state=artistState()
+        assertTrue(PlaybackLists.artist(state.copy(owner=0)).isEmpty())
+        assertTrue(PlaybackLists.artist(state.copy(readSessionId=null)).isEmpty())
+        assertTrue(PlaybackLists.artist(state.copy(selected=artist.copy(id="other"))).isEmpty())
+        val restricted=state.copy(details=state.details!!.copy(tracks=NativePage(listOf(song.copy(restricted=true),song),2)))
+        assertNull(PlaybackLists.select(PlaybackLists.artist(restricted),0))
+        assertEquals(2,PlaybackLists.select(PlaybackLists.artist(restricted),1)!!.entries.single().download!!.position)
+    }
 }

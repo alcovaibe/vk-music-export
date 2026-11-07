@@ -356,7 +356,17 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     val page=if(artists.album!=null)artists.albumTracks else artists.details?.tracks
                     page?.let{
                         item("artist_tracks_title"){Text("Треки · ${it.count}",style=MaterialTheme.typography.titleMedium)}
-                        itemsIndexed(it.tracks,key={i,track->"artist_track_${i}_${track.id}"}){i,track->MusicTrackRow(track,i+1,preview=model.previewArtwork(track))}
+                        itemsIndexed(it.tracks,key={i,track->"artist_track_${i}_${track.id}"}){i,track->
+                            val saved=savedById[track.id]?.file
+                            val playable=artists.owner==state.probe?.owner&&artists.readSessionId!=null&&
+                                artists.readSessionId==state.readSessionId&&track.metadataError==null&&!track.restricted&&track.duration>0
+                            MusicTrackRow(track,i+1,preview=model.previewArtwork(track),saved=saved,
+                                downloading=queue.status=="RUNNING"&&queue.account==artists.owner&&queue.currentTask?.track?.id==track.id,
+                                enabled=canPrepare&&playable,
+                                onDownload=if(artists.album?.kind!=PlaylistKind.UNKNOWN)({model.downloadArtistTrack(artists,i)})else null,
+                                onOpen=saved?.let{({openFile(it)})},
+                                onPlay=if(playable)({model.playArtistTrack(artists,i)})else saved?.let{({openFile(it)})})
+                        }
                     }
                 }
             }else {

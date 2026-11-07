@@ -19,6 +19,12 @@ class SingleTrackDownloadDeviceTest {
         val snapshot=NativePage(listOf(song,song.copy(id="12_990802"),song),3)
         val list=NativePlaylist(12,990803,"Snapshot CI playlist",3,null,null,null,null,PlaylistKind.PLAYLIST)
         val reads=AtomicInteger();val proofs=AtomicInteger()
+        val artist=MusicArtist("ci-artist","Snapshot CI artist")
+        override suspend fun followedArtists(access: MusicAccess,owner: Long)=listOf(artist)
+        override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
+            read();return MusicArtistDetails(artist,snapshot,listOf(NativePlaylist(12,990803,"Snapshot CI album",3,null,null,null,null,PlaylistKind.ALBUM)))
+        }
+        override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/synthetic.mp3")
         var allowLists=true;var owner=12L;var liveTracks=snapshot.tracks
         var beforeProofReturns: (suspend()->Unit)?=null
         private fun read(){reads.incrementAndGet();check(allowLists){"No list reads after analysis"}}
@@ -116,5 +122,44 @@ class SingleTrackDownloadDeviceTest {
         assertEquals(0,api.proofs.get());assertEquals(0,starts.get())
         val rows=withContext(Dispatchers.IO){AudioExportStore(InstrumentationRegistry.getInstrumentation().targetContext).use{it.taskRows()}}
         assertEquals(listOf(existing),rows.map{it.first})
+    }
+
+    private suspend fun openArtist(model: NativeMusicViewModel,api: Api): MusicArtistsState {
+        val inst=InstrumentationRegistry.getInstrumentation()
+        inst.runOnMainSync{model.showArtists()}
+        until{!model.artists.value.busy&&model.artists.value.loaded}
+        inst.runOnMainSync{model.selectArtist(api.artist)}
+        until{!model.artists.value.busy&&model.artists.value.details!=null}
+        return model.artists.value
+    }
+
+    @Test fun artistDownloadUsesDisplayedOccurrenceAndNeverRereadsTheLibrary()=fixture {model,api,_,starts->
+        val snapshot=openArtist(model,api)
+        val expected=PlaybackLists.artist(snapshot)[2].download!!
+        val reads=api.reads.get();api.allowLists=false
+        InstrumentationRegistry.getInstrumentation().runOnMainSync{model.downloadArtistTrack(snapshot,2)}
+        assertEquals(expected,queued(model))
+        assertEquals(ExportSource(12,"artist",api.artist.id),expected.source)
+        assertEquals(3,expected.position);assertEquals(2,expected.occurrence)
+        assertEquals(reads,api.reads.get());assertEquals(1,starts.get())
+    }
+
+    @Test fun artistSnapshotCannotBeSubmittedAfterLeavingTheArtist()=fixture {model,api,_,starts->
+        val snapshot=openArtist(model,api)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync{
+            model.backFromArtist()
+            model.downloadArtistTrack(snapshot,2)
+        }
+        assertEquals(0,starts.get());assertEquals(0,api.proofs.get())
+        assertEquals(0,AudioExportRuntime.state.value.total)
+    }
+
+    @Test fun artistDownloadRejectsIndependentLoginBeforeQueueReplacement()=fixture {model,api,vault,starts->
+        val snapshot=openArtist(model,api)
+        withContext(Dispatchers.IO){vault.save(MusicAccess("vk1.a."+"ANOTHER".repeat(12),"CI/1",accountId=12))}
+        InstrumentationRegistry.getInstrumentation().runOnMainSync{model.downloadArtistTrack(snapshot,2)}
+        until{!model.state.value.busy&&model.state.value.error!=null}
+        assertEquals(MusicError.ACCESS,model.state.value.error)
+        assertEquals(0,starts.get());assertEquals(0,AudioExportRuntime.state.value.total)
     }
 }
