@@ -18,6 +18,8 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
             raise ValueError('Release evidence is incomplete: '+name)
         files['release/'+name]=path
     if (output/'toolchain.json').is_file():files['release/toolchain.json']=output/'toolchain.json'
+    reviewed=Path('config/sast-reviewed.json')
+    if reviewed.is_file():files['release/sast-reviewed.json']=reviewed
     # Account acceptance is never inferred from a CI job or an owner exception.
     acceptance=Path('docs/release-acceptance/current.json')
     acceptance_state='not_recorded'

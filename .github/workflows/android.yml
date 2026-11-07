@@ -281,7 +281,7 @@ jobs:
 
   r8-playback:
     name: R8 playback (API ${{ matrix.api }})
-    needs: [changes, build]
+    needs: changes
     if: needs.changes.outputs.run_android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
