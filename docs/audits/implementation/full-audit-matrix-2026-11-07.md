@@ -102,3 +102,9 @@ R8 instrumentation ещё не принят: Trace-ошибка устранен
 Новый R8/Android run ещё обязателен.
 
 Android suites API31/34 выполнили тесты, но FriendsMusicDeviceTest ещё требовал прежний текст о настройках приватности (F21). Обновлено точное ожидаемое нейтральное сообщение; проверки remote code, отмены и смены доступа в том же сценарии сохранены. Это изменение утверждённого UX-контракта, не увеличение timeout и не удаление теста.
+
+### R8: внешняя ABI общей Kotlin-библиотеки
+
+`9d86399` прошёл прежнюю Lambda-ошибку, но runner затем не нашёл `kotlin.LazyKt`. Это показывает общий контракт: test APK исключает Kotlin stdlib, поставляемую target APK, а target shrinker не видит внешних потребителей runner. Вместо дальнейшего перебора отдельных removed facades сохраняется public/protected ABI **только общей Kotlin-библиотеки** и используемых fixture coroutine entry points; имена продолжают обфусцироваться через mapping AGP. Оптимизация/минификация приложения, Compose/Media3 и самого test APK не отключается. Private implementation members не получают blanket keep. Проверка нового SHA обязательна; успех R8 ещё не заявлен.
+
+В прогоне 9d86399 подтверждены полные interface jobs API30–37 success после исправления browser/F21 тестовых контрактов; API29 на момент записи ещё выполнялся. Это реальные Android jobs, а не только compilation. Предыдущий infrastructure failure загрузки эмулятора API36 в новом run не повторился. R8 target/test ABI продолжает требовать следующего исправления.
