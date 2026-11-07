@@ -35,7 +35,7 @@ class QueueReadDeviceTest {
         legacyQueueSchema(store.writableDatabase);store.writableDatabase.version=5;store.close()
         AudioExportStore(context).use{migrated->
             val after=migrated.snapshot()
-            assertEquals(6,migrated.readableDatabase.version)
+            assertEquals(7,migrated.readableDatabase.version)
             assertEquals(before.copy(queueId=after.queueId,revision=after.revision),after)
             assertEquals(saved,migrated.savedPage());assertEquals(rows,migrated.taskRows());assertEquals("checkpoint",migrated.checkpoint("must-preserve"))
             assertEquals(503,migrated.queuePage(DownloadsTab.ERRORS).failures.single().details!!.httpStatus)

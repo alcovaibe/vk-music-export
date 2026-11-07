@@ -96,6 +96,14 @@ FRIEND_PREVIEW_TESTS = (
 )
 
 
+SOURCE_MEMBERSHIP_TESTS = [
+    "schema6UpgradePreservesAllOwnersOccurrencesUrisQueueAndReopen",
+    "indexedSourceReadsAt1004500And20000NeverDecodeUnrelatedPayloads",
+    "malformedLegacyPayloadRollsBackSchemaAndPreservesOriginals",
+    "liveLinksAdoptionAndForgetUpdateMembershipsWithoutDeletingThePhysicalCopy"
+]
+
+
 def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None) -> int:
     for code in results.rglob('test-result-exit-code.txt'):
         if code.read_text().strip() != '0':
@@ -141,6 +149,9 @@ def verify(results: Path, minimum_tests: int = 136, api_level: int | None = None
     for method in FRIEND_PREVIEW_TESTS:
         if ('app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest', method) not in executed:
             raise ValueError(f'Required friend preview lifecycle test did not execute: {method}')
+    for method in SOURCE_MEMBERSHIP_TESTS:
+        if ('app.alcovaibe.vkmusicexport.SourceMembershipDeviceTest', method) not in executed:
+            raise ValueError(f'Required source membership test did not execute: {method}')
     if not any(name == 'app.alcovaibe.vkmusicexport.InterfaceTest' for name, _ in executed):
         raise ValueError('Required interface test did not execute')
     if sum(name == 'app.alcovaibe.vkmusicexport.AuditRegressionDeviceTest' for name, _ in executed) < 9:

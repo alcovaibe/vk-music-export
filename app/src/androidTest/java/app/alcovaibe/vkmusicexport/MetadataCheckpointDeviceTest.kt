@@ -48,7 +48,7 @@ class MetadataCheckpointDeviceTest {
             val db=store.writableDatabase
             for(table in listOf("metadata_runs","metadata_targets","metadata_issues"))db.execSQL("DROP TABLE $table")
             legacySavedFileSchema(db);db.version=3;store.close();store=AudioExportStore(context)
-            assertEquals(6,store.readableDatabase.version)
+            assertEquals(7,store.readableDatabase.version)
             assertEquals(raw,store.checkpoint("track-metadata-run:12")) // DDL migration preserves old bytes until read.
             val loaded=store.metadataRun(12)!!
             assertEquals(old.copy(runId=loaded.runId),loaded);assertTrue(loaded.unfinished)

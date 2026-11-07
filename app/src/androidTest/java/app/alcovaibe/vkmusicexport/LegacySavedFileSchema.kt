@@ -20,4 +20,11 @@ internal fun legacyQueueSchema(db: SQLiteDatabase) {
     db.execSQL("DROP INDEX IF EXISTS tasks_queue_order")
     db.execSQL("DROP TABLE IF EXISTS queue_counts")
     db.execSQL("DELETE FROM meta WHERE name IN ('queue_revision','queue_identity','source_failure_count')")
+    // Recreate the independent v5/v6 membership shape, without v7 normalized columns.
+    db.execSQL("ALTER TABLE files RENAME TO v7_files")
+    db.execSQL("CREATE TABLE files(task_key TEXT PRIMARY KEY,track_id TEXT NOT NULL,payload TEXT NOT NULL,uri TEXT)")
+    db.execSQL("INSERT INTO files(task_key,track_id,payload,uri) SELECT task_key,track_id,payload,uri FROM v7_files ORDER BY rowid")
+    db.execSQL("DROP TABLE v7_files")
+    db.execSQL("CREATE INDEX file_tracks ON files(track_id)")
+    db.execSQL("CREATE INDEX file_uris ON files(uri)")
 }

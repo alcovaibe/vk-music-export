@@ -1101,13 +1101,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         AudioExportStore(getApplication()).use{store->
         val shared=SharedAudioStore(getApplication())
         val playlists=SharedPlaylistStore(getApplication(),store)
-        CatalogDownloads.completed(catalog,owner,store.savedFiles(),fetch={list->
+        CatalogDownloads.completed(catalog,owner,emptyList(),fetch={list->
             active(g)
             MusicSourceReader(api,exportReads).playlist(access,owner,list,guard={active(g)},progress={n,total->
                 _state.update{it.copy(preparing="Проверяем скачанную подборку: $n/$total")}
             }).page
         },valid={row->active(g);shared.inspect(row).reason==SavedFileReason.OK},
-            sourceReady={source,tasks,files->active(g);playlists.matches(source,tasks,files)})
+            sourceReady={source,tasks,files->active(g);playlists.matches(source,tasks,files)},
+            sourceRows={list->store.sourceFiles(ExportSource(owner,"catalog",list.key))})
         }
     }
     private suspend fun currentCatalog(g: Int,access: MusicAccess,owner: Long,
@@ -1134,11 +1135,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(lists.isEmpty())return emptySet()
         return AudioExportStore(getApplication()).use{store->
             val shared=SharedAudioStore(getApplication());val playlists=SharedPlaylistStore(getApplication(),store)
-            CatalogDownloads.completed(NativeCatalog(lists,lists.size),owner,store.savedFiles(),
+            CatalogDownloads.completed(NativeCatalog(lists,lists.size),owner,emptyList(),
                 fetch={list->active(g);val tasks=bySource.getValue(list.key);NativePage(tasks.map{it.track},tasks.size)},
                 valid={row->active(g);shared.inspect(row).reason==SavedFileReason.OK},
                 sourceReady={source,tasks,files->active(g);playlists.matches(source,tasks,files)},
-                tasksFor={list,_->bySource.getValue(list.key)})
+                tasksFor={list,_->bySource.getValue(list.key)},
+                sourceRows={list->store.sourceFiles(ExportSource(owner,"catalog",list.key))})
         }
     }
     private suspend fun loadCatalog(g: Int,access: MusicAccess,owner: Long,force: Boolean=true) {

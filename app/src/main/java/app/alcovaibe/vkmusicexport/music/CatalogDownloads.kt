@@ -9,14 +9,17 @@ internal object CatalogDownloads {
     suspend fun completed(catalog: NativeCatalog,account: Long,saved: List<PublishedAudio>,
         fetch: suspend(NativePlaylist)->NativePage,valid: suspend(PublishedAudio)->Boolean,
         sourceReady: suspend(ExportSource,List<AudioExportTask>,List<PublishedAudio>)->Boolean={_,_,_->true},
-        tasksFor: (NativePlaylist,NativePage)->List<AudioExportTask> = {list,page->ExportLayout.playlist(page,list,account=account)}): Set<String> {
-        val sources=saved.filter{it.source?.account==account&&it.source.kind=="catalog"&&it.catalogueVerified}
-            .groupBy{it.source!!.id}
+        tasksFor: (NativePlaylist,NativePage)->List<AudioExportTask> = {list,page->ExportLayout.playlist(page,list,account=account)},
+        sourceRows: ((NativePlaylist)->List<PublishedAudio>)?=null): Set<String> {
+        val sources=if(sourceRows==null)saved.filter{it.source?.account==account&&it.source.kind=="catalog"&&it.catalogueVerified}
+            .groupBy{it.source!!.id}else emptyMap()
         val checked=mutableMapOf<Triple<String,Long,String>,Boolean>()
         val complete=mutableSetOf<String>()
         for(list in catalog.lists) {
             currentCoroutineContext().ensureActive()
-            val rows=sources[list.key].orEmpty()
+            val rows=(sourceRows?.invoke(list)?:sources[list.key]).orEmpty().filter {
+                it.source==ExportSource(account,"catalog",list.key)&&it.catalogueVerified
+            }
             if(list.count==0||rows.size<list.count)continue
             try {
                 val page=fetch(list)

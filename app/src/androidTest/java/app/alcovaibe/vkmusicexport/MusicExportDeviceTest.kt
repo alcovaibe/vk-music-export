@@ -312,7 +312,7 @@ class MusicExportDeviceTest {
                 db.execSQL("INSERT INTO meta VALUES('status','PAUSED')");db.version=1
             }
             val reopened=AudioExportStore(context);store=reopened
-            assertEquals(6,reopened.readableDatabase.version);assertEquals(1,reopened.snapshot().done);assertEquals(1,reopened.snapshot().pending)
+            assertEquals(7,reopened.readableDatabase.version);assertEquals(1,reopened.snapshot().done);assertEquals(1,reopened.snapshot().pending)
             assertEquals(old,reopened.existing(tasks.first().key));assertEquals("PAUSED",reopened.snapshot().status)
             assertEquals(listOf(old),reopened.snapshot().recent) // Old schema has no separate history yet.
             val engine=AudioExportEngine(reopened,shared,File(base,"tmp"),noApi,credential={error("local copy")},observe={_,_->})

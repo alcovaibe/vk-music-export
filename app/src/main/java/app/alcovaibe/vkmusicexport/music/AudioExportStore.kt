@@ -18,7 +18,7 @@ internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,v
 }
 
 /** SQLite checkpoints each item. Only canonical track/folder metadata and local media URIs; no VK secrets. IO only. */
-internal class AudioExportStore(context: Context,private val queueQuery: ((String)->Unit)?=null): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,6) {
+internal class AudioExportStore(context: Context,private val queueQuery: ((String)->Unit)?=null): SQLiteOpenHelper(context,File(context.noBackupFilesDir,"audio-export.db").path,null,7) {
     private val json=Json{encodeDefaults=true}
     init{setWriteAheadLoggingEnabled(true)}
     override fun onConfigure(db: SQLiteDatabase){db.execSQL("PRAGMA synchronous=FULL")}
@@ -33,6 +33,7 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
         TrackMetadataCheckpoints.create(db)
         SavedFileIndex.create(db)
         QueueReadSchema.create(db)
+        FileMembershipSchema.create(db)
     }
     private fun createDirectories(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE directories(identity TEXT PRIMARY KEY,relative_path TEXT NOT NULL,comparison_key TEXT NOT NULL UNIQUE)")
@@ -41,7 +42,7 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
         db.execSQL("CREATE TABLE source_failures(source_key TEXT PRIMARY KEY,payload TEXT NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase,oldVersion: Int,newVersion: Int) {
-        check(oldVersion in 1..5&&newVersion==6){"Unsupported export schema"}
+        check(oldVersion in 1..6&&newVersion==7){"Unsupported export schema"}
         if(oldVersion<2)createDirectories(db)
         if(oldVersion<3)createSourceFailures(db)
         if(oldVersion<4)TrackMetadataCheckpoints.create(db) // Preserve tasks/files and old checkpoints.
@@ -57,7 +58,8 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
             while(c.moveToNext())SavedFileIndex(db).sync(c.getString(0))
         }
         }
-        QueueReadSchema.create(db)
+        if(oldVersion<6)QueueReadSchema.create(db)
+        FileMembershipSchema.create(db)
     }
     private fun put(name: String,value: String){writableDatabase.execSQL("INSERT OR REPLACE INTO meta(name,value) VALUES(?,?)",arrayOf(name,value))}
     private fun get(name: String)=readableDatabase.rawQuery("SELECT value FROM meta WHERE name=?",arrayOf(name)).use{if(it.moveToFirst())it.getString(0)else null}
@@ -77,8 +79,9 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
     }
     private fun writeFile(row: PublishedAudio) {
         val old=existing(row.taskKey)
-        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload,uri) VALUES(?,?,?,?)",
-            arrayOf(row.taskKey,row.track.id,json.encodeToString(row),row.uri))
+        writableDatabase.execSQL("INSERT OR REPLACE INTO files(task_key,track_id,payload,uri,source_account,source_kind,source_id,occurrence) VALUES(?,?,?,?,?,?,?,?)",
+            arrayOf<Any?>(row.taskKey,row.track.id,json.encodeToString(row),row.uri,
+                row.source?.account?:0,row.source?.kind,row.source?.id,row.occurrence))
         syncFiles(*listOfNotNull(old?.uri,row.uri).toTypedArray())
     }
     @Synchronized fun savedRevision()=SavedFileIndex(readableDatabase).revision()
@@ -360,6 +363,17 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
             if(LibraryRemovalProtocol.libraryCopy(owner,track,row))add(row)
         }
     }}
+    /** Indexed source membership lookup; no JSON predicate or whole-library scan. */
+    @Synchronized fun sourceFiles(source: ExportSource): List<PublishedAudio> = readableDatabase.rawQuery(
+        "SELECT payload FROM files WHERE source_account=? AND source_kind=? AND source_id=? ORDER BY rowid",
+        arrayOf(source.account.toString(),source.kind,source.id)).use{cursor->buildList {
+            while(cursor.moveToNext())add(json.decodeFromString<PublishedAudio>(cursor.getString(0)))
+        }}
+    @Synchronized fun sourceCounts(account: Long,kind: String): Map<String,Int> = readableDatabase.rawQuery(
+        "SELECT source_id,COUNT(*) FROM files WHERE source_account=? AND source_kind=? GROUP BY source_id",
+        arrayOf(account.toString(),kind)).use{cursor->buildMap {
+            while(cursor.moveToNext())put(cursor.getString(0),cursor.getInt(1))
+        }}
     @Synchronized fun savedFiles(): List<PublishedAudio> = readableDatabase.rawQuery("SELECT payload FROM files ORDER BY rowid",null).use{c->buildList{
         while(c.moveToNext())add(json.decodeFromString<PublishedAudio>(c.getString(0)))
     }}

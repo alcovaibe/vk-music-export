@@ -39,7 +39,7 @@ class SavedLibraryDeviceTest {
                 db.version=version
             }
             AudioExportStore(context).use{migrated->
-                assertEquals(6,migrated.readableDatabase.version);assertEquals(row(1),migrated.existing(task(1).key))
+                assertEquals(7,migrated.readableDatabase.version);assertEquals(row(1),migrated.existing(task(1).key))
                 assertEquals(1,migrated.snapshot().done);assertEquals(12L,migrated.account());assertEquals("bytes",migrated.checkpoint("must-preserve"))
                 assertEquals(row(1),migrated.savedPage().single().file);assertTrue(migrated.savedPage().single().order>0)
             }
