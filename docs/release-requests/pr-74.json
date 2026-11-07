@@ -1,0 +1,27 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 74,
+  "version_name": "0.13.0",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-14T23:59:59Z",
+  "build_inputs": {
+    "app": "bc4117f8b4ecb99efb0679ccb12b42c4f758280f",
+    "gradle": "e9d9fe56752aec2d619d5437e54021d1785e2ce8",
+    "config": "ccfdde76af1f8b3602a0cc9c70c9fa7f0cf696a0",
+    "tools": "91c65dae202ca94f15f411c35e70cd086ca905dc",
+    ".github": "c50b90d54f3882b2800f15d801c0189fa771171e",
+    "build.gradle.kts": "53cc67ebb9044a7a37c46557f0bdf139ce70b984",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "d24a72dba35c8384d4b817ed615378f6dca0e0cf",
+    "version.properties": "808467b28a8a6224020d644f18db0279d563cc02",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e",
+    "CHANGELOG.md": "44fd1185b133e7661befc0de4517764ea1cf3fa0",
+    "LICENSE": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+    "NOTICE": "7e59d121ed67eb06e2003c4bb355a02482e46e91"
+  },
+  "request": "Владелец 2026-11-07 явно запросил сборку и выпуск VK Music Export 0.13.0 из актуального main после слияния PR #74 как стабильного GitHub Latest. Ручная приёмка реального аккаунта ВК, массового экспорта и фоновой работы на физическом устройстве не подтверждена. Автоматическая сборка, полные проверки CI, подпись, проверка обновления и целостности обязательны.",
+  "delete_other_branches": false
+}
