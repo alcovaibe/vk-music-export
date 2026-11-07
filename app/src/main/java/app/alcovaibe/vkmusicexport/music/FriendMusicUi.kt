@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -23,9 +24,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
-private fun FriendSearch(value: String,label: String,tag: String,onValue:(String)->Unit) {
+internal fun FriendSearch(value: String,label: String,tag: String,onValue:(String)->Unit) {
     TextField(value,onValue,modifier=Modifier.fillMaxWidth().testTag(tag),singleLine=true,
-        placeholder={Text(label,maxLines=1,overflow=TextOverflow.Ellipsis)},leadingIcon={Icon(Icons.Default.Search,null)},
+        label={Text(label)},leadingIcon={Icon(Icons.Default.Search,null)},
         trailingIcon={if(value.isNotEmpty())IconButton(onClick={onValue("")}){Icon(Icons.Default.Close,"Очистить поиск")}},
         shape=RoundedCornerShape(20.dp),colors=TextFieldDefaults.colors(
             focusedContainerColor=MaterialTheme.colorScheme.surfaceVariant,unfocusedContainerColor=MaterialTheme.colorScheme.surfaceVariant,
@@ -243,19 +244,25 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     }
 }
 @Composable
-private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,selected: Boolean,onToggle:()->Unit,photo: String?,saved: PublishedAudio?,
+internal fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,selected: Boolean,onToggle:()->Unit,photo: String?,saved: PublishedAudio?,
     enabled: Boolean,onDownload:()->Unit,queue: ExportSnapshot,taskKey: String?,taskState: String?,onPause:()->Unit,onPlay:()->Unit,playable: Boolean) {
     val current=taskKey!=null&&queue.currentTask?.key==taskKey&&queue.status=="RUNNING"
     Surface(
         shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
-        modifier=Modifier.fillMaxWidth().testTag("friend_track_$position").combinedClickable(enabled=selecting||playable,onClick={if(selecting)onToggle()else onPlay()},onLongClick=onToggle)) {
+        modifier=Modifier.fillMaxWidth().testTag("friend_track_$position").semantics {
+            stateDescription=if(selecting)if(selected)"Трек выбран" else "Трек не выбран" else ""
+            customActions=listOf(CustomAccessibilityAction(if(selected)"Убрать из выбранного" else "Выбрать ${track.displayTitle}"){onToggle();true})
+        }.combinedClickable(enabled=selecting||playable,onClickLabel=if(selecting)"Изменить выбор трека" else "Воспроизвести ${track.displayTitle}",onClick={if(selecting)onToggle()else onPlay()},onLongClickLabel="Выбрать трек",onLongClick=onToggle)) {
         Row(Modifier.padding(start=if(selecting)0.dp else 10.dp,end=4.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            if(selecting)Checkbox(selected,{onToggle()},modifier=Modifier.testTag("friend_select_$position"))
+            if(selecting)Checkbox(selected,{onToggle()},modifier=Modifier.testTag("friend_select_$position").semantics{contentDescription="Выбрать ${track.displayTitle}, ${track.artist}"})
             MusicThumbnail(url=photo,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id,size=44.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(track.displayTitle,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis)
                 Text("${track.artist} · ${track.duration/60}:${(track.duration%60).toString().padStart(2,'0')}",style=MaterialTheme.typography.bodySmall,
                     color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2,overflow=TextOverflow.Ellipsis)
+            }
+            if(!selecting)IconButton(onClick=onToggle,modifier=Modifier.testTag("friend_select_action_$position")) {
+                Icon(FriendQueueIcon,"Выбрать ${track.displayTitle}, ${track.artist}")
             }
             when {
                 current->Row(verticalAlignment=Alignment.CenterVertically) {
@@ -269,7 +276,7 @@ private fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,s
                 track.restricted||track.duration==0->FriendRowStatus(FriendErrorIcon,"Недоступно",MaterialTheme.colorScheme.error)
                 taskState=="FAILED"->FriendRowStatus(FriendErrorIcon,"Не скачано",MaterialTheme.colorScheme.error)
                 taskState in setOf("PENDING","RUNNING")->FriendRowStatus(FriendQueueIcon,if(queue.status=="PAUSED")"На паузе" else "В очереди",MaterialTheme.colorScheme.primary)
-                else->IconButton(onClick=onDownload,enabled=enabled,modifier=Modifier.testTag("friend_download_$position")){Icon(DownloadIcon,"Скачать этот трек")}
+                else->IconButton(onClick=onDownload,enabled=enabled,modifier=Modifier.testTag("friend_download_$position")){Icon(DownloadIcon,"Скачать ${track.displayTitle}, ${track.artist}")}
             }
         }
     }

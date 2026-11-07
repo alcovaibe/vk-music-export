@@ -66,10 +66,10 @@ class InstrumentationReportTest(unittest.TestCase):
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.SourceReadDeviceTest" name="{name}"/>' for name in verification['SOURCE_READ_TESTS'])
         cases += ''.join(f'<testcase classname="app.alcovaibe.vkmusicexport.FriendPreviewLifecycleDeviceTest" name="{name}"/>' for name in verification['FRIEND_PREVIEW_TESTS'])
         cases += '<testcase classname="app.alcovaibe.vkmusicexport.FriendsMusicDeviceTest" name="leavingFriendsDestinationCancelsVisiblePreviewsAndReturningResumesThem"/>'
-        return f'<testsuites tests="209" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
+        return f'<testsuites tests="211" failures="0" errors="0" skipped="0"><testsuite>{cases}</testsuite></testsuites>'
 
     def test_successful_full_suite_is_accepted(self):
-        self.assertEqual(self.check([self.successful_report()], '0'), 209)
+        self.assertEqual(self.check([self.successful_report()], '0'), 211)
 
     def test_missing_bulk_download_scenario_is_rejected_even_with_enough_other_tests(self):
         name=verification['BULK_DOWNLOAD_TESTS'][0]
@@ -122,9 +122,9 @@ class InstrumentationReportTest(unittest.TestCase):
                 self.check([report], '0', api_level=api)
             executed = report.replace('name="job0"',
                                       'name="legacyDuplicateForegroundServiceStartsFromVisibleActivityAndPausesWithoutCredentials"')
-            self.assertEqual(self.check([executed], '0', api_level=api), 209)
+            self.assertEqual(self.check([executed], '0', api_level=api), 211)
         # UIDT-era devices do not need to run the legacy FGS test.
-        self.assertEqual(self.check([report], '0', api_level=34), 209)
+        self.assertEqual(self.check([report], '0', api_level=34), 211)
 
     def test_missing_report_after_installer_failure_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'No JUnit report'):

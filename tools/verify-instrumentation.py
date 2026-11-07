@@ -53,6 +53,10 @@ QUEUE_DOWNLOADS_TESTS = {
 
 
 PLAYBACK_HISTORY_TESTS = {
+    'MusicAccessibilityDeviceTest': (
+        'playerPositionAndLoadingPauseHaveMeaningAtLargeTextAndNarrowWidth',
+        'filledSearchRetainsItsLabelAndTrackSelectionHasAnExplicitAction',
+    ),
     'PlaybackHistoryDeviceTest': (
         'queueOccurrencesPositionAndShuffleOrderSurviveClosingEveryConnection',
         'replacementRejectsLateCursorAndConditionalClearWithoutTouchingTheNewQueue',
