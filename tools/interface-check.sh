@@ -53,7 +53,7 @@ result=0
 # Exercise the API 33 resumption regression before the full suite, so a failure
 # prints the service/player state without first waiting for unrelated workloads.
 if [[ "$expected_api" == 33 ]]; then
-  ./gradlew --dependency-verification strict connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=app.alcovaibe.vkmusicexport.PlaybackDeviceTest#serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition' -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
+  ./gradlew --dependency-verification strict connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=app.alcovaibe.vkmusicexport.PlaybackDeviceTest#serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition' -Pandroid.testInstrumentationRunnerArguments.playbackRecreationPasses=6 -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8' --stacktrace
   result=$?
 fi
 if [[ "$result" == 0 ]]; then

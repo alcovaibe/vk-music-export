@@ -55,9 +55,24 @@ class PlaybackDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
     private val inst=InstrumentationRegistry.getInstrumentation()
     private val app get()=inst.targetContext
+    private fun player(): ExoPlayer {
+        val service=checkNotNull(PlaybackRuntime.service)
+        val field=service.javaClass.getDeclaredField("player").apply{isAccessible=true}
+        return field.get(service) as ExoPlayer
+    }
     private fun fixture(block:(List<PlaybackEntry>)->Unit) {
         val trace=CopyOnWriteArrayList<String>()
-        PlaybackCommandDiagnostics.observer={event->trace.add(event);if(trace.size>256)trace.removeAt(0)}
+        PlaybackCommandDiagnostics.observer={event->
+            // Media3 presents SystemUI as the notification controller in public callbacks.
+            // Inspect its original request identity only in this pinned-version test fixture.
+            val raw=if(":stop:" in event)runCatching {
+                val session=checkNotNull(PlaybackRuntime.service).sessions.single()
+                val impl=session.javaClass.getDeclaredField("impl").apply{isAccessible=true}.get(session)
+                val caller=impl.javaClass.getDeclaredField("controllerForCurrentRequest").apply{isAccessible=true}.get(impl) as? androidx.media3.session.MediaSession.ControllerInfo
+                "rawCaller=${caller?.packageName},uid=${caller?.uid},version=${caller?.controllerVersion}"
+            }.getOrElse{"rawCaller=unavailable:${it.javaClass.simpleName}"}else ""
+            trace.add("$event:$raw");if(trace.size>256)trace.removeAt(0)
+        }
         val rows=mutableListOf<PublishedAudio>()
         val root=File(app.cacheDir,"player-${UUID.randomUUID()}").apply{mkdirs()}
         ui.runOnUiThread{PlaybackRuntime.stop()}
@@ -80,7 +95,7 @@ class PlaybackDeviceTest {
             }
             block(rows.map{PlaybackEntry(it.track,"Сохранённая музыка",saved=it)})
         }catch(t: Throwable) {
-            throw AssertionError("Playback command trace: ${trace.takeLast(100)}",t)
+            throw AssertionError("${t.message}; playback command trace: ${trace.takeLast(100)}",t)
         }finally {
             ui.runOnUiThread{PlaybackRuntime.stop()}
             PlaybackCommandDiagnostics.observer=null
@@ -355,11 +370,6 @@ class PlaybackDeviceTest {
 
     @Test fun serviceRecreationRetainsPausedQueueModesAndAllowsAnotherSelectedPosition()=fixture {rows->
         start(rows)
-        fun player(): ExoPlayer {
-            val service=checkNotNull(PlaybackRuntime.service)
-            val field=service.javaClass.getDeclaredField("player").apply{isAccessible=true}
-            return field.get(service) as ExoPlayer
-        }
         fun awaitState(timeout: Long,phase: String,expectedOrder: List<Int>?,condition:()->Boolean) {
             try{ui.waitUntil(timeout){condition()}}
             catch(t: Throwable) {
@@ -376,7 +386,10 @@ class PlaybackDeviceTest {
         }
         // Keep the original random user-shuffle path, then cover every permutation.
         val orders=listOf<List<Int>?>(null,listOf(0,1,2),listOf(0,2,1),listOf(1,0,2),listOf(1,2,0),listOf(2,0,1),listOf(2,1,0))
-        for(order in orders) {
+        val passes=InstrumentationRegistry.getArguments().getString("playbackRecreationPasses")?.toInt()?:1
+        require(passes in 1..10)
+        for(pass in 1..passes)for(order in orders) {
+            PlaybackCommandDiagnostics.record{"recreation-pass=$pass,order=$order"}
             ui.runOnUiThread{PlaybackRuntime.playIndex(2)}
             awaitState(20_000,"select third track",order){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&PlaybackRuntime.state.value.playing}
             ui.runOnUiThread {
@@ -405,6 +418,42 @@ class PlaybackDeviceTest {
             ui.runOnUiThread{PlaybackRuntime.playIndex(1)}
             awaitState(10_000,"select second track after resume",saved.order){PlaybackRuntime.state.value.index==1&&PlaybackRuntime.state.value.playing}
         }
+    }
+
+    @Test fun currentSessionStopFromControllersNotificationAndHardwareStillAllowsExplicitResume()=fixture {rows->
+        start(rows)
+        lateinit var session: androidx.media3.session.MediaSession
+        ui.runOnUiThread{session=checkNotNull(PlaybackRuntime.service).sessions.single()}
+        val controller=androidx.media3.session.MediaController.Builder(app,session.token)
+            .setApplicationLooper(android.os.Looper.getMainLooper()).buildAsync().get(20,java.util.concurrent.TimeUnit.SECONDS)
+        val legacy=android.media.session.MediaController(app,session.platformToken)
+        try {
+            for(kind in listOf("modern","legacy","notification","hardware"))for(select in listOf(false,true)) {
+                ui.runOnUiThread {
+                    when(kind) {
+                        "modern"->controller.stop()
+                        "legacy"->legacy.transportControls.stop()
+                        "notification"->androidx.media3.session.PlaybackPendingIntentBuilder(app,Player.COMMAND_STOP,MusicPlaybackService::class.java)
+                            .setSessionId(session.id)
+                            .setExtras(android.os.Bundle().apply{putBoolean(androidx.media3.session.MediaNotification.NOTIFICATION_DISMISSED_EVENT_KEY,true)})
+                            .build().send()
+                        else->{
+                            legacy.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_MEDIA_STOP))
+                            legacy.dispatchMediaButtonEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_MEDIA_STOP))
+                        }
+                    }
+                }
+                ui.waitUntil(10_000) {
+                    var idle=false
+                    ui.runOnUiThread{idle=player().playbackState==Player.STATE_IDLE}
+                    idle&&!PlaybackRuntime.state.value.playing&&!PlaybackRuntime.state.value.buffering
+                }
+                assertEquals(rows,PlaybackRuntime.state.value.entries)
+                val index=if(select)1 else PlaybackRuntime.state.value.index
+                ui.runOnUiThread{if(select)PlaybackRuntime.playIndex(index)else PlaybackRuntime.toggle(app)}
+                ui.waitUntil(20_000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.index==index}
+            }
+        }finally{ui.runOnUiThread{controller.release()}}
     }
 
 }
