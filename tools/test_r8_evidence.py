@@ -29,3 +29,9 @@ class R8EvidenceTest(unittest.TestCase):
             original=self.row[key];self.row[key]=value;self.write()
             with self.assertRaises(ValueError):r8.verify(self.root,29)
             self.row[key]=original
+
+    def test_failed_instrumentation_names_the_case_and_preserves_the_cause(self):
+        self.report.write_text(self.report.read_text().replace('/>',
+            '><failure message="fixture decoder failed">java.lang.AssertionError: seek failed</failure></testcase>'))
+        with self.assertRaisesRegex(ValueError, 'R8PlaybackDeviceTest.*fixture decoder failed.*seek failed'):
+            r8.verify(self.root,29)

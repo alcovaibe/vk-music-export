@@ -18,7 +18,10 @@ def verify(root, api):
     for path in (root/'app/build/outputs/androidTest-results/connected').rglob('TEST-*.xml'):
         for case in ET.parse(path).getroot().iter('testcase'):
             if any(case.find(k) is not None for k in ('failure','error','skipped')):
-                raise ValueError('R8 instrumentation did not pass')
+                details='; '.join(ET.tostring(case.find(k), encoding='unicode')[:8000]
+                                  for k in ('failure','error','skipped') if case.find(k) is not None)
+                raise ValueError(f'R8 instrumentation did not pass: {path}: '
+                                 f'{case.get("classname")}.{case.get("name")}: {details}')
             executed.append((case.get('classname'),case.get('name')))
     if executed!=[expected]:raise ValueError('Expected exactly the dedicated R8 playback test')
     prefix='VK_R8_PLAYBACK='

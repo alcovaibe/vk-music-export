@@ -108,6 +108,8 @@ def main():
         'coverage':toolchain['coverage'] if toolchain else {'maven':'provided inventory only'},
         'findings':findings}, indent=2)+'\n')
     if findings:
+        for finding in findings:
+            print(f'OSV finding: {finding["purl"]} {finding["id"]}', flush=True)
         raise SystemExit(f'OSV found {len(findings)} affected dependency records; inspect dependency-reports/osv.json')
     print(f'PASS: {len(items)} resolved dependencies scanned; no OSV findings.')
 
