@@ -51,7 +51,7 @@ class MusicAuthCoordinatorTest {
             reload={events.add("reload")},
             acceptProbe={_,_,_->events.add("publish")},
             stopOnline={events.add("stop")},
-            deviceName={"CI device"})
+            deviceName={"CI device"},button={},report={_,_->})
         private fun coordinatorReset(){coordinator.reset()}
         fun cancel(){generation++;job?.cancel();coordinator.reset()}
     }

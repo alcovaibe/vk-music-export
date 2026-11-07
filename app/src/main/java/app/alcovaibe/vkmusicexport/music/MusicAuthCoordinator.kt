@@ -24,7 +24,9 @@ internal class MusicAuthCoordinator(
     private val reload: suspend()->Unit,
     private val acceptProbe: suspend(Int,MusicAccess,NativeProbe)->Unit,
     private val stopOnline: ()->Unit,
-    private val deviceName: ()->String={"VK Music Export / "+android.os.Build.MANUFACTURER.take(24)+" "+android.os.Build.MODEL.take(48)}
+    private val deviceName: ()->String={"VK Music Export / "+android.os.Build.MANUFACTURER.take(24)+" "+android.os.Build.MODEL.take(48)},
+    private val button: (String)->Unit={Diagnostics.button(it)},
+    private val report: (String,Map<String,Any?>)->Unit={type,fields->Diagnostics.event(type,fields)}
 ) {
     private val authOpened=MutableStateFlow(false)
     private var authSession: DeviceSession?=null
@@ -37,10 +39,10 @@ internal class MusicAuthCoordinator(
         if(_state.value.authPhase==phase)return
         _state.update{it.copy(authPhase=phase,
             authCodePending=if(phase==DeviceAuthPhase.AWAITING_APPROVAL)false else it.authCodePending)}
-        Diagnostics.event("native_auth_phase",mapOf("phase" to phase.name))
+        report("native_auth_phase",mapOf("phase" to phase.name))
     }
     fun authenticate() {
-        Diagnostics.button("native_auth_start")
+        button("native_auth_start")
         operation("browser_auth") {g->
             authSession=null;authOpened.value=false
             authPhase(DeviceAuthPhase.PREPARING)
@@ -73,7 +75,7 @@ internal class MusicAuthCoordinator(
     }
     fun openAuthChrome(context: Context)=openBrowser{authBrowser(context,it)}
     internal fun openBrowser(dispatch: (String)->Boolean) {
-        Diagnostics.button("native_auth_open_chrome")
+        button("native_auth_open_chrome")
         val s=authSession
         if(!_state.value.busy||_state.value.stopping||_state.value.stage!="browser_auth"||s==null)return
         if(authClock()>=s.expiresAt) {
@@ -81,7 +83,7 @@ internal class MusicAuthCoordinator(
             return
         }
         val opened=dispatch(s.url)
-        Diagnostics.event("native_auth_browser_dispatch",mapOf("accepted" to opened,"auth_status" to "not_proven"))
+        report("native_auth_browser_dispatch",mapOf("accepted" to opened,"auth_status" to "not_proven"))
         if(opened)authOpened.value=true
         _state.update{it.copy(authIssue=if(opened)null else DeviceAuthIssue.BROWSER)}
         if(opened && _state.value.authPhase==DeviceAuthPhase.READY)authPhase(DeviceAuthPhase.WAITING)
@@ -92,14 +94,14 @@ internal class MusicAuthCoordinator(
         val code=DeviceConfirmationCode.from(raw)
         if(code==null){_state.update{it.copy(authCodeIssue=DeviceCodeIssue.FORMAT)};return}
         val codes=authCodes?:return
-        Diagnostics.button("native_auth_submit_code")
+        button("native_auth_submit_code")
         // Main.immediate may resume the receiver and finish validation inside trySend.
         // Publish pending first so a fast result cannot be overwritten by a stale true.
         _state.update{it.copy(authCodeIssue=null,authCodePending=true)}
         if(!codes.trySend(code).isSuccess)_state.update{it.copy(authCodePending=false)}
     }
     fun configure(token: String,agent: String) {
-        Diagnostics.button("native_music_save_access")
+        button("native_music_save_access")
         if(!NativeProtocol.validAccess(token,agent)){_state.update{it.copy(error=MusicError.INVALID_ACCESS)};return}
         operation("configure") {g->
             val candidate=MusicAccess(token,agent)
