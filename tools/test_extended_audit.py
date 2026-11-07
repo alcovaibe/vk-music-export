@@ -37,3 +37,15 @@ class SastTest(unittest.TestCase):
             wrapper=root/'gradle/wrapper';wrapper.mkdir(parents=True)
             (wrapper/'gradle-wrapper.properties').write_text('distributionUrl=https\\://example/gradle.zip\ndistributionSha256Sum='+'b'*64+'\n')
             with self.assertRaisesRegex(ValueError,'SDK'):toolchain.inventory(root,root/'sdk')
+
+class ReviewedSastTest(unittest.TestCase):
+    def test_extension_rules_are_valid_and_review_is_bound_to_exact_source_and_location(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);source=root/'source.py';source.write_text('reviewed operation\n')
+            finding={'ruleId':'rule','locations':[{'physicalLocation':{'artifactLocation':{'uri':str(source)},'region':{'startLine':1}}}]}
+            report=root/'analysis.sarif';report.write_text(json.dumps({'version':'2.1.0','runs':[{'tool':{'driver':{'name':'CodeQL'},'extensions':[{'name':'queries','rules':[{'id':'rule'}]}]},'results':[finding]}]}))
+            reviewed=root/'reviewed.json';reviewed.write_text(json.dumps({'reviews':[{'rule':'rule','path':str(source),'line':1,'rationale':'Specific reviewed operation','source_sha256':hashlib.sha256(source.read_bytes()).hexdigest()}]}))
+            sast.check([report],reviewed)
+            source.write_text('changed operation\n')
+            with self.assertRaisesRegex(ValueError,'renewed'):sast.check([report],reviewed)

@@ -270,7 +270,7 @@ jobs:
           upload: never
           upload-database: false
       - name: Require complete analysis and review of every finding
-        run: python3 tools/check-sast.py sast-results
+        run: python3 tools/check-sast.py sast-results config/sast-reviewed.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

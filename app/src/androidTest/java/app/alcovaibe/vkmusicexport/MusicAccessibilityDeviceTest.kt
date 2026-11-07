@@ -52,7 +52,7 @@ class MusicAccessibilityDeviceTest {
         ui.onNodeWithText("Поиск музыки").assertExists()
         ui.onNodeWithTag("friend_select_action_1").assertHasClickAction().performClick()
         ui.runOnIdle{assertEquals(1,selected)}
-        val actions=ui.onNodeWithTag("friend_track_1").fetchSemanticsNode().config[SemanticsProperties.CustomActions]
+        val actions=ui.onNodeWithTag("friend_track_1").fetchSemanticsNode().config[SemanticsActions.CustomActions]
         assertTrue(actions.any{it.label=="Выбрать ${track.displayTitle}"})
     }
 }

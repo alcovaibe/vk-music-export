@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "reviews": [
+    {
+      "rule": "py/clear-text-logging-sensitive-data",
+      "path": "tools/prepare-signing.py",
+      "line": 17,
+      "source_sha256": "b0245c271e2b7bb0dcebc2afde59b8cfa0edafbd04ceb087898bb81ebc11c7e7",
+      "rationale": "GitHub workflow add-mask command registers a redaction; this is not an ordinary log message. Values are escaped, validated against newline injection and never printed by any other path."
+    },
+    {
+      "rule": "py/clear-text-storage-sensitive-data",
+      "path": "tools/prepare-signing.py",
+      "line": 21,
+      "source_sha256": "b0245c271e2b7bb0dcebc2afde59b8cfa0edafbd04ceb087898bb81ebc11c7e7",
+      "rationale": "Decoded bytes are the password-protected PKCS12 container. It is created exclusively with mode 0600 in RUNNER_TEMP, excluded from workspace/evidence, and removed in the always cleanup step. The signing key is not exported as plaintext."
+    },
+    {
+      "rule": "py/clear-text-storage-sensitive-data",
+      "path": "tools/prepare-signing.py",
+      "line": 23,
+      "source_sha256": "b0245c271e2b7bb0dcebc2afde59b8cfa0edafbd04ceb087898bb81ebc11c7e7",
+      "rationale": "GITHUB_ENV is the runner-managed environment handoff to Gradle. Decoded fields are masked first; only the isolated trusted release job receives them. The file is not part of artifacts or release evidence."
+    }
+  ]
+}

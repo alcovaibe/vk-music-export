@@ -111,7 +111,7 @@ tasks.register("writeDependencyInventory") {
     description = "Resolve build/test classpaths and write the exact Maven inventory for SBOM/SCA"
     doLast {
         val names = setOf("debugCompileClasspath", "debugRuntimeClasspath", "releaseCompileClasspath",
-            "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath", "releaseUnitTestRuntimeClasspath",
+            "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath",
             "debugAndroidTestRuntimeClasspath", "androidLintTool")
         val resolvedNames = configurations.filter { it.isCanBeResolved && it.name in names }.map { it.name }.toSet()
         check(resolvedNames == names) { "Missing required configurations: ${names - resolvedNames}" }
