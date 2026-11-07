@@ -1,5 +1,7 @@
 """Require a minified non-debuggable playback run, not just successful installation."""
 import json
+import hashlib
+import subprocess
 import math
 from pathlib import Path
 import sys
@@ -35,4 +37,7 @@ def verify(root, api):
 
 if __name__=='__main__':
     api=int(sys.argv[1]);row=verify(Path('.'),api)
+    row['source_commit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+    row['apk_sha256']=hashlib.sha256(Path('app/build/outputs/apk/release/app-release.apk').read_bytes()).hexdigest()
+    row['signing']='ephemeral runner debug key; release build type with R8'
     (Path('r8-evidence')/f'playback-api-{api}.json').write_text(json.dumps(row,indent=2)+'\n')

@@ -120,7 +120,7 @@ class MusicLibraryRedesignDeviceTest {
             ui.onNodeWithTag("track_menu_2_12_2").performClick()
             ui.onAllNodesWithText("Скачать этот трек").assertCountEquals(0)
             ui.onNodeWithTag("track_menu_2_12_2").performClick()
-            ui.onNode(hasContentDescription("Скачать этот трек") and hasAnyAncestor(hasTestTag("music_track_2_12_2")),useUnmergedTree=true).performClick()
+            ui.onNode(hasContentDescription("Скачать Белый шум (Live at Roof), Север") and hasAnyAncestor(hasTestTag("music_track_2_12_2")),useUnmergedTree=true).performClick()
             ui.waitUntil(10_000){model.downloadsOpen.value&&!model.state.value.busy}
             runBlocking(Dispatchers.IO) {
                 val task=AudioExportStore(context).use{it.taskRows().single().first}
@@ -136,16 +136,16 @@ class MusicLibraryRedesignDeviceTest {
     }
     @Test fun followedArtistsOpenOnlyFromTheirCategoryAndAlbumsReturnToTheArtist()=fixture {model->
         ui.onNodeWithTag("library_category_ARTISTS").performClick()
-        ui.waitUntil(10_000){model.artists.value.loaded&&!model.state.value.busy}
+        ui.waitUntil(10_000){model.artists.value.loaded&&!model.artists.value.busy}
         ui.onNodeWithTag("followed_artist_creed").assertIsDisplayed()
         ui.onNodeWithText("MAREVO").assertDoesNotExist()
         screenshot("redesign-artists")
         ui.onNodeWithTag("followed_artist_creed").performClick()
-        ui.waitUntil(10_000){model.artists.value.details!=null&&!model.state.value.busy}
+        ui.waitUntil(10_000){model.artists.value.details!=null&&!model.artists.value.busy}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("artist_album_12_4"))
         screenshot("redesign-artist-details")
         ui.onNodeWithTag("artist_album_12_4").performClick()
-        ui.waitUntil(10_000){model.artists.value.albumTracks!=null&&!model.state.value.busy}
+        ui.waitUntil(10_000){model.artists.value.albumTracks!=null&&!model.artists.value.busy}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_3_12_3"))
         ui.onNodeWithText("Ночной рейс").assertIsDisplayed()
         ui.onNodeWithContentDescription("Назад").performClick()
