@@ -53,7 +53,7 @@
     {
       "rule": "java/android/missing-certificate-pinning",
       "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
-      "line": 160,
+      "line": 154,
       "source_sha256": "b7e157832e31a8cd17bb53ec6d3149b7f9791f5d6c2bf85cd688d6a2c7aa22b8",
       "rationale": "Provider requests use fixed HTTPS api.vk.com, a method allowlist, default certificate/hostname validation and the existing session boundary. No trust-all or hostname-verification bypass is introduced. Provider SPKI pin rotation is outside this continuation; the limitation remains recorded. Re-reviewed at 4539136: capability declarations added above this call moved its location; the HTTPS request, allowlist, trust manager and session checks remain present. Re-reviewed for browser/search changes: fixed VK HTTPS endpoint and system trust remain unchanged; browser selection does not grant music capabilities."
     }
