@@ -231,7 +231,7 @@ Workflow **Update channel consistency** проверяет схему JSON и Py
 
 ### Защита main
 
-На 07.11.2026 через read-only GitHub API подтверждён активный ruleset `26682452`: PR/review, обязательные `build`/`interface`/`channel-delivery`, strict base, запрет deletion/force-push, без bypass. `.github/main-ruleset.json` остаётся шаблоном; сам файл не изменяет реальную защиту. Состояние ruleset проверяется отдельно в GitHub, изменения настроек требуют отдельного решения владельца. Бот доставки канала работает через PR.
+На 07.11.2026 через read-only GitHub API подтверждён активный ruleset `26682452`: обязательный PR и разрешение review threads, required approving reviews=0, обязательные `build`/`interface`/`channel-delivery`, strict base, запрет deletion/force-push, без bypass. `.github/main-ruleset.json` остаётся шаблоном; сам файл не изменяет реальную защиту. Состояние ruleset проверяется отдельно в GitHub, изменения настроек требуют отдельного решения владельца. Бот доставки канала работает через PR.
 
 Для PR канала в Settings → Actions должен быть разрешён пункт «Allow GitHub Actions to create and approve pull requests». Проверки его ветки запускаются явным workflow_dispatch; они не обходят требуемое ревью. Если настройка запрещена, stable APK остаётся в Releases, а обновление канала нужно завершить через обычный PR.
 

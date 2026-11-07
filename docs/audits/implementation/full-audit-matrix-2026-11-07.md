@@ -35,7 +35,7 @@ JVM tests — в `app/src/test/java/app/alcovaibe/vkmusicexport/music/`; Android
 |---|---|---|---|---|---|---|---|
 | F01 | P1 | Независимая read session подменялась при продолжении запроса | Identity/account fences до и после получения доступа; catalog continuation повторно проверяется перед/после metadata write | MusicSession.kt, VkAudioClient.kt, MusicCatalogController.kt | MusicSessionBoundaryTest, MusicSessionTest, MusicCatalogControllerTest; [CI] | Автопроверено | Live A→B/новый A относится к F05; локальные descriptors не дают online authority. |
 | F02 | P1 | Latest и публичный канал расходились | Проверки доставки, подписи/размера/hash/package и согласованности метаданных | tools/channel_public.py, tools/update-delivery-check.sh; [Latest], [channel] | channel-delivery и updater API29–37; [CI] | Автопроверено; метаданные согласованы | Физическая установка точного нового APK не выполнялась. |
-| F03 | P1 | Защита main не была применена | Read-only подтверждён active ruleset26682452: PR/review, strict build/interface/channel-delivery, no force/delete, bypass=[] | [Ruleset] | GitHub API, 07.11.2026 17:19 UTC | Подтверждено настройками | Настройки здесь не менялись; JSON шаблон не заменяет effective state GitHub. |
+| F03 | P1 | Защита main не была применена | Read-only подтверждён active ruleset26682452: PR, required approvals=0, thread resolution, strict build/interface/channel-delivery, no force/delete, bypass=[] | [Ruleset] | GitHub API, 07.11.2026 17:19 UTC | Подтверждено настройками | Одобрений reviewer требуется0; необходимость второго reviewer остаётся решением владельца. Настройки здесь не менялись; JSON шаблон не заменяет effective state GitHub. |
 | F04 | P1 | Внутренний auth/music protocol выдавался за стабильный поддержанный provider | Контракты MusicApi/DeviceAuthApi, capability defaults UNAVAILABLE; VkAudioClient явно EXPERIMENTAL | VkAudioClient.kt, DeviceAuth.kt, MusicSearchController.kt | Provider/refusal/capability contracts; [CI] | Частично | Официальный партнёрский музыкальный scope не подтверждён; VK ID не объявляется audio permission. |
 | F05 | P1 | Нет ручной приёмки точного stable APK | Fail-closed gate для exact SHA/APK/version/run и 13 сценариев; процедура приёмки | tools/release_gate.py; docs/release-acceptance/PROCEDURE.md | 166 host tests, включая release gate; [CI] | Открыта внешняя приёмка | current.json остаётся pending. Live VK, физические устройства и новый подписанный accepted APK отсутствуют; публикации не было. |
 | F06 | P1 | Playback queue/cursor терялись; гонки STOP/new play | Durable queue/order/modes/cursor, identity-aware restore, notification generation, coalesced history writer | PlaybackHistory.kt, PlaybackHistoryStore.kt, PlaybackCheckpoint.kt, PlaybackRuntime.kt | PlaybackHistoryDeviceTest, PlaybackDeviceTest; paused/active process-death/resumption; R8 API29/36/37; [CI] | Автопроверено | Короткий AVD сценарий не доказывает длительную OEM/Bluetooth/focus работу. |
@@ -69,7 +69,7 @@ JVM tests — в `app/src/test/java/app/alcovaibe/vkmusicexport/music/`; Android
 На 07.11.2026 17:19 UTC [Latest] и JSON из [main][channel] согласованы: `v0.12.1-build.1433`, source `90e6848257e93d82b3a6b8af09cc58ef067a7703`, minSdk29, APK5969335 bytes,
 SHA-256 `3dac4905703c990d53a431b54cfd01ce12389db439943165d7a99ac30f6e3889`.
 У этого существующего выпуска только APK/SHA256SUMS; новый permanent evidence asset не публиковался.
-Read-only повторно подтверждён active ruleset26682452, strict required checks и отсутствие bypass.
+Read-only повторно подтверждён active ruleset26682452, strict required checks и отсутствие bypass. required_approving_review_count=0: обязательное одобрение reviewer не заявляется.
 
 В этой работе не изменялись main, public update manifest, Releases/Latest, ruleset settings, permanent signing key, applicationId/packageName, versionName/versionCode или minSdk29.
 Обычные проверки не получали production signing key. Minified CI использует явно обозначенную ephemeral test signing; это не новый принятый stable APK.
@@ -81,7 +81,8 @@ Read-only повторно подтверждён active ruleset26682452, strict
 3. F24: полноценный20k scroll Macrobenchmark/profiling и длительная OEM работа. Полученные AVD startup/home/R8 данные не подменяют их.
 4. F26: дальнейшая отдельная extraction auth/maintenance/admission. Каталог подключён production, но общий host gate не устранён целиком.
 5. F27: следующий отдельно разрешённый выпуск durable evidence и наблюдение после retention. Самостоятельная публикация здесь не выполняется.
-6. Полный независимый повторный построчный review всех production/test файлов; отсутствие новых сбоев CI не объявляется таким review.
+6. F03: политика обязательных одобрений/второго reviewer; текущее значение0 зафиксировано, настройки без разрешения не менялись.
+7. Полный независимый повторный построчный review всех production/test файлов; отсутствие новых сбоев CI не объявляется таким review.
 
 `docs/release-acceptance/current.json` остаётся **pending**, source_commit пустой, все13 сценариев неподтверждены.
 Статусы не повышались по наличию тестового файла, старому запуску, отменённому job или синтетическим данным вместо ручных.
