@@ -394,7 +394,10 @@ class PlaybackDeviceTest {
             awaitState(20_000,"select third track",order){PlaybackRuntime.state.value.index==2&&PlaybackRuntime.state.value.seekable&&PlaybackRuntime.state.value.playing}
             ui.runOnUiThread {
                 PlaybackRuntime.toggle(app)
-                if(order==null)PlaybackRuntime.shuffle()
+                if(order==null) {
+                    if(PlaybackRuntime.state.value.shuffle)PlaybackRuntime.shuffle()
+                    PlaybackRuntime.shuffle()
+                }
                 else {
                     if(PlaybackRuntime.state.value.shuffle)PlaybackRuntime.shuffle()
                     player().setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order.toIntArray(),0L))
@@ -429,6 +432,7 @@ class PlaybackDeviceTest {
         val legacy=android.media.session.MediaController(app,session.platformToken)
         try {
             for(kind in listOf("modern","legacy","notification","hardware"))for(select in listOf(false,true)) {
+                PlaybackCommandDiagnostics.record{"stop-resume-case=$kind,select=$select"}
                 ui.runOnUiThread {
                     when(kind) {
                         "modern"->controller.stop()
