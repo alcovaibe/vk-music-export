@@ -10,6 +10,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.alcovaibe.vkmusicexport.updates.*
 import java.io.File
+import java.io.InputStream
+import okio.buffer
+import okio.source
 import java.security.MessageDigest
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -39,8 +42,19 @@ class UpdateDeliveryDeviceTest {
         val assets=instrumentation.context.assets
         val json=assets.open("update-fixtures/manifest.json").use{it.readBytes()}
         val release=UpdateProtocol.latest(json)
-        val bytes=assets.open("update-fixtures/candidate.apk").use{it.readBytes()}
-        fun hash(data: ByteArray)=MessageDigest.getInstance("SHA-256").digest(data).joinToString(""){"%02x".format(it)}
+        // Keep APK-sized fixtures off the heap, including on API 29's small test heap.
+        val candidate=File(host.cacheDir,"candidate-fixture.apk")
+        assets.open("update-fixtures/candidate.apk").use{input->candidate.outputStream().use{input.copyTo(it)}}
+        fun hash(input: InputStream): String {
+            val digest=MessageDigest.getInstance("SHA-256")
+            val buffer=ByteArray(8192)
+            while(true) {
+                val count=input.read(buffer)
+                if(count<0)break
+                digest.update(buffer,0,count)
+            }
+            return digest.digest().joinToString(""){"%02x".format(it)}
+        }
         // Select the real installed public baseline for identity/certificate comparison;
         // retain the isolated harness cache and real PackageManager.
         val baselineContext=object: ContextWrapper(host){override fun getPackageName()=production}
@@ -50,8 +64,14 @@ class UpdateDeliveryDeviceTest {
             assertNull(request.header("Authorization"));assertNull(request.header("Cookie"))
             val metadata=request.url.toString()==UpdateProtocol.MANIFEST
             if(!metadata)assertEquals(UpdateProtocol.downloadUrl(release),request.url.toString())
+            val body=if(metadata)json.toResponseBody("application/json".toMediaType()) else object: ResponseBody() {
+                private val stream=candidate.source().buffer()
+                override fun contentType()="application/octet-stream".toMediaType()
+                override fun contentLength()=candidate.length()
+                override fun source()=stream
+            }
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("public byte fixture")
-                .body((if(metadata)json else bytes).toResponseBody((if(metadata)"application/json" else "application/octet-stream").toMediaType())).build()
+                .body(body).build()
         }.build()
         val service=GithubUpdates(baselineContext,client)
         var controller: UpdateController?=null
@@ -62,24 +82,27 @@ class UpdateDeliveryDeviceTest {
                 val bad=File(host.cacheDir,"wrong-signer.apk")
                 assets.open("update-fixtures/wrong-signer.apk").use{input->bad.outputStream().use{input.copyTo(it)}}
                 try {
-                    val wrong=release.copy(apk=UpdateAsset(bad.length(),hash(bad.readBytes())))
+                    val wrong=release.copy(apk=UpdateAsset(bad.length(),bad.inputStream().use{hash(it)}))
                     try{service.verify(bad,wrong);fail("Wrong actual signer was accepted")}catch(e: UpdateProblem){assertEquals("INVALID_APK",e.code)}
                 }finally{bad.delete()}
                 // Repacking removes the signing block; altering classes.dex invalidates v1 too.
                 // Matching size/hash force rejection by actual signature verification.
                 val tampered=File(host.cacheDir,"tampered.apk")
                 try {
-                    java.util.zip.ZipInputStream(bytes.inputStream()).use{input->
+                    java.util.zip.ZipInputStream(candidate.inputStream()).use{input->
                         java.util.zip.ZipOutputStream(tampered.outputStream()).use{output->
                             while(true){val entry=input.nextEntry ?: break
                                 output.putNextEntry(java.util.zip.ZipEntry(entry.name))
-                                val content=input.readBytes()
-                                if(entry.name=="classes.dex" && content.isNotEmpty())content[0]=(content[0].toInt() xor 1).toByte()
-                                output.write(content);output.closeEntry()
+                                if(entry.name=="classes.dex") {
+                                    val first=input.read()
+                                    if(first>=0)output.write(first xor 1)
+                                }
+                                input.copyTo(output)
+                                output.closeEntry()
                             }
                         }
                     }
-                    val altered=release.copy(apk=UpdateAsset(tampered.length(),hash(tampered.readBytes())))
+                    val altered=release.copy(apk=UpdateAsset(tampered.length(),tampered.inputStream().use{hash(it)}))
                     try{service.verify(tampered,altered);fail("Tampered APK was accepted")}catch(e: UpdateProblem){assertEquals("INVALID_APK",e.code)}
                 }finally{tampered.delete()}
                 assertEquals(release,service.latest())
@@ -105,7 +128,7 @@ class UpdateDeliveryDeviceTest {
             assertEquals(Intent.ACTION_VIEW,install.action)
             assertEquals("${host.packageName}.updates",install.data!!.authority)
             assertTrue(install.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION!=0)
-            assertEquals(release.apk.hash,host.contentResolver.openInputStream(install.data!!)!!.use{hash(it.readBytes())})
+            assertEquals(release.apk.hash,host.contentResolver.openInputStream(install.data!!)!!.use{hash(it)})
             val resolved=pm.resolveActivity(install,PackageManager.MATCH_DEFAULT_ONLY) ?: error("System APK installer missing")
             assertTrue("Installer must be a system component",resolved.activityInfo.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0)
             val installer=resolved.activityInfo.packageName
@@ -168,6 +191,6 @@ class UpdateDeliveryDeviceTest {
             service.discard(apk)
             assertNull(service.restore())
             File(host.filesDir,"updater-proof.json").writeText("""{"api":${Build.VERSION.SDK_INT},"from":1343,"to":${release.code},"sha256":"${release.apk.hash}","system_installer":true,"process_restart":true,"offline_restore":true,"emulator_framework_dialogs":$frameworkDialogs}""")
-        }finally{withContext(Dispatchers.Main){controller?.close()};scope.cancel();service.close()}
+        }finally{withContext(Dispatchers.Main){controller?.close()};scope.cancel();service.close();candidate.delete()}
     }
 }
