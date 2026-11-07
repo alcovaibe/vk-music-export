@@ -31,7 +31,14 @@
 ```sh
 sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' platform-tools
 python3 -m unittest discover -s tools -p 'test_*.py'
-./gradlew testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease
+./gradlew --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest
+```
+
+На Windows при установленном JDK/SDK используются PowerShell и Gradle wrapper:
+
+```powershell
+python -m unittest discover -s tools -p 'test_*.py'
+.\gradlew.bat --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest
 ```
 
 Полный набор инструментальных проверок выполняется отдельно на Android 10–17 (API 29, 30, 31, 32, 33, 34, 35, 36 и 37):
@@ -51,7 +58,8 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 | --- | --- |
 | Интерфейс | Jetpack Compose, `MainActivity`, `NativeMusicViewModel`, панели музыкальных операций |
 | Вход и доступ | `VkDeviceAuthClient`, `DeviceTokenExchange.kt`, `MusicAccessStore`, `MusicSessionManager` |
-| Каталог | `VkAudioClient`, `MusicPagination`, `MusicCatalog`, `MusicArtists`, классификация и проверка полноты страниц |
+| Каталог | `VkAudioClient`, `MusicSourceReader`, `MusicCatalogController`, `MusicPagination`, `MusicCatalog`, `LocalCatalogSnapshots`; классификация, read identity и локальные snapshots |
+| Поиск | `MusicSearchController`, `MusicSearchScreen`; debounce, pagination, session/generation и отдельные состояния отказов |
 | Друзья | `FriendMusicController`, независимые состояния разделов профиля, подготовка общей очереди |
 | Обработка файлов в фоне | `MaintenanceService`, `MaintenanceRuntime`, контрольные точки названий, обложек и проверки файлов |
 | Очередь | `AudioExportJob`, `AudioExportEngine`, `AudioExportStore`, системные UIDT-задачи |
@@ -77,6 +85,8 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 
 `FriendMusicController` читает профили в рамках открытого экрана; уход в фон отменяет чтение и выбор. Уже подготовленная очередь выполняется независимо системной задачей. Перед скачиванием состав и выбор перепроверяются. Владелец очереди — текущий аккаунт, профиль друга сохраняется как источник; изменение чужой библиотеки не поддерживается. Ошибки треков и каталога хранятся отдельно. `INCOMPLETE` здесь означает незавершённое чтение списка и не должен получать текст ошибки проверки длительности скачанного файла.
 
+Для своего каталога `LocalCatalogSnapshots` сохраняет credential-free descriptors и порядок memberships в индексируемых приватных meta checkpoints. Metadata read/modify/write атомарен. Они не содержат accessKey/URL, не создают NativeProbe/readSession и не разрешают API-запросы. После исчезновения source из ответа ВК остаются его доступные локальные позиции; подтверждённо missing/changed копии исключаются, UNKNOWN требует полной проверки при воспроизведении. Частичное сохранение и неподтверждённый состав не получают строгую Offline-метку. Старые exports без descriptor остаются доступны в Saved. Legacy `catalog_kind:*` rows сохраняются при миграции, но app runtime не имеет API ручной классификации; исторические accessors находятся только в androidTest.
+
 ## Подписки исполнителей
 
 `MusicArtists` разбирает `catalog.getAudio`, адресные секции, заголовки корня и `catalog.header`, вложенные пулы, встроенные записи, ссылки навигации и курсоры блоков. Корневой пул `artists` не является списком подписок: учитывается связь с разделом музыкальных подписок; явный `is_following=false` исключает отписанных исполнителей. Рекомендации и имена из треков не подставляются вместо подписок. Подписка/отписка и переход по имени в строке песни не реализованы.
@@ -85,7 +95,7 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 
 ## Сохранность файлов и очереди
 
-Очередь и учёт файлов хранятся в приватной SQLite-базе в `noBackupFilesDir`: транзакции, WAL и `synchronous=FULL`. Ключ задачи учитывает аккаунт, тип и ID источника, ID трека и номер его вхождения. Порядок и название не определяют идентичность. Источники с одинаковым видимым названием получают устойчивые отдельные каталоги; старые файлы не переименовываются автоматически.
+Очередь и учёт файлов хранятся в приватной SQLite-базе в `noBackupFilesDir`: транзакции, WAL и `synchronous=FULL`. Схема 7 сохраняет physical URI index и нормализует account/kind/source ID/occurrence в memberships с индексом `file_sources`. Миграция старых payload читается пакетами по 100 строк в транзакции SQLiteOpenHelper; ошибка откатывает upgrade, не пересоздаёт базу и не удаляет файлы. URI aliases и source reads адресные; JSON остаётся совместимым носителем полных метаданных. Ключ задачи учитывает аккаунт, тип и ID источника, ID трека и номер его вхождения. Порядок и название не определяют идентичность. Источники с одинаковым видимым названием получают устойчивые отдельные каталоги; старые файлы не переименовываются автоматически.
 
 Запись MediaStore сначала скрыта через `IS_PENDING`. После записи проверяются размер и SHA-256, сохраняется контрольная точка, затем файл публикуется. Android может уточнить имя при публикации: окончательные `DISPLAY_NAME` и `RELATIVE_PATH` перечитываются и сохраняются. Восстановление принимает изменённые метаданные только после проверки владельца, допустимой папки, размера и хеша. Нельзя восстанавливать уже удалённую из учёта запись или принимать чужой файл по похожему имени.
 
@@ -105,7 +115,7 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 
 ## Вход и сетевые границы
 
-Вход использует Chrome Custom Tab, опрос состояния заявки и нативный обмен результата. Открытие браузера или HTTP 200 не доказывает вход: доступ сохраняется только после проверки `users.get`/`audio.get` и аккаунта. Пароли и коды не собираются через собственную веб-форму. Чтение cookies/DOM профиля Chrome не используется.
+Вход использует Custom Tabs браузера по умолчанию, опрос состояния заявки и нативный обмен результата. Открытие браузера или HTTP 200 не доказывает вход: доступ сохраняется только после проверки `users.get`/`audio.get` и аккаунта. Пароли и коды не собираются через собственную веб-форму. Чтение cookies/DOM профиля браузера не используется. Выбирается только default HTTPS browser с подходящей экспортированной activity и Custom Tabs service; отсутствие провайдера даёт явную ошибку без произвольного fallback/WebView.
 
 Токены и ограниченный материал нативного обмена зашифрованы AES-GCM через Android Keystore в `noBackupFilesDir`. Новый ручной доступ проверяется до замены старого. Повреждённый конверт обрабатывается отдельно и не мешает новому входу. Удаление локального доступа не отзывает серверные сеансы.
 
@@ -115,7 +125,7 @@ GitHub Actions выполняет Python/JVM-тесты, lint debug/release, rel
 
 ## Обложки и сравнение аудио
 
-`MusicPlaybackService` использует отдельный foreground-тип `mediaPlayback`, Media3 ExoPlayer и медиасессию. Только доверенные системные контроллеры и собственный пакет получают управление; внешнее добавление произвольных URI запрещено. `PlaybackMediaSource` разрешает точный ID в свежую ссылку лениво на IO, проверяет аккаунт/сессию до и после запроса и сохраняет в публичной timeline только непрозрачный media ID. Каждый запрос HLS и перенаправление проверяется по HTTPS-списку `MediaAddress`; API-токены, cookie и API-заголовки не отправляются CDN. Очередь и позиция прослушивания живут в памяти сервиса; принудительная остановка/смерть процесса не вызывает автозапуск.
+`MusicPlaybackService` использует отдельный foreground-тип `mediaPlayback`, Media3 ExoPlayer и медиасессию. Только доверенные системные контроллеры и собственный пакет получают управление; внешнее добавление произвольных URI запрещено. `PlaybackMediaSource` разрешает точный ID в свежую ссылку лениво на IO, проверяет аккаунт/сессию до и после запроса и сохраняет в публичной timeline только непрозрачный media ID. Каждый запрос HLS и перенаправление проверяется по HTTPS-списку `MediaAddress`; API-токены, cookie и API-заголовки не отправляются CDN. Очередь, порядок, shuffle/repeat и курсор прослушивания хранятся в приватной SQLite-базе без токенов и подписанных URL. Контрольная точка привязана к account/read session; проверенное продление допускается, независимый новый вход не получает старую online-очередь. STOP и новый play сериализованы через историю последнего желаемого состояния. Принудительная остановка/смерть процесса не вызывает автозапуск; возобновление выполняется явно или по проверенному Media3 resumption.
 
 Офлайн-источники проходят проверку собственного MediaStore URI, размера и SHA-256 через `SharedAudioStore.requireValid`, без обращения к ВК. Обложки ограничены по размеру и загружаются отдельно; их отсутствие не блокирует аудио. Смена доступа останавливает онлайн-очередь, а файловая обработка — чтение локального файла. Перед возобновлением изменённой локальной записи требуется обновлённый индекс. Тесты `PlaybackDeviceTest` проверяют настоящий декодер, перемотку, фон, уведомление и управление на API 29–37.
 
@@ -157,7 +167,7 @@ UIDT-поиск хранит до 20 000 контрольных результа
 
 Лицензии и обязательные уведомления зависимостей сохраняются в [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [NOTICE](NOTICE) и ресурсах APK. Полезные первичные источники для сопровождения:
 
-- [Общие медиафайлы Android](https://developer.android.com/training/data-storage/shared/media), [UIDT](https://developer.android.com/develop/background-work/background-tasks/uidt), [Chrome Custom Tabs](https://developer.chrome.com/docs/android/custom-tabs).
+- [Общие медиафайлы Android](https://developer.android.com/training/data-storage/shared/media), [UIDT](https://developer.android.com/develop/background-work/background-tasks/uidt), [Custom Tabs](https://developer.chrome.com/docs/android/custom-tabs).
 - [Схемы API ВК](https://github.com/VKCOM/vk-api-schema); наличие схемы объекта не гарантирует доступность музыкального метода.
 - [AIMP VK: контракт поиска аудио](https://github.com/ArtemIzmaylov/aimp_VK/blob/main/AIMP.VK.Core.pas).
 - [Нативный обмен музыкального доступа](https://github.com/vodka2/vk-audio-token); это технический источник исследования, не обещание совместимости сервера.
@@ -195,6 +205,8 @@ UIDT-поиск хранит до 20 000 контрольных результа
 | Внешние проигрыватели | Названия двух проигрывателей и версии; Unicode title/artist/album/cover MP3/M4A, относительный M3U8 и повторяющиеся позиции |
 | Дубликаты и удаление | Разная конфигурация M4A не совпадает; подтверждение удаления только выбранной записи ВК; локальные файлы остаются |
 
+Также обязательны сценарии `online_and_offline_playback`, `bluetooth_media_controls`, `audio_focus_interruptions`, `ui_navigation_and_accessibility`, `upgrade_user_data_integrity`: play/pause/seek/shuffle/repeat/STOP/resume; Bluetooth/controller/notification; звонок и потеря/возврат audio focus; Back/rotation/IME/крупный текст/TalkBack; сохранность очереди, URI, тегов, memberships и M3U8 после `install -r`. Подробный порядок и идентичность точного APK заданы в [PROCEDURE.md](docs/release-acceptance/PROCEDURE.md).
+
 Если сценарий не выполнен или провален, оставить `pending`/`failed`. CI не выдаёт эти результаты за ручную приёмку.
 
 ### Продвижение в stable
@@ -203,7 +215,7 @@ UIDT-поиск хранит до 20 000 контрольных результа
 
 При продвижении зависимости принятого APK повторно сканируются по его SBOM.
 
-В Releases прикладываются только APK и `SHA256SUMS.txt`. В описании остаются ссылки на исходники точного коммита APK, инструкцию сборки и запуск CI. Лицензия и уведомления правообладателя входят в APK и архив исходников. Полный набор доказательств (build-info, upgrade-check, публичный сертификат, SBOM, OSV, LICENSE и NOTICE) обязателен перед публикацией и сохраняется в артефактах CI `VK-Music-Export-release` или `Verified-release`; срок хранения — 30 дней. Примечания берутся только из точного раздела версии в `CHANGELOG.md`; отсутствие раздела блокирует выпуск. Предыдущий Latest не откатывается старым повтором workflow. Закрытый ключ в артефакты не попадает.
+Для следующих выпусков pipeline требует APK, `SHA256SUMS.txt` и `release-evidence.zip`. ZIP привязан к точным APK bytes/source/version, содержит manifest SHA-256, build-info, публичный сертификат, SBOM/OSV, unit/lint/Android/updater/R8/SAST отчёты и CI provenance. Перед upload выполняется `verify-release-evidence.py`; небезопасные пути, symlinks, ключи и APK внутри ZIP запрещены. Это предусмотренный путь нового выпуска; существующие старые Releases задним числом не объявляются полными. В описании остаются ссылки на исходники точного коммита APK, инструкцию сборки и запуск CI. Лицензия и уведомления правообладателя входят в APK и архив исходников. Полный набор доказательств (build-info, upgrade-check, публичный сертификат, SBOM, OSV, LICENSE и NOTICE) обязателен перед публикацией и публикуется в указанном release ZIP; рабочие копии артефактов CI `VK-Music-Export-release` или `Verified-release` по-прежнему имеют retention 30 дней. Примечания берутся только из точного раздела версии в `CHANGELOG.md`; отсутствие раздела блокирует выпуск. Предыдущий Latest не откатывается старым повтором workflow. Закрытый ключ в артефакты не попадает.
 
 ### Публикация по отдельному запросу владельца
 
@@ -219,7 +231,7 @@ Workflow **Update channel consistency** проверяет схему JSON и Py
 
 ### Защита main
 
-Подготовлен `.github/main-ruleset.json`: PR с ревью, обязательные `build`/`interface`, запрет удаления/force-push, разрешение обсуждений. Администратор применяет его через Settings → Rules → Rulesets или `gh api --method POST repos/alcovaibe/vk-music-export/rulesets --input .github/main-ruleset.json`. Для правила обязательного одобрения нужен второй ревьюер. Сам файл в PR не включает защиту на GitHub; состояние проверяется отдельно администратором. Бот обновления канала использует отдельный PR, поэтому защита не требует обхода main.
+На 07.11.2026 через read-only GitHub API подтверждён активный ruleset `26682452`: PR/review, обязательные `build`/`interface`/`channel-delivery`, strict base, запрет deletion/force-push, без bypass. `.github/main-ruleset.json` остаётся шаблоном; сам файл не изменяет реальную защиту. Состояние ruleset проверяется отдельно в GitHub, изменения настроек требуют отдельного решения владельца. Бот доставки канала работает через PR.
 
 Для PR канала в Settings → Actions должен быть разрешён пункт «Allow GitHub Actions to create and approve pull requests». Проверки его ветки запускаются явным workflow_dispatch; они не обходят требуемое ревью. Если настройка запрещена, stable APK остаётся в Releases, а обновление канала нужно завершить через обычный PR.
 
