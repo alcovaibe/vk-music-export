@@ -253,6 +253,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     val playbackSnapshot=state;val playbackSort=sort;val friendPlaybackSnapshot=friendState
     fun playLibrary(index: Int=-1) {
+        if(playbackSnapshot.localPlayback!=null&&!SavedPlaybackPolicy.allowed(model.state.value))return
         PlaybackRuntime.prepare(context,index){PlaybackLists.library(playbackSnapshot,playbackSort)}
     }
     val canPlayLibrary=state.localPlayback?.let{SavedPlaybackPolicy.allowed(state)&&it.rows.isNotEmpty()}

@@ -75,8 +75,12 @@ class LocalCatalogPlaybackDeviceTest {
             }
             ui.waitUntil(15000){model.state.value.initialized&&!model.state.value.busy&&model.state.value.error==MusicError.NETWORK}
             assertTrue(libraryCalls.get()>0);assertNull(model.state.value.readSessionId);assertNull(model.state.value.probe)
+            assertEquals(12L,model.state.value.localCatalogAccount)
+            assertEquals(setOf(album.key),model.state.value.localCatalogKeys)
+            assertEquals(listOf(album.key),model.state.value.catalog!!.lists.map{it.key})
             ui.onNodeWithTag("library_category_ALBUMS").performScrollTo().performClick()
-            ui.onNodeWithTag("catalog_list_12_990888").performScrollTo().performClick()
+            ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("catalog_list_12_990888"))
+            ui.onNodeWithTag("catalog_list_12_990888").performClick()
             ui.waitUntil(10000){!model.state.value.busy&&model.state.value.localPlayback?.rows?.size==2}
             assertEquals(0,playlistCalls.get())
             ui.onNodeWithTag("local_collection_notice").performScrollTo().assertIsDisplayed()

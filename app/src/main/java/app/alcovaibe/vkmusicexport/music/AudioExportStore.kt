@@ -263,6 +263,7 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
     @Synchronized fun updateCheckpoint(name: String,update:(String?)->String)=transaction {
         val previous=get(name);val next=update(previous)
         if(next!=previous)put(name,next)
+        Unit
     }
     @Synchronized fun checkpoints(prefix: String): List<Pair<String,String>> = readableDatabase.rawQuery(
         "SELECT name,value FROM meta WHERE name GLOB ? ORDER BY rowid",arrayOf(prefix+"*")).use{c->buildList{
@@ -476,20 +477,7 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
         put("queue_identity",java.util.UUID.randomUUID().toString())
         status("EMPTY");put("source_issues","0");put("covered_count","0");put("queue_account","0")
     }
-    @Synchronized fun catalogKinds(account: Long): Map<String,PlaylistKind> {
-        musicCheck(account>0,MusicError.STORAGE)
-        val prefix="catalog_kind:$account:"
-        return readableDatabase.rawQuery("SELECT name,value FROM meta WHERE substr(name,1,?)=?",arrayOf(prefix.length.toString(),prefix)).use{c->buildMap{
-            while(c.moveToNext()) {
-                val kind=runCatching{PlaylistKind.valueOf(c.getString(1))}.getOrNull()
-                if(kind!=null&&kind!=PlaylistKind.UNKNOWN)put(c.getString(0).removePrefix(prefix),kind)
-            }
-        }}
-    }
-    @Synchronized fun catalogKind(account: Long,list: NativePlaylist,kind: PlaylistKind)=transaction {
-        musicCheck(account>0,MusicError.STORAGE)
-        val name="catalog_kind:$account:${list.key}"
-        if(kind==PlaylistKind.UNKNOWN)writableDatabase.delete("meta","name=?",arrayOf(name)) else put(name,kind.name)
-    }
+    // Legacy catalog_kind:* meta rows remain untouched for migration compatibility.
+    // Production classification uses server metadata; fixture-only accessors live in androidTest.
     private fun parseError(value: String?)=runCatching{MusicError.valueOf(value.orEmpty())}.getOrNull()
 }

@@ -71,11 +71,8 @@ internal object MusicCatalog {
     }
 
     fun visible(state: NativeMusicState,section: CatalogSection=state.catalogSection,onlyPending: Boolean=false)=
-        lists(state.catalog,section,emptyMap()).filter{!onlyPending||it.key !in state.hiddenCatalog}
+        lists(state.catalog,section).filter{!onlyPending||it.key !in state.hiddenCatalog}
 
-    // Legacy manual choices are deliberately ignored; only current server metadata is used.
-    fun kind(list: NativePlaylist,choices: Map<String,PlaylistKind>): PlaylistKind =
-        list.kind
-    fun lists(catalog: NativeCatalog?,section: CatalogSection,choices: Map<String,PlaylistKind>): List<NativePlaylist> =
-        catalog?.lists.orEmpty().filter{kind(it,choices)==section.kind}
+    fun lists(catalog: NativeCatalog?,section: CatalogSection): List<NativePlaylist> =
+        catalog?.lists.orEmpty().filter{it.kind==section.kind}
 }

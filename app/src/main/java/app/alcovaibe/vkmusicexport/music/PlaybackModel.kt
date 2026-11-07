@@ -40,7 +40,7 @@ internal object PlaybackLists {
         val owner=state.probe?.owner?:return emptyList()
         if(owner<=0||state.selected?.key?.let{it in state.localCatalogKeys}==true||state.readSessionId==null)return emptyList()
         val selected=state.selected
-        val kind=selected?.let{MusicCatalog.kind(it,state.catalogKinds)}?:PlaylistKind.UNKNOWN
+        val kind=selected?.kind?:PlaylistKind.UNKNOWN
         val references=if(selected==null||kind!=PlaylistKind.UNKNOWN)ExportLayout.playback(page,owner,selected,kind)else emptyList()
         return MusicLibrarySorting.tracks(page.tracks,sort).map{row->
             PlaybackEntry(row.value,selected?.title?:"Моя музыка",owner,export=references.getOrNull(row.index),readSessionId=state.readSessionId)

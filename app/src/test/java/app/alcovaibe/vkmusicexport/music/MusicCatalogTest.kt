@@ -12,11 +12,11 @@ class MusicCatalogTest {
         val offsets=mutableListOf<Int>()
         val catalog=MusicPagination.catalog({offset->offsets.add(offset);NativeCatalog(input.drop(offset).take(100),input.size)})
         assertEquals(listOf(0,100),offsets);assertTrue(catalog.complete)
-        assertEquals(100,MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS,emptyMap()).size)
-        assertEquals(listOf(input[100]),MusicCatalog.lists(catalog,CatalogSection.ALBUMS,emptyMap()))
-        assertEquals(listOf(input[101]),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,emptyMap()))
+        assertEquals(100,MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS).size)
+        assertEquals(listOf(input[100]),MusicCatalog.lists(catalog,CatalogSection.ALBUMS))
+        assertEquals(listOf(input[101]),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN))
     }
-    @Test fun numericTypesAreResolvedByServerAlbumMembershipAndOldChoicesCannotMisclassifyPlaylists()=runBlocking {
+    @Test fun numericTypesAreResolvedByServerAlbumMembershipWithoutMisclassifyingPlaylists()=runBlocking {
         val raw=NativeProtocol.catalog(Json.parseToJsonElement("""{"count":4,"items":[
             {"owner_id":12,"id":1,"title":"Плейлист 28.10.2026","count":1,"type":0},
             {"owner_id":-9,"id":2,"title":"I AM","count":1,"type":1,"is_following":1},
@@ -31,10 +31,9 @@ class MusicCatalogTest {
         }
         val catalog=MusicCatalog.load(api,MusicAccess("synthetic","CI/1"),12)
         assertEquals(2,catalog.lists.size);assertTrue(catalog.complete)
-        val choices=mapOf(raw.lists[0].key to PlaylistKind.ALBUM)
-        assertEquals(listOf("I AM"),MusicCatalog.lists(catalog,CatalogSection.ALBUMS,choices).map{it.title})
-        assertEquals(listOf("Плейлист 28.10.2026"),MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS,choices).map{it.title})
-        assertTrue(MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,choices).isEmpty())
+        assertEquals(listOf("I AM"),MusicCatalog.lists(catalog,CatalogSection.ALBUMS).map{it.title})
+        assertEquals(listOf("Плейлист 28.10.2026"),MusicCatalog.lists(catalog,CatalogSection.PLAYLISTS).map{it.title})
+        assertTrue(MusicCatalog.lists(catalog,CatalogSection.UNKNOWN).isEmpty())
     }
     @Test fun untypedCollectionCanBeDownloadedWithoutManualChoiceAndLibraryAlbumGroupsRemainExplicit() {
         val track=NativeTrack("12_1","Song","Artist",1,album=MusicAlbum("album:9","Release"))
@@ -55,7 +54,7 @@ class MusicCatalogTest {
         val enriched=MusicPagination.catalog({offset->NativeCatalog(listOf(if(offset==0)b else typedB),3)})
         assertFalse(enriched.complete);assertEquals(PlaylistKind.ALBUM,enriched.lists.single().kind)
     }
-    @Test fun unsupportedAlbumFilterLeavesUntypedCollectionsDownloadableWithoutConsultingOldChoices()=runBlocking {
+    @Test fun unsupportedAlbumFilterLeavesUntypedCollectionsDownloadableWithoutManualClassification()=runBlocking {
         val unknown=list(7,PlaylistKind.UNKNOWN)
         val api=object: MusicApi {
             override suspend fun library(access: MusicAccess)=error("unused")
@@ -66,7 +65,7 @@ class MusicCatalogTest {
         }
         val catalog=MusicCatalog.load(api,MusicAccess("synthetic","CI/1"),12)
         assertTrue(catalog.complete)
-        assertEquals(listOf(unknown),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,mapOf(unknown.key to PlaylistKind.ALBUM)))
+        assertEquals(listOf(unknown),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN))
     }
 
     @org.junit.Test fun downloadedCollectionsRemainInMainCatalogUnlessPendingFilterIsExplicit() {
