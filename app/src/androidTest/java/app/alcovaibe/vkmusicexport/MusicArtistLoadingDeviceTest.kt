@@ -40,13 +40,13 @@ class MusicArtistLoadingDeviceTest {
             inst.runOnMainSync{model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
             until{!model.state.value.busy&&model.state.value.probe!=null}
             inst.runOnMainSync{model.showArtists()}
-            until{!model.state.value.busy&&model.artists.value.error!=null}
+            until{!model.artists.value.busy&&model.artists.value.error!=null}
             assertEquals(MusicError.TIMEOUT,model.artists.value.error)
             assertEquals(listOf(artist),model.artists.value.artists);assertFalse(model.artists.value.loaded)
             inst.runOnMainSync{model.selectArtist(artist)}
-            until{!model.state.value.busy&&model.artists.value.details!=null}
+            until{!model.artists.value.busy&&model.artists.value.details!=null}
             inst.runOnMainSync{model.showArtists(true)}
-            until{!model.state.value.busy&&model.artists.value.loaded}
+            until{!model.artists.value.busy&&model.artists.value.loaded}
             assertEquals(2,requests);assertNull(model.artists.value.error)
         }finally{inst.runOnMainSync{vmStore.clear()};vault.delete()}
     }

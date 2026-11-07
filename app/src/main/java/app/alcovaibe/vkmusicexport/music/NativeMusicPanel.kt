@@ -205,6 +205,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     fun choose(value: LibraryCategory) {
         if(state.busy||backgroundCheck)return
+        if(category==LibraryCategory.ARTISTS&&value!=category)model.pauseArtists()
         category=value;sort=MusicLibrarySort.DEFAULT
         when(value) {
             LibraryCategory.TRACKS->model.section(CatalogSection.LIBRARY)
@@ -323,27 +324,32 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 item("artists_heading") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     if(artists.selected==null) {
                         Text("Музыкальные подписки ВК",style=MaterialTheme.typography.titleMedium)
-                        TextButton(enabled=state.probe!=null&&!state.busy,onClick={model.showArtists(true)}){Text("Обновить исполнителей")}
+                        TextButton(enabled=state.probe!=null&&!artists.busy,onClick={model.showArtists(true)}){Text("Обновить исполнителей")}
                         if(artists.loaded&&artists.artists.isEmpty())Text("В этом аккаунте нет подписок на исполнителей.")
                         if(!state.configured)Text("Подключи ВК, чтобы увидеть свои подписки.")
                     }else {
-                        TextButton(enabled=!state.busy,onClick={if(artists.album!=null)model.selectArtistAlbum(null)else model.selectArtist(null)}){Text(if(artists.album!=null)"К исполнителю" else "Мои исполнители")}
+                        TextButton(enabled=!artists.busy,onClick={if(artists.album!=null)model.selectArtistAlbum(null)else model.selectArtist(null)}){Text(if(artists.album!=null)"К исполнителю" else "Мои исполнители")}
+                    }
+                    if(artists.busy) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(artists.progress?:"Загружаем музыку исполнителей…")
+                        TextButton(onClick=model::backFromArtist){Text("Остановить загрузку исполнителей")}
                     }
                     artists.message?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
-                    if(!state.busy&&!artists.loaded&&artists.artists.isNotEmpty())Text("Получено: ${artists.artists.size}. Список загружен не полностью.",style=MaterialTheme.typography.bodySmall)
+                    if(!artists.busy&&!artists.loaded&&artists.artists.isNotEmpty())Text("Получено: ${artists.artists.size}. Список загружен не полностью.",style=MaterialTheme.typography.bodySmall)
                     artists.error?.let{error->
                         Text(artists.errorDetails?:if(error==MusicError.TIMEOUT)"Загрузка остановлена по времени ожидания. ВК не завершил ответ за 45 секунд. Код приложения: TIMEOUT." else error.label,Modifier.testTag("artists_error_reason"),color=MaterialTheme.colorScheme.error)
-                        if(artists.selected!=null)TextButton(enabled=!state.busy,onClick={val album=artists.album;if(album!=null)model.selectArtistAlbum(album)else model.selectArtist(artists.selected)}){Text("Повторить загрузку")}
+                        if(artists.selected!=null)TextButton(enabled=!artists.busy,onClick={val album=artists.album;if(album!=null)model.selectArtistAlbum(album)else model.selectArtist(artists.selected)}){Text("Повторить загрузку")}
                     }
                 }}
                 if(artists.selected==null)itemsIndexed(artists.artists,key={_,artist->"artist_${artist.id}"}){_,artist->
-                    MusicCollectionRow(artist.name,"В подписках",!state.busy,artist=true,photo=artist.photo,tag="followed_artist_${artist.id}"){model.selectArtist(artist)}
+                    MusicCollectionRow(artist.name,"В подписках",!artists.busy,artist=true,photo=artist.photo,tag="followed_artist_${artist.id}"){model.selectArtist(artist)}
                 }else {
                     if(artists.album==null) {
                         artists.details?.let{details->
                             item("artist_albums_title"){Text("Альбомы и синглы · ${details.albums.size}",style=MaterialTheme.typography.titleMedium)}
                             itemsIndexed(details.albums,key={_,list->"artist_album_${list.key}"}){_,list->
-                                MusicCollectionRow(list.title,"${list.count} треков",!state.busy,tag="artist_album_${list.owner}_${list.id}"){model.selectArtistAlbum(list)}
+                                MusicCollectionRow(list.title,"${list.count} треков",!artists.busy,tag="artist_album_${list.owner}_${list.id}"){model.selectArtistAlbum(list)}
                             }
                         }
                     }
