@@ -131,10 +131,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
     val searchState by model.musicSearch.collectAsState()
     var searchOpen by rememberSaveable {mutableStateOf(false)}
-    DisposableEffect(lifecycle,model,searchOpen) {
-        model.setSearchActive(searchOpen&&lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    DisposableEffect(lifecycle,model,searchOpen,playerExpanded) {
+        model.setSearchActive(searchOpen&&!playerExpanded&&lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer=LifecycleEventObserver{_,event->when(event) {
-            Lifecycle.Event.ON_RESUME->model.setSearchActive(searchOpen)
+            Lifecycle.Event.ON_RESUME->model.setSearchActive(searchOpen&&!playerExpanded)
             Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.setSearchActive(false)
             else->Unit
         }}
@@ -144,8 +144,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var aboutOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
-    DisposableEffect(lifecycle,model,destination,playerExpanded,aboutOpen,accessOpen) {
-        model.friends.setPreviewVisible(destination==MusicDestination.FRIENDS&&!playerExpanded&&!aboutOpen&&!accessOpen)
+    DisposableEffect(lifecycle,model,destination,playerExpanded,aboutOpen,accessOpen,searchOpen) {
+        model.friends.setPreviewVisible(destination==MusicDestination.FRIENDS&&!playerExpanded&&!aboutOpen&&!accessOpen&&!searchOpen)
         val observer=LifecycleEventObserver{_,event->when(event) {
             Lifecycle.Event.ON_RESUME->model.friends.setForeground(true)
             Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.friends.setForeground(false)
@@ -163,6 +163,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         runCatching{MusicLibrarySort.valueOf(sortPreferences.getString(sortContext,null).orEmpty())}
             .getOrDefault(MusicLibrarySort.DEFAULT))}
     val sort=selectedSort.takeIf{it in sortChoices}?:MusicLibrarySort.DEFAULT
+    var onlyPendingCollections by rememberSaveable {mutableStateOf(false)}
     var sortOpen by rememberSaveable {mutableStateOf(false)}
     var openError by remember {mutableStateOf(false)}
     val maintenanceNavigation by model.maintenanceNavigation.collectAsState()
@@ -452,7 +453,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                                     color=MaterialTheme.colorScheme.error,modifier=Modifier.testTag("catalog_incomplete_warning"))
                             }
                         }
-                        if(state.hiddenCatalog.isNotEmpty())Text("Полностью скачанные подборки скрыты: ${state.hiddenCatalog.size}",style=MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Checkbox(checked=onlyPendingCollections,onCheckedChange={onlyPendingCollections=it},
+                                modifier=Modifier.testTag("catalog_only_pending").semantics{contentDescription="Только ещё не скачанное"})
+                            Text("Только ещё не скачанное",style=MaterialTheme.typography.bodySmall)
+                        }
+                        if(state.hiddenCatalog.isNotEmpty())Text("Проверенные офлайн-подборки: ${state.hiddenCatalog.size}",style=MaterialTheme.typography.bodySmall)
                         state.catalogError?.let{Text(it.label,color=MaterialTheme.colorScheme.error)}
                     }
                     if(toolsOpen||category!=LibraryCategory.TRACKS)Row {
@@ -467,8 +473,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }}
                 if(category!=LibraryCategory.TRACKS&&state.selected==null) {
-                    val lists=MusicLibrarySorting.collections(MusicCatalog.visible(state),sort)
-                    itemsIndexed(lists,key={_,list->"catalog_${list.key}"}){_,list->MusicCollectionRow(list.title,"${list.count} треков",!state.busy,
+                    val lists=MusicLibrarySorting.collections(MusicCatalog.visible(state,onlyPending=onlyPendingCollections),sort)
+                    itemsIndexed(lists,key={_,list->"catalog_${list.key}"}){_,list->MusicCollectionRow(list.title,"${list.count} треков · "+if(list.key in state.hiddenCatalog)"Offline" else "Доступно online",!state.busy,
                         tag="catalog_list_${list.owner}_${list.id}"){model.select(list)}}
                     if(state.catalogSection==CatalogSection.UNKNOWN)item("unknown_note"){Text("ВК не сообщил тип этих подборок; ручной выбор не нужен.")}
                     if(MusicCatalog.visible(state,CatalogSection.UNKNOWN).isNotEmpty())item("unknown") {

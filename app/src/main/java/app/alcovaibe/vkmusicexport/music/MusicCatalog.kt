@@ -70,8 +70,8 @@ internal object MusicCatalog {
             pagination=all.pagination,albumsPagination=albums?.pagination)
     }
 
-    fun visible(state: NativeMusicState,section: CatalogSection=state.catalogSection)=
-        lists(state.catalog,section,emptyMap()).filter{it.key !in state.hiddenCatalog}
+    fun visible(state: NativeMusicState,section: CatalogSection=state.catalogSection,onlyPending: Boolean=false)=
+        lists(state.catalog,section,emptyMap()).filter{!onlyPending||it.key !in state.hiddenCatalog}
 
     // Legacy manual choices are deliberately ignored; only current server metadata is used.
     fun kind(list: NativePlaylist,choices: Map<String,PlaylistKind>): PlaylistKind =

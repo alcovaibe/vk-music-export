@@ -69,4 +69,11 @@ class MusicCatalogTest {
         assertEquals(listOf(unknown),MusicCatalog.lists(catalog,CatalogSection.UNKNOWN,mapOf(unknown.key to PlaylistKind.ALBUM)))
     }
 
+    @org.junit.Test fun downloadedCollectionsRemainInMainCatalogUnlessPendingFilterIsExplicit() {
+        val album=NativePlaylist(12,7,"Album",1,null,null,null,1)
+        val state=NativeMusicState(catalog=NativeCatalog(listOf(album),1),catalogSection=CatalogSection.ALBUMS,
+            hiddenCatalog=setOf(album.key))
+        org.junit.Assert.assertEquals(listOf(album.key),MusicCatalog.visible(state).map{it.key})
+        org.junit.Assert.assertTrue(MusicCatalog.visible(state,onlyPending=true).isEmpty())
+    }
 }

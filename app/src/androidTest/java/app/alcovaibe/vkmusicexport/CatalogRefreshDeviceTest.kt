@@ -63,7 +63,8 @@ class CatalogRefreshDeviceTest {
             ui.runOnUiThread{model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
             ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
             assertEquals(setOf(album.key),model.state.value.hiddenCatalog)
-            assertTrue(MusicCatalog.visible(model.state.value,CatalogSection.ALBUMS).isEmpty())
+            assertEquals(listOf(album.key),MusicCatalog.visible(model.state.value,CatalogSection.ALBUMS).map{it.key})
+            assertTrue(MusicCatalog.visible(model.state.value,CatalogSection.ALBUMS,onlyPending=true).isEmpty())
             assertEquals(listOf(playlist.key),MusicCatalog.visible(model.state.value,CatalogSection.PLAYLISTS).map{it.key})
             assertFalse(model.state.value.catalog!!.lists.any{it.key==deleted.key})
             ui.runOnUiThread{model.prepare(catalogKind=PlaylistKind.ALBUM)}
