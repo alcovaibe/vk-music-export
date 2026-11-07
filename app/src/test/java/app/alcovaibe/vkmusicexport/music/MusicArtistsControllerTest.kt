@@ -10,7 +10,7 @@ class MusicArtistsControllerTest {
     private val access=MusicAccess("a".repeat(64),"CI",accountId=12)
     private val artist=MusicArtist("1","Исполнитель")
     private inner class Api: MusicApi {
-        var load: suspend()->List<MusicArtist>={listOf(artist)}
+        var load: suspend()->List<MusicArtist> = {listOf(artist)}
         override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit)=load()
         override suspend fun library(access: MusicAccess)=error("Not a library read")
         override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("Not a catalog read")
