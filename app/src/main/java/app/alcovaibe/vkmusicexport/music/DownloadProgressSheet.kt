@@ -105,6 +105,7 @@ internal fun DownloadProgressContent(queue: ExportSnapshot,busy: Boolean=false,a
             OutlinedButton(onClick=export){Text("Поделиться полным отчётом")}
             Text("Отчёт содержит названия песен, источники, результаты и пути файлов. Токены и ссылки ВК не включаются.",style=MaterialTheme.typography.bodySmall)
         }}
+        if(working||queue.unfinished)Text("После паузы незавершённый файл скачивается заново. Готовые треки сохраняются.",style=MaterialTheme.typography.bodySmall)
         if(working)Text("Панель можно свернуть — скачивание продолжится. Android может приостановить задачу; продолжение доступно здесь.",style=MaterialTheme.typography.bodySmall)
     }
 }

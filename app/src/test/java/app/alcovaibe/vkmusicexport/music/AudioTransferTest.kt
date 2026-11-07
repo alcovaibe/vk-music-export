@@ -178,4 +178,43 @@ class AudioTransferTest {
         }finally{directory.deleteRecursively()}
     }
 
+
+    @Test fun cancelledDirectFileRestartsFromZeroWithRenewedUrlAndNeverAppendsOldBytes(): Unit=runBlocking {
+        val directory=Files.createTempDirectory("audio-safe-restart").toFile()
+        val requests=mutableListOf<Request>();var processed=0
+        val old=ByteArray(1024*1024){65};val fresh="SECOND_RESOURCE_COMPLETE".toByteArray()
+        val transfer=AudioTransfer(client({request->200 to if(request.url.encodedPath=="/old")old else fresh},requests),
+            AudioProcessor{input,output,_,_->
+                processed++;assertArrayEquals(fresh,input.readBytes());output.writeBytes(fresh)
+                ProcessedAudio("mp3","audio/mpeg",2000)
+            },observe={_,_->})
+        try {
+            try {
+                transfer.download("https://audio.userapi.com/old?signature=old",track,directory) {
+                    if(it.bytes>0)throw CancellationException("Synthetic user pause")
+                }
+                fail("The interrupted file must not be returned")
+            }catch(_: CancellationException){}
+            assertEquals(0,processed);assertTrue(directory.listFiles().orEmpty().isEmpty())
+            val result=transfer.download("https://audio.userapi.com/new?signature=new",track,directory){}
+            assertEquals(1,processed);assertArrayEquals(fresh,result.file.readBytes())
+            assertEquals(2,requests.size)
+            requests.forEach{assertNull(it.header("Range"));assertNull(it.header("If-Range"))}
+            assertEquals(listOf(result.file),directory.listFiles().orEmpty().toList())
+        }finally{directory.deleteRecursively()}
+    }
+
+    @Test fun unsolicitedPartialOrUnsatisfiedRangeIsRejectedWithoutPublishingBytes(): Unit=runBlocking {
+        val directory=Files.createTempDirectory("audio-no-range-merge").toFile()
+        try {
+            for(status in listOf(206,416)) {
+                var processed=false
+                val transfer=AudioTransfer(client({status to "PARTIAL".toByteArray()},mutableListOf()),
+                    AudioProcessor{_,_,_,_->processed=true;error("Partial response cannot be decoded")},observe={_,_->})
+                try{transfer.download("https://audio.userapi.com/f",track,directory){};fail("Expected $status rejection")}
+                catch(e: MediaHttpFailure){assertEquals(status,e.status)}
+                assertFalse(processed);assertTrue(directory.listFiles().orEmpty().isEmpty())
+            }
+        }finally{directory.deleteRecursively()}
+    }
 }
