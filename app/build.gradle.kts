@@ -18,7 +18,13 @@ android {
     namespace = "app.alcovaibe.vkmusicexport"
     compileSdk = 37
     testBuildType = if (r8PlaybackCheck) "release" else "debug"
-    if (r8PlaybackCheck) sourceSets.getByName("androidTest").java.setSrcDirs(listOf("src/r8AndroidTest/java"))
+    if (r8PlaybackCheck) sourceSets.getByName("androidTest").apply {
+        // AGP 9 built-in Kotlin has a separate Kotlin source directory set.
+        // Overriding Java sources alone still compiled debug-only androidTest Kotlin in release.
+        java.setSrcDirs(listOf("src/r8AndroidTest/java"))
+        kotlin.directories.clear()
+        kotlin.directories.add("src/r8AndroidTest/java")
+    }
     defaultConfig {
         applicationId = "app.alcovaibe.vkmusicexport"
         minSdk = 29

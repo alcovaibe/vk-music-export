@@ -806,7 +806,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             Diagnostics.event("native_music_operation_ignored",mapOf("stage" to stage,"reason" to if(_state.value.busy)"busy" else "initializing"))
             return
         }
-        if(stage!="availability")_availability.value=AvailabilityState()
         // Cancel background verification before any foreground operation. Await its
         // completion before touching the download database: cancellation alone does
         // not guarantee that an in-flight SQLite/file read has released its handles.
