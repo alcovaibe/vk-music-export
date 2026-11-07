@@ -53,6 +53,7 @@ QUEUE_DOWNLOADS_TESTS = {
 
 
 PLAYBACK_HISTORY_TESTS = {
+    'MusicArtistLoadingDeviceTest': ('catalogRefreshCompletesWhileArtistReadWaitsAndLeavingCancelsOnlyThatReader',),
     'MusicAccessibilityDeviceTest': (
         'playerPositionAndLoadingPauseHaveMeaningAtLargeTextAndNarrowWidth',
         'filledSearchRetainsItsLabelAndTrackSelectionHasAnExplicitAction',

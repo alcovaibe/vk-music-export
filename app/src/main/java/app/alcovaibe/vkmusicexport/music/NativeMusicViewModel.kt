@@ -54,7 +54,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             else->_savedFiles.update{it.copy(visible=true)}
         }
     }
-    val friends=FriendMusicController(application,api,viewModelScope,onDownloads=::showDownloads,clock=authClock,blocked={_state.value.busy})
+    val friends=FriendMusicController(application,api,viewModelScope,onDownloads=::showDownloads,clock=authClock,blocked={_state.value.busy},
+        previewBlocked={_state.value.stage in setOf("browser_auth","configure","forget")})
     private val authForeground=MutableStateFlow(false)
     private val _downloadsOpen=MutableStateFlow(false);val downloadsOpen=_downloadsOpen.asStateFlow()
     private val downloadsReader=DownloadsReader(viewModelScope,combine(downloadsOpen,authForeground){open,foreground->open&&foreground},AudioExportRuntime.state){tab,offset->

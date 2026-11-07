@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.*
 /** Read-only remote profiles. File publication belongs to the existing persisted download job. */
 internal class FriendMusicController(private val application: Application,private val api: MusicApi,private val scope: CoroutineScope,
     private val onDownloads: ()->Unit={},private val queueStart: suspend()->Unit={AudioExportRuntime.start(application)},
-    clock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val blocked: ()->Boolean={false}) {
+    clock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val blocked: ()->Boolean={false},previewBlocked: ()->Boolean=blocked) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application)else null
     private val mutable=MutableStateFlow(FriendMusicState());val state=mutable.asStateFlow()
@@ -18,7 +18,7 @@ internal class FriendMusicController(private val application: Application,privat
     private val sourceReads=MusicSourceReader(api,exportReads)
     private var foreground=false
     private var previewVisible=false
-    private val previews=FriendAvailabilityReader(scope,api,availabilityCache,::checked,blocked,
+    private val previews=FriendAvailabilityReader(scope,api,availabilityCache,::checked,previewBlocked,
         publish={id,status->mutable.update{state->if(state.friends.any{it.id==id})
             state.copy(friendAccess=state.friendAccess+(id to status))else state}},
         changedSession={availabilityCache.clear();exportReads.clear();lease=null

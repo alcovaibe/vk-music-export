@@ -50,4 +50,40 @@ class MusicArtistLoadingDeviceTest {
             assertEquals(2,requests);assertNull(model.artists.value.error)
         }finally{inst.runOnMainSync{vmStore.clear()};vault.delete()}
     }
+    @Test fun catalogRefreshCompletesWhileArtistReadWaitsAndLeavingCancelsOnlyThatReader()=runBlocking {
+        val inst=InstrumentationRegistry.getInstrumentation()
+        val app=inst.targetContext.applicationContext as android.app.Application
+        val vault=MusicAccessStore(app);val store=ViewModelStore()
+        val entered=CompletableDeferred<Unit>();val cancelled=CompletableDeferred<Unit>();var catalogReads=0
+        val api=object: MusicApi {
+            override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(emptyList(),0))
+            override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog {catalogReads++;return NativeCatalog(emptyList(),0)}
+            override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("No playlist")
+            override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio request")
+            override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> {
+                entered.complete(Unit)
+                try{awaitCancellation()}finally{cancelled.complete(Unit)}
+            }
+        }
+        lateinit var model: NativeMusicViewModel
+        suspend fun until(check:()->Boolean){withTimeout(10_000){while(!check())delay(20)}}
+        try {
+            vault.delete()
+            inst.runOnMainSync{model=ViewModelProvider(store,object: ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST") override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=NativeMusicViewModel(app,api) as T
+            })[NativeMusicViewModel::class.java]}
+            until{model.state.value.initialized}
+            inst.runOnMainSync{model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
+            until{model.state.value.probe!=null&&!model.state.value.busy}
+            inst.runOnMainSync{model.showArtists()};withTimeout(10_000){entered.await()}
+            assertTrue(model.artists.value.busy);assertFalse(model.state.value.busy)
+            val before=catalogReads
+            inst.runOnMainSync{model.refreshCatalog()}
+            until{catalogReads>before&&!model.state.value.busy}
+            assertTrue(model.artists.value.busy)
+            inst.runOnMainSync{model.pauseArtists()};withTimeout(10_000){cancelled.await()}
+            assertFalse(model.artists.value.busy);assertNotNull(model.state.value.catalog)
+        }finally{inst.runOnMainSync{store.clear()};vault.delete()}
+    }
+
 }
