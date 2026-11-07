@@ -227,6 +227,59 @@ jobs:
             app/build/outputs/androidTest-results/
           retention-days: 7
 
+  r8-playback:
+    name: R8 playback (API ${{ matrix.api }})
+    needs: [changes, build]
+    if: needs.changes.outputs.run_android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {api: 29, sdk: '29', target: default}
+          - {api: 36, sdk: '36', target: default}
+          - {api: 37, sdk: '37.0', target: google_apis}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with: {distribution: temurin, java-version: '21'}
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          cmdline-tools-version: '15859902'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - name: Compile dedicated non-debuggable minified playback test
+        run: ./gradlew --dependency-verification strict -Pr8PlaybackCheck=true assembleRelease assembleReleaseAndroidTest -Pkotlin.compiler.execution.strategy=in-process --stacktrace
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: ./gradlew --stop
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: ${{ matrix.sdk }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disable-animations: true
+          script: bash tools/r8-playback-check.sh ${{ matrix.api }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: R8-playback-API-${{ matrix.api }}
+          path: |
+            r8-evidence/
+            app/build/outputs/mapping/release/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: error
+          retention-days: 30
+
   channel-delivery:
     needs: changes
     runs-on: ubuntu-latest
@@ -367,7 +420,7 @@ jobs:
   # the intentional, independently verified skip; on every code/PR run it
   # succeeds only when all nine Android API jobs succeed.
   interface:
-    needs: [changes, interface-tests, channel-delivery, updater-tests]
+    needs: [changes, interface-tests, channel-delivery, updater-tests, r8-playback]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -378,17 +431,20 @@ jobs:
           MATRIX_RESULT: ${{ needs.interface-tests.result }}
           CHANNEL_RESULT: ${{ needs.channel-delivery.result }}
           UPDATER_RESULT: ${{ needs.updater-tests.result }}
+          R8_RESULT: ${{ needs.r8-playback.result }}
         run: |
           test "$CHANGES_RESULT" = success
           test "$CHANNEL_RESULT" = success
           if [[ "$RUN_ANDROID" == true ]]; then
             test "$MATRIX_RESULT" = success
             test "$UPDATER_RESULT" = success
+            test "$R8_RESULT" = success
             echo 'Interface checks passed on API 29, 30, 31, 32, 33, 34, 35, 36 and 37.'
           else
             test "$RUN_ANDROID" = false
             test "$MATRIX_RESULT" = skipped
             test "$UPDATER_RESULT" = skipped
+            test "$R8_RESULT" = skipped
             echo 'Generated update-channel JSON only: Android binaries and sources unchanged.'
           fi
 
