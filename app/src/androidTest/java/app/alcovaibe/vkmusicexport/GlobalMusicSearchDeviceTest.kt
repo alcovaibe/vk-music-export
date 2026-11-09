@@ -21,6 +21,12 @@ class GlobalMusicSearchDeviceTest {
         ui.onNodeWithTag("music_search_query").assertTextContains("a")
         ui.onNodeWithText("Исполнитель или название").assertExists()
         androidx.test.espresso.Espresso.pressBack()
+        ui.waitForIdle()
+        // On API 37, the first system Back may dismiss the IME restored after
+        // Activity recreation rather than navigate away from search.
+        if (ui.onAllNodesWithTag("music_search_screen").fetchSemanticsNodes().isNotEmpty()) {
+            androidx.test.espresso.Espresso.pressBack()
+        }
         ui.onNodeWithTag("native_music_screen").assertExists()
     }
 }

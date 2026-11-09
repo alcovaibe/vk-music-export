@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -89,7 +90,14 @@ def download_apk(manifest, directory):
     item = validate_manifest(manifest)
     directory.mkdir(parents=True, exist_ok=True)
     url = f"https://github.com/{REPO}/releases/download/{item['tag']}/{item['apk']}"
-    return read_public(url, MAX_APK, directory/item['apk'], item['size'], item['sha256'])
+    # Retry only transport failures. Never retry or relax size, hash, or signature checks.
+    for attempt in range(3):
+        try:
+            return read_public(url, MAX_APK, directory/item['apk'], item['size'], item['sha256'])
+        except ValueError as error:
+            if str(error) != 'Public download unavailable' or attempt == 2:
+                raise
+            time.sleep(5 * (attempt + 1))
 
 
 def verify_apk(path, manifest, tools=None, certificate=Path('config/release-certificate.pem')):

@@ -61,35 +61,75 @@ class CatalogRefreshDeviceTest {
             }
             ui.waitUntil(10000){model.state.value.initialized}
             ui.runOnUiThread{model.configure("vk1.a."+"SYNTHETIC".repeat(12),"CI/1")}
-            ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            // The public state flow is collected asynchronously. Waiting only for
+            // !busy/!catalogVerifying may see a stale pre-configure idle snapshot.
+            // Wait for the actual verified catalogue, not just a negative flag.
+            ui.waitUntil(20000) {
+                val current=model.state.value
+                current.probe?.owner==12L &&
+                    current.catalog?.lists?.any{it.key==album.key}==true &&
+                    current.hiddenCatalog==setOf(album.key) &&
+                    !current.busy&&!current.catalogRefreshing&&!current.catalogVerifying
+            }
             assertEquals(setOf(album.key),model.state.value.hiddenCatalog)
             assertEquals(listOf(album.key),MusicCatalog.visible(model.state.value,CatalogSection.ALBUMS).map{it.key})
             assertTrue(MusicCatalog.visible(model.state.value,CatalogSection.ALBUMS,onlyPending=true).isEmpty())
             assertEquals(listOf(playlist.key),MusicCatalog.visible(model.state.value,CatalogSection.PLAYLISTS).map{it.key})
             assertFalse(model.state.value.catalog!!.lists.any{it.key==deleted.key})
             ui.runOnUiThread{model.prepare(catalogKind=PlaylistKind.ALBUM)}
-            ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(15000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.message=="Новых треков для скачивания нет."
+            }
             assertEquals(0,AudioExportRuntime.state.value.total);assertFalse(model.downloadsOpen.value)
             ui.runOnUiThread{model.select(playlist)}
-            ui.waitUntil(10000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(10000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.selected?.key==playlist.key&&current.page!=null
+            }
             assertEquals(playlist.key,model.state.value.selected!!.key)
             ui.runOnUiThread{sources=listOf(album);model.refreshCatalog()}
-            ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(15000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.selected==null &&
+                    current.catalog?.lists?.none{it.key==playlist.key}==true
+            }
             assertNull(model.state.value.selected);assertNull(model.state.value.page)
             assertTrue(MusicCatalog.visible(model.state.value,CatalogSection.PLAYLISTS).isEmpty())
             ui.runOnUiThread{changed=true;model.refreshCatalog()}
-            ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(15000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.catalog?.lists?.any{it.key==album.key}==true &&
+                    current.hiddenCatalog.isEmpty()
+            }
             assertTrue(model.state.value.hiddenCatalog.isEmpty()) // Same count, different current ID.
             ui.runOnUiThread{changed=false;model.refreshCatalog()}
-            ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(15000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.hiddenCatalog==setOf(album.key)
+            }
             assertEquals(setOf(album.key),model.state.value.hiddenCatalog)
             withContext(Dispatchers.IO){assertTrue(SharedAudioStore(app).valid(published!!));app.contentResolver.delete(Uri.parse(published!!.uri),null,null);localDeleted=true}
             ui.runOnUiThread{model.refreshCatalog()}
-            ui.waitUntil(15000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(15000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.catalog?.lists?.any{it.key==album.key}==true &&
+                    current.hiddenCatalog.isEmpty()
+            }
             assertTrue(model.state.value.hiddenCatalog.isEmpty())
             assertEquals(listOf(album.key),MusicCatalog.visible(model.state.value,CatalogSection.ALBUMS).map{it.key})
             ui.runOnUiThread{failCatalog=true;model.refreshCatalog()}
-            ui.waitUntil(10000){!model.state.value.busy&&!model.state.value.catalogVerifying}
+            ui.waitUntil(10000) {
+                val current=model.state.value
+                !current.busy&&!current.catalogVerifying &&
+                    current.catalogError==MusicError.NETWORK&&current.catalogStale
+            }
             // A failed refresh must keep the previous confirmed catalogue visible.
             assertEquals(listOf(album.key),model.state.value.catalog?.lists?.map{it.key})
             assertTrue(model.state.value.catalogStale)

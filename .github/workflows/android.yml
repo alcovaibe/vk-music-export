@@ -1,7 +1,9 @@
 name: Android checks and APK
 on:
   push:
-    branches: [main, 'fix/**', codex/music-library-redesign, codex/music-followups]
+    # Feature/fix branches are checked by pull_request; do not launch a second
+    # full 20+ job emulator matrix for the same commit during PR review.
+    branches: [main, codex/music-library-redesign, codex/music-followups]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -44,6 +46,8 @@ jobs:
           PYHEAD
       - name: Validate channel even when Android binaries are unchanged
         run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --schema-only
+      - name: Validate acceptance JSON syntax
+        run: python3 -m json.tool docs/release-acceptance/current.json > /dev/null
       - name: Test CI change classification
         run: python3 -m unittest discover -s tools -p test_ci_change_scope.py
       - name: Classify changed files, failing open
@@ -257,6 +261,8 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
         if: matrix.language == 'java-kotlin'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        if: matrix.language == 'java-kotlin'
       - uses: github/codeql-action/init@5895b2c9be147bc7f1c75ce72c5cb577febb1907
         with:
           languages: ${{ matrix.language }}
@@ -335,7 +341,7 @@ jobs:
 
   channel-delivery:
     needs: changes
-    if: needs.changes.outputs.scope != 'markdown_only'
+    if: needs.changes.outputs.scope != 'markdown_only' && needs.changes.outputs.scope != 'acceptance_record_only'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -489,7 +495,7 @@ jobs:
           SAST_RESULT: ${{ needs.sast.result }}
         run: |
           test "$CHANGES_RESULT" = success
-          if [[ "$CHANGE_SCOPE" == markdown_only ]]; then
+          if [[ "$CHANGE_SCOPE" == markdown_only || "$CHANGE_SCOPE" == acceptance_record_only ]]; then
             test "$RUN_ANDROID" = false
             test "$CHANNEL_RESULT" = skipped
           else

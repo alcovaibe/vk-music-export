@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 import urllib.request
 from channel_contract import validate_manifest, MAX_MANIFEST
-from channel_public import read_public, SafeRedirect, verify_apk, public_manifest
+from channel_public import read_public, SafeRedirect, verify_apk, public_manifest, download_apk
 
 
 class ChannelPublicTest(unittest.TestCase):
@@ -65,6 +65,21 @@ class ChannelPublicTest(unittest.TestCase):
             request=build.return_value.open.call_args.args[0]
             self.assertNotIn('Authorization',request.headers); self.assertNotIn('Cookie',request.headers)
             self.assertEqual(self.file.read_bytes(),self.data)
+
+    def test_apk_download_retries_transport_errors_but_not_integrity_failures(self):
+        with patch('channel_public.read_public',
+                   side_effect=[ValueError('Public download unavailable'), self.file]) as reader, \
+             patch('channel_public.time.sleep') as sleep:
+            self.assertEqual(download_apk(self.manifest, Path(self.tmp.name)), self.file)
+            self.assertEqual(reader.call_count, 2)
+            sleep.assert_called_once_with(5)
+        with patch('channel_public.read_public',
+                   side_effect=ValueError('Public download integrity mismatch')) as reader, \
+             patch('channel_public.time.sleep') as sleep:
+            with self.assertRaisesRegex(ValueError, 'integrity mismatch'):
+                download_apk(self.manifest, Path(self.tmp.name))
+            reader.assert_called_once()
+            sleep.assert_not_called()
 
     def test_only_bounded_https_cdn_redirects_are_allowed(self):
         request=urllib.request.Request('https://github.com/example')
