@@ -81,17 +81,75 @@ class DiagnosticsDeviceTest {
         }finally{Intents.release()}
     }
     @Test fun queuePressureReportsLossAndProducesValidJson() {
-        // Four simultaneous producers still submit nearly six times the bounded
-        // 1,024-entry writer queue, exercising backpressure without exhausting
-        // the API 29 instrumentation process with 16,000 JSON allocations.
-        val producers=(1..4).map { Thread {repeat(1500){Diagnostics.event("synthetic_pressure",mapOf("index" to it))}}.apply{start()} }
-        producers.forEach {it.join()}
-        val result=Json.parseToJsonElement(exported()).jsonObject
-        assertTrue(result["events"]!!.jsonArray.isNotEmpty())
-        val health=result["writer_health"]!!.jsonObject
-        assertEquals(0,health["current_process_io_failures"]!!.jsonPrimitive.int)
-        if(health["current_process_total_dropped"]!!.jsonPrimitive.long>0) {
-            assertTrue(health["pending_loss"]!!.jsonPrimitive.long>0 || result["events"]!!.jsonArray.any{it.jsonObject["type"]!!.jsonPrimitive.content=="queue_loss"})
+        val producers=(1..4).map { Thread {
+            repeat(1500) { Diagnostics.event("synthetic_pressure",mapOf("index" to it)) }
+        }.apply { start() } }
+        producers.forEach { it.join() }
+
+        // Exercise the actual sharing/export path under pressure. Parsing the
+        // resulting multi-megabyte JSON into a second JsonObject would itself
+        // exhaust a 16 MiB API 29 heap, masking whether the export is valid.
+        val worker=Executors.newSingleThreadExecutor()
+        val file=try {
+            worker.submit<java.io.File> { Diagnostics.exportToFile() }.get(15,TimeUnit.SECONDS)
+        } finally { worker.shutdown() }
+        var events=0
+        var sawPressure=false
+        var sawQueueLoss=false
+        var schema=false
+        var sawHealth=false
+        var ioFailures=-1L
+        var totalDropped=0L
+        var pendingLoss=0L
+        file.reader(Charsets.UTF_8).use { input ->
+            android.util.JsonReader(input).use { reader ->
+                reader.beginObject()
+                while(reader.hasNext()) {
+                    when(reader.nextName()) {
+                        "schema" -> schema=reader.nextInt()==1
+                        "events" -> {
+                            reader.beginArray()
+                            while(reader.hasNext()) {
+                                reader.beginObject()
+                                var type: String?=null
+                                while(reader.hasNext()) {
+                                    if(reader.nextName()=="type") type=reader.nextString()
+                                    else reader.skipValue()
+                                }
+                                reader.endObject()
+                                events++
+                                if(type=="synthetic_pressure") sawPressure=true
+                                if(type=="queue_loss") sawQueueLoss=true
+                            }
+                            reader.endArray()
+                        }
+                        "writer_health" -> {
+                            sawHealth=true
+                            reader.beginObject()
+                            while(reader.hasNext()) {
+                                when(reader.nextName()) {
+                                    "current_process_io_failures" -> ioFailures=reader.nextLong()
+                                    "current_process_total_dropped" -> totalDropped=reader.nextLong()
+                                    "pending_loss" -> pendingLoss=reader.nextLong()
+                                    else -> reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                assertEquals(android.util.JsonToken.END_DOCUMENT,reader.peek())
+            }
+        }
+        assertTrue("Missing diagnostics schema",schema)
+        assertTrue("Missing journal events",events>0)
+        assertTrue("Pressure records were not exported",sawPressure)
+        assertTrue("Missing writer-health record",sawHealth)
+        assertEquals(0L,ioFailures)
+        if(totalDropped>0) {
+            assertTrue(pendingLoss>0 || sawQueueLoss)
         }
     }
 }
