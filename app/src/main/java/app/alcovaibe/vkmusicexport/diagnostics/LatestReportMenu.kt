@@ -64,7 +64,7 @@ internal fun LatestReportMenu(onAbout: ()->Unit,extraItems: @Composable androidx
 internal object LatestReportShare {
     /** Call on IO. Defaults to only the latest/current run, never a previously exported file. */
     fun intent(context: Context,previous: Boolean=false): Intent {
-        val file=Diagnostics.shareFile(Diagnostics.export(previous=previous),previous)
+        val file=Diagnostics.exportToFile(previous=previous)
         val uri=FileProvider.getUriForFile(context,"${context.packageName}.diagnostics",file)
         return Intent(Intent.ACTION_SEND).apply {
             type="application/json";putExtra(Intent.EXTRA_STREAM,uri)
