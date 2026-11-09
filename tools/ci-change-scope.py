@@ -1,4 +1,4 @@
-"""Skip Android work only for proven Markdown-only changes or generated channel pushes.
+"""Skip Android work only for proven documentation/acceptance-only changes or generated channel pushes.
 
 Manual runs, release markers, mixed changes and unavailable history run full CI.
 """
@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 CHANNEL_FILE = "docs/updates/android.json"
+ACCEPTANCE_FILE = "docs/release-acceptance/current.json"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
@@ -19,10 +20,15 @@ def markdown_only(entries):
     )
 
 
+def acceptance_record_only(entries):
+    # This evidence record cannot change Android binaries; stable promotion has its own gate.
+    return entries == [("M", ACCEPTANCE_FILE)]
+
+
 def requires_android_checks(event_name, ref, entries, message=""):
     if event_name not in ("push", "pull_request") or "[publish-" in message:
         return True
-    if markdown_only(entries):
+    if markdown_only(entries) or acceptance_record_only(entries):
         return False
     return not (
         event_name == "push" and ref == "refs/heads/main"
@@ -64,7 +70,9 @@ def main():
             diff = changed_entries(base, head)
             full = requires_android_checks(event, env.get("GITHUB_REF", ""), diff, message)
             if not full:
-                reason = "markdown_only" if markdown_only(diff) else "generated_update_json_only"
+                reason = ("markdown_only" if markdown_only(diff) else
+                          "acceptance_record_only" if acceptance_record_only(diff) else
+                          "generated_update_json_only")
         except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
             print(f"Cannot prove documentation-only change: {exc}; running full checks.")
     value = "true" if full else "false"
