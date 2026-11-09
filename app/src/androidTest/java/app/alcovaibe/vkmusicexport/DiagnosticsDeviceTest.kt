@@ -81,7 +81,10 @@ class DiagnosticsDeviceTest {
         }finally{Intents.release()}
     }
     @Test fun queuePressureReportsLossAndProducesValidJson() {
-        val producers=(1..4).map { Thread {repeat(4000){Diagnostics.event("synthetic_pressure",mapOf("index" to it))}}.apply{start()} }
+        // Four simultaneous producers still submit nearly six times the bounded
+        // 1,024-entry writer queue, exercising backpressure without exhausting
+        // the API 29 instrumentation process with 16,000 JSON allocations.
+        val producers=(1..4).map { Thread {repeat(1500){Diagnostics.event("synthetic_pressure",mapOf("index" to it))}}.apply{start()} }
         producers.forEach {it.join()}
         val result=Json.parseToJsonElement(exported()).jsonObject
         assertTrue(result["events"]!!.jsonArray.isNotEmpty())
