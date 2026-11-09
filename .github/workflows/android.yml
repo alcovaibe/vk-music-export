@@ -1,7 +1,9 @@
 name: Android checks and APK
 on:
   push:
-    branches: [main, 'fix/**', codex/music-library-redesign, codex/music-followups]
+    # Feature/fix branches are checked by pull_request; do not launch a second
+    # full 20+ job emulator matrix for the same commit during PR review.
+    branches: [main, codex/music-library-redesign, codex/music-followups]
   pull_request:
   workflow_dispatch:
     inputs:
