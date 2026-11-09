@@ -1,0 +1,97 @@
+# One-time, explicitly owner-requested promotion of the original signed APK.
+# The candidate remains marked as incompletely manually tested in the release notes.
+name: Promote existing VK Music Export 0.13.0 RC to Latest
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/promote-0130.yml
+permissions:
+  contents: write
+concurrency:
+  group: vk-music-export-promote-0-13-0-1565
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.repository == 'alcovaibe/vk-music-export' && contains(github.event.head_commit.message, '[owner-promote-0.13.0-1565]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: alcovaibe/vk-music-export
+    steps:
+      - name: Verify original release and mark it Latest without rebuilding APK
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import re
+          import subprocess
+          import os
+
+          repo = 'alcovaibe/vk-music-export'
+          candidate_tag = 'v0.13.0-build.1565-rc'
+          stable_tag = 'v0.13.0-build.1565'
+          source = '005ea95d08dc491ea08c33cdfb85f83506e98ff6'
+          release_id = 437885295
+          apk_name = 'VK-Music-Export-0.13.0-1565.apk'
+          apk_hash = 'sha256:f77424e5cbf95386f31eb70d74e2b14fd52755a17bd83505b5bea4ff25491ae3'
+          apk_size = 7511271
+
+          def api(endpoint, method='GET', body=None):
+              args = ['gh', 'api', f'repos/{repo}/{endpoint}']
+              if body is not None:
+                  args += ['--method', method, '--input', '-']
+              result = subprocess.run(args, text=True, capture_output=True,
+                                      input=json.dumps(body) if body is not None else None)
+              if result.returncode:
+                  raise RuntimeError(f'GitHub {method} {endpoint}: {result.stderr[:500]}')
+              return json.loads(result.stdout) if result.stdout.strip() else None
+
+          latest = api('releases/latest')
+          if latest.get('id') == release_id:
+              assert latest['tag_name'] == stable_tag and not latest['prerelease']
+              print('Already Latest:', latest['html_url'])
+              raise SystemExit(0)
+          old_code = re.fullmatch(r'v[^ ]+-build\.(\d+)', latest['tag_name'])
+          assert old_code and int(old_code[1]) < 1565, 'Newer Latest exists: promotion blocked'
+
+          rc = api('releases/tags/' + candidate_tag)
+          assert rc['id'] == release_id and rc['tag_name'] == candidate_tag
+          assert rc['target_commitish'] == source and rc['prerelease'] and not rc['draft']
+          assert api('git/ref/tags/' + candidate_tag)['object']['sha'] == source
+          assets = {asset['name']: asset for asset in rc['assets']}
+          assert set(assets) == {apk_name, 'SHA256SUMS.txt', 'release-evidence.zip'}
+          apk = assets[apk_name]
+          assert apk['state'] == 'uploaded' and apk['size'] == apk_size and apk['digest'] == apk_hash
+          assert all(asset['state'] == 'uploaded' for asset in assets.values())
+
+          # The RC tag stays in Git; a stable tag points at the exact same source.
+          ref_path = f'repos/{repo}/git/ref/tags/{stable_tag}'
+          current_ref = subprocess.run(['gh', 'api', ref_path], text=True, capture_output=True)
+          if current_ref.returncode == 0:
+              assert json.loads(current_ref.stdout)['object']['sha'] == source
+          else:
+              assert '404' in current_ref.stderr, 'Unexpected stable tag lookup error'
+              api('git/refs', 'POST', {'ref': f'refs/tags/{stable_tag}', 'sha': source})
+
+          note = ('Опубликовано как Latest по явному запросу владельца. '
+                  'Исходный APK 1565 и его подпись не изменены. '
+                  'Ручная приёмка ещё не завершена; не все сценарии подтверждены.\n\n')
+          original_notes = rc['body'].replace(' · rc', ' · stable', 1)
+          promoted = api(f'releases/{release_id}', 'PATCH', {
+              'tag_name': stable_tag, 'target_commitish': source,
+              'prerelease': False, 'draft': False, 'make_latest': 'true',
+              'name': 'VK Music Export 0.13.0 · 1565',
+              'body': note + original_notes,
+          })
+          assert promoted['id'] == release_id and promoted['tag_name'] == stable_tag
+          assert not promoted['prerelease'] and not promoted['draft']
+          confirmed = api('releases/latest')
+          assert confirmed['id'] == release_id and confirmed['tag_name'] == stable_tag
+          print('PROMOTED_LATEST:', confirmed['html_url'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('Promoted existing signed APK build 1565 to Latest: '
+                        + confirmed['html_url'] + '\n\n')
+              out.write('Manual testing still pending. In-app update channel unchanged.\n')
+          PY
