@@ -100,6 +100,14 @@ object Diagnostics {
         if(!queue.offer(Item(action={future.complete(journal?.previous()!=null)}),3,TimeUnit.SECONDS))return false
         return future.get(5,TimeUnit.SECONDS)
     }
+    private fun writerHealth() = buildJsonObject {
+        put("pending_loss", lost.get())
+        put("current_process_total_dropped", totalLost.get())
+        put("current_process_io_failures", ioFailures.get())
+        put("writer_alive", writerAlive)
+        put("health_scope", "exporting process; prior runs only have persisted loss markers")
+    }
+
     fun export(previous: Boolean = false): String {
         check(Looper.myLooper() != Looper.getMainLooper())
         val future = CompletableFuture<String>()
@@ -107,17 +115,42 @@ object Diagnostics {
             try {
                 val j = checkNotNull(journal) { "Journal unavailable" }; j.sync()
                 val id = if (previous) j.previous() ?: error("No previous run") else j.runId
-                val result = Json.parseToJsonElement(j.export(id)).jsonObject.toMutableMap()
-                result["writer_health"] = buildJsonObject {
-                    put("pending_loss", lost.get()); put("current_process_total_dropped", totalLost.get())
-                    put("current_process_io_failures", ioFailures.get()); put("writer_alive", writerAlive)
-                    put("health_scope", "exporting process; prior runs only have persisted loss markers")
-                }
-                future.complete(JsonObject(result).toString())
+                val output = java.io.StringWriter()
+                j.writeExport(output, id, writerHealth())
+                future.complete(output.toString())
             } catch (e: Exception) { future.completeExceptionally(e) }
         }), 3, TimeUnit.SECONDS)) { "Journal busy" }
         return future.get(10, TimeUnit.SECONDS)
     }
+
+    /**
+     * The sharing path must not construct a multi-megabyte String or JsonObject
+     * in the app heap. Write the same valid JSON schema straight to a cache file
+     * on the single journal writer thread, then atomically replace the old export.
+     */
+    fun exportToFile(previous: Boolean = false): File {
+        check(Looper.myLooper() != Looper.getMainLooper())
+        val future = CompletableFuture<File>()
+        check(queue.offer(Item(action = {
+            try {
+                val j = checkNotNull(journal) { "Journal unavailable" }; j.sync()
+                val id = if (previous) j.previous() ?: error("No previous run") else j.runId
+                val dir = File(app.cacheDir, "diagnostic-export").apply { check(isDirectory || mkdirs()) }
+                val file = File(dir, if (previous) "vk-music-diagnostics-previous.json" else "vk-music-diagnostics.json")
+                val temporary = File(dir, file.name + ".tmp")
+                try {
+                    temporary.outputStream().bufferedWriter(Charsets.UTF_8).use {
+                        j.writeExport(it, id, writerHealth())
+                    }
+                    java.nio.file.Files.move(temporary.toPath(), file.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    future.complete(file)
+                } finally { temporary.delete() }
+            } catch (e: Exception) { future.completeExceptionally(e) }
+        }), 3, TimeUnit.SECONDS)) { "Journal busy" }
+        return future.get(10, TimeUnit.SECONDS)
+    }
+
     fun shareFile(json: String,previous: Boolean=false): File {
         val dir = File(app.cacheDir, "diagnostic-export").apply { mkdirs() }
         // Single bounded export file, <= ~3.1 MB; retained logs <=15 MB total.
