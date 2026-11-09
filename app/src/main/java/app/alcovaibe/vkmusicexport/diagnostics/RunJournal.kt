@@ -64,30 +64,59 @@ class RunJournal(private val root: File, runId: String? = null,
     private fun open() { stream = FileOutputStream(File(directory, "$part.ndjson"), true); bytes = File(directory, "$part.ndjson").length() }
     fun sync() { stream?.fd?.sync() }
     fun previous(): String? = root.listFiles()?.filter { it.isDirectory && it.name != this.runId }?.maxByOrNull { it.name }?.name
-    fun export(id: String = runId): String {
+    /**
+     * Stream validated NDJSON records directly to the destination. In particular,
+     * never materialize a JsonArray of the entire journal: Android 10 can give
+     * instrumentation/app processes a 16 MiB heap, far below the temporary memory
+     * needed for both the parsed tree and its full JSON serialization.
+     *
+     * Only valid complete JSON objects are included. The exported schema and
+     * recovery counters remain the same as with the in-memory implementation.
+     */
+    fun writeExport(writer: java.io.Writer, id: String = runId, writerHealth: JsonObject? = null) {
         require(id == runId || id == previous())
-        val records = mutableListOf<JsonElement>()
         var damaged = 0
-        val parts = File(root, id).listFiles()?.filter { it.extension == "ndjson" }?.sortedBy { it.nameWithoutExtension.toIntOrNull() ?: -1 }.orEmpty()
-        parts.forEach { file ->
-            file.bufferedReader().useLines { lines -> lines.forEach { line ->
-                // A killed write can leave an incomplete final line. Never insert raw bytes into JSON.
-                val parsed = runCatching { Json.parseToJsonElement(line) }.getOrNull()
-                if (parsed is JsonObject) records.add(parsed) else damaged++
-            } }
-        }
-        return buildJsonObject {
-            val startup=mutableListOf<JsonElement>()
-            File(root,"$id/startup.meta").takeIf{it.exists()}?.forEachLine { line ->
-                val parsed=runCatching{Json.parseToJsonElement(line)}.getOrNull()
-                if(parsed is JsonObject) startup.add(parsed) else damaged++
+        val directory = File(root, id)
+        val parts = directory.listFiles()?.filter { it.extension == "ndjson" }
+            ?.sortedBy { it.nameWithoutExtension.toIntOrNull() ?: -1 }.orEmpty()
+
+        fun writeRecords(files: List<File>) {
+            var first = true
+            files.forEach { file ->
+                file.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        // A killed write may leave an incomplete last record.
+                        val parsed = runCatching { Json.parseToJsonElement(line) }.getOrNull()
+                        if (parsed is JsonObject) {
+                            if (!first) writer.append(',')
+                            writer.append(parsed.toString())
+                            first = false
+                        } else damaged++
+                    }
+                }
             }
-            put("schema", 1); put("startup_snapshot",JsonArray(startup)); put("run_id", id); put("exported_at", Instant.now().toString())
-            put("recovery_invalid_records", damaged)
-            put("history_truncated", parts.firstOrNull()?.nameWithoutExtension?.toIntOrNull()?.let { it > 0 } ?: false)
-            put("observability", "Chrome is external: the app observes intent dispatch and native lifecycle, not Chrome page loads, DOM, console, UA/Client Hints, cookies or requests. Native VK API and experimental device-pairing events contain partial metadata from the app's own HTTPS clients; they are not a complete network trace. Browser dispatch, returning to the app and pairing approval alone do not prove music access. CONNECTED requires a successful native music probe and encrypted credential storage. Retained earlier runs may contain partial WebView callbacks. Missing events do not prove absence of requests; process kill can lose queued or unsynced events. No shutdown event is not proof of a crash.")
-            put("events", JsonArray(records))
-        }.toString()
+        }
+
+        writer.append("{\"schema\":1,\"startup_snapshot\":[")
+        writeRecords(listOf(File(directory, "startup.meta")).filter { it.isFile })
+        writer.append("],\"run_id\":").append(JsonPrimitive(id).toString())
+        writer.append(",\"exported_at\":").append(JsonPrimitive(Instant.now().toString()).toString())
+        writer.append(",\"history_truncated\":")
+            .append((parts.firstOrNull()?.nameWithoutExtension?.toIntOrNull()?.let { it > 0 } ?: false).toString())
+        writer.append(",\"observability\":")
+            .append(JsonPrimitive("Chrome is external: the app observes intent dispatch and native lifecycle, not Chrome page loads, DOM, console, UA/Client Hints, cookies or requests. Native VK API and experimental device-pairing events contain partial metadata from the app's own HTTPS clients; they are not a complete network trace. Browser dispatch, returning to the app and pairing approval alone do not prove music access. CONNECTED requires a successful native music probe and encrypted credential storage. Retained earlier runs may contain partial WebView callbacks. Missing events do not prove absence of requests; process kill can lose queued or unsynced events. No shutdown event is not proof of a crash.").toString())
+        writer.append(",\"events\":[")
+        writeRecords(parts)
+        writer.append("],\"recovery_invalid_records\":").append(damaged.toString())
+        if (writerHealth != null) {
+            writer.append(",\"writer_health\":").append(writerHealth.toString())
+        }
+        writer.append('}')
     }
+
+    /** Compatibility API for smaller reports and existing callers. */
+    fun export(id: String = runId): String =
+        java.io.StringWriter().also { writeExport(it, id) }.toString()
+
     fun close() { sync(); stream?.close(); stream = null }
 }
