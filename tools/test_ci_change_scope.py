@@ -43,6 +43,25 @@ class AndroidScopeTest(unittest.TestCase):
         for status in ("A", "D"):
             self.assertTrue(scope.requires_android_checks("push", "refs/heads/main", [(status, scope.CHANNEL_FILE)]))
 
+    def test_acceptance_only_skips_expensive_android_jobs_without_hiding_code_changes(self):
+        entries = [("M", scope.ACCEPTANCE_FILE)]
+        for event, ref in [("push", "refs/heads/main"),
+                           ("push", "refs/heads/docs/accept-1565-playback"),
+                           ("pull_request", "refs/pull/79/merge")]:
+            self.assertFalse(scope.requires_android_checks(event, ref, entries))
+        for entries in [
+            [("A", scope.ACCEPTANCE_FILE)], [("D", scope.ACCEPTANCE_FILE)],
+            [("M", scope.ACCEPTANCE_FILE), ("M", "app/Main.kt")],
+            [("M", scope.ACCEPTANCE_FILE), ("M", ".github/workflows/android.yml")],
+            [("M", scope.ACCEPTANCE_FILE), ("M", scope.CHANNEL_FILE)],
+        ]:
+            self.assertTrue(scope.requires_android_checks("pull_request", "refs/pull/79/merge", entries))
+        self.assertTrue(scope.requires_android_checks(
+            "push", "refs/heads/main", [("M", scope.ACCEPTANCE_FILE)],
+            "Release [publish-main-0.13.0]"))
+        self.assertTrue(scope.requires_android_checks(
+            "workflow_dispatch", "refs/heads/main", [("M", scope.ACCEPTANCE_FILE)]))
+
     def test_invalid_base_fails_open(self):
         for before in ("", "0" * 40, "bad"):
             with self.assertRaises(ValueError):
