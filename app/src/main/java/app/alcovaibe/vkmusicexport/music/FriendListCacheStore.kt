@@ -4,6 +4,8 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -141,4 +143,13 @@ internal class FriendListCacheStore(context: Context) {
         const val KEY_ALIAS="vkm-friends-cache-v1"
         val lock=Any()
     }
+}
+
+/** IO boundary shared by the UI controller and future background synchronization. */
+internal class FriendListRepository(private val store: FriendListCacheStore) {
+    suspend fun restore(accountId: Long): FriendListSnapshot?=
+        withContext(Dispatchers.IO) { store.read(accountId) }
+    suspend fun persist(snapshot: FriendListSnapshot)=
+        withContext(Dispatchers.IO) { store.write(snapshot) }
+    suspend fun clear()=withContext(Dispatchers.IO) { store.clear() }
 }
