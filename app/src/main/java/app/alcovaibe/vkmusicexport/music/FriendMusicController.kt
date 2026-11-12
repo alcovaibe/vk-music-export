@@ -27,8 +27,16 @@ internal class FriendMusicController(private val application: Application,privat
         publish={id,status->mutable.update{state->if(state.friends.any{it.id==id})
             state.copy(friendAccess=state.friendAccess+(id to status))else state}},
         changedSession={availabilityCache.clear();exportReads.clear();lease=null
-            cacheAccount=null;restored=false;lastListAttemptMs=null
-            mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))},
+            // A failed renewal does not invalidate already verified friend identities.
+            scope.launch {
+                val owner=withContext(Dispatchers.IO){runCatching{vault.read()?.accountId}.getOrNull()}
+                if(owner==cacheAccount&&state.value.friendsComplete) {
+                    mutable.update{it.copy(friendAccess=emptyMap())}
+                }else {
+                    cacheAccount=null;restored=false;lastListAttemptMs=null
+                    mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))
+                }
+            }},
         report={issue->Diagnostics.event("music_friend_access_preview",mapOf("reason" to issue.code.name,"vk_code" to issue.remoteCode))})
     private fun updatePreviews(){previews.setActive(foreground&&previewVisible&&state.value.user==null)}
     fun setForeground(value: Boolean){foreground=value;updatePreviews()}
@@ -41,7 +49,7 @@ internal class FriendMusicController(private val application: Application,privat
 
     /** Allows offline restoration if the last verified VK owner is already in the credential vault. */
     suspend fun ensureFreshFromSavedAccess() {
-        val owner=withContext(Dispatchers.IO) { (sessions?.current()?:vault.read())?.accountId }
+        val owner=withContext(Dispatchers.IO) { vault.read()?.accountId }
         currentCoroutineContext().ensureActive()
         owner?.let { ensureFresh(it) }
     }
@@ -58,7 +66,7 @@ internal class FriendMusicController(private val application: Application,privat
             val saved=runCatching { snapshots.restore(accountId) }.getOrNull()
             currentCoroutineContext().ensureActive()
             if(epoch!=generation||cacheAccount!=accountId)return
-            val access=withContext(Dispatchers.IO){sessions?.current()?:vault.read()}
+            val access=withContext(Dispatchers.IO){vault.read()}
             currentCoroutineContext().ensureActive()
             if(epoch!=generation||cacheAccount!=accountId||access?.accountId!=accountId)return
             restored=true
