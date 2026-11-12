@@ -28,9 +28,6 @@ internal fun MusicSearchScreen(state: MusicSearchState,onQuery:(String)->Unit,on
             item("query") {
                 OutlinedTextField(value=state.query,onValueChange=onQuery,label={Text("Исполнитель или название")},
                     singleLine=true,modifier=Modifier.fillMaxWidth().testTag("music_search_query"))
-                if(state.capability==CapabilityStatus.EXPERIMENTAL)
-                    Text("Экспериментальный источник ВК. Доступность результатов и аудио зависит от текущего подключения.",
-                        style=MaterialTheme.typography.bodySmall)
             }
             if(state.phase==MusicSearchPhase.LOADING)item("loading") {
                 LinearProgressIndicator(Modifier.fillMaxWidth().semantics{contentDescription="Поиск музыки"})

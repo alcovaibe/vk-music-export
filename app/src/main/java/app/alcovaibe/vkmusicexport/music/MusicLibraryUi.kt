@@ -43,7 +43,11 @@ import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 
 internal enum class MusicDestination(val label: String,val icon: ImageVector) {
-    LIBRARY("Библиотека",LibraryNoteIcon),SAVED("Сохранённое",SavedLibraryIcon),FRIENDS("Друзья",FriendsMusicIcon),DOWNLOADS("Загрузки",DownloadIcon)
+    LIBRARY("Библиотека",LibraryNoteIcon),
+    SEARCH("Поиск",Icons.Default.Search),
+    SAVED("Сохранённое",SavedLibraryIcon),
+    FRIENDS("Друзья",FriendsMusicIcon),
+    DOWNLOADS("Загрузки",DownloadIcon)
 }
 internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
     TRACKS("Треки",LibraryNoteIcon),PLAYLISTS("Плейлисты",PlaylistIcon),
@@ -72,7 +76,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
             HorizontalDivider(color=Color(0xFFD4CABB),thickness=1.dp)
             NavigationBar(containerColor=Color(0xFFE5DED3),tonalElevation=0.dp,
                 modifier=Modifier.testTag("music_bottom_navigation")) {
-                listOf(MusicDestination.LIBRARY,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->
+                listOf(MusicDestination.LIBRARY,MusicDestination.SEARCH,MusicDestination.SAVED,MusicDestination.FRIENDS).forEach{item->
                     NavigationBarItem(selected=destination==item,onClick={onDestination(item)},
                         icon={Icon(item.icon,null)},label={Text(item.label)},
                         modifier=Modifier.testTag("music_nav_${item.name}"),
