@@ -12,14 +12,13 @@ import org.junit.runner.RunWith
 class GlobalMusicSearchDeviceTest {
     @get:Rule val ui=createAndroidComposeRule<MainActivity>()
     @Test fun searchIsReachableAndBackAndActivityRecreationKeepTheUserRoute() {
-        ui.onNodeWithContentDescription("Меню").performClick()
-        ui.onNodeWithTag("open_music_search").performClick()
+        ui.onNodeWithTag("music_nav_SEARCH").performClick()
         ui.onNodeWithTag("music_search_screen").assertExists()
         ui.onNodeWithTag("music_search_query").performTextInput("a")
         ui.activityRule.scenario.recreate()
         ui.onNodeWithTag("music_search_screen").assertExists()
         ui.onNodeWithTag("music_search_query").assertTextContains("a")
-        ui.onNodeWithText("Исполнитель или название").assertExists()
+        ui.onNodeWithTag("music_nav_SEARCH").assertIsSelected()
         androidx.test.espresso.Espresso.pressBack()
         ui.waitForIdle()
         // On API 37, the first system Back may dismiss the IME restored after
@@ -28,5 +27,13 @@ class GlobalMusicSearchDeviceTest {
             androidx.test.espresso.Espresso.pressBack()
         }
         ui.onNodeWithTag("native_music_screen").assertExists()
+        ui.onNodeWithTag("music_nav_LIBRARY").assertIsSelected()
+    }
+    @Test fun searchIsOnlyInBottomNavigationAndKeepsMiniPlayerSpace() {
+        ui.onNodeWithTag("music_nav_SEARCH").assertExists().performClick()
+        ui.onNodeWithTag("music_search_screen").assertExists()
+        ui.onNodeWithTag("music_nav_SAVED").assertExists()
+        ui.onNodeWithContentDescription("Меню").performClick()
+        ui.onNodeWithTag("open_music_search").assertDoesNotExist()
     }
 }
