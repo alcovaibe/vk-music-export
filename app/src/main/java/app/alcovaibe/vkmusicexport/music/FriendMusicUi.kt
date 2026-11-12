@@ -102,10 +102,29 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<PlaybackExport>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
     onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={}) {
     if(!configured) {
-        item("friends_connect"){Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text("Подключи ВК, чтобы открыть друзей и доступную тебе музыку.")
-            Button(onClick=onConnect){Text("Подключить ВК")}
-        }}
+        item("friends_connect") {
+            Box(
+                modifier=Modifier.fillParentMaxSize().testTag("friends_connect"),
+                contentAlignment=Alignment.Center
+            ) {
+                Column(
+                    modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=24.dp),
+                    horizontalAlignment=Alignment.CenterHorizontally,
+                    verticalArrangement=Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        "Подключи ВК, чтобы открыть друзей и доступную тебе музыку.",
+                        textAlign=TextAlign.Center,
+                        style=MaterialTheme.typography.bodyLarge,
+                        modifier=Modifier.fillMaxWidth().testTag("friends_connect_prompt")
+                    )
+                    Button(
+                        onClick=onConnect,
+                        modifier=Modifier.heightIn(min=48.dp).testTag("friends_connect_button")
+                    ) { Text("Подключить ВК") }
+                }
+            }
+        }
         return
     }
     val user=state.user
