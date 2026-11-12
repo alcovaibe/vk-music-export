@@ -57,6 +57,11 @@ internal class FriendMusicController(private val application: Application,privat
     /** Called after verifying the signed-in VK account. Disk data precedes network work. */
     suspend fun ensureFresh(accountId: Long) {
         if(accountId<=0)return
+        // Check the credential owner even when an in-memory snapshot is already hydrated.
+        // An external account switch must never leave the previous user's list visible.
+        val actualOwner=withContext(Dispatchers.IO){vault.read()?.accountId}
+        currentCoroutineContext().ensureActive()
+        if(actualOwner!=accountId){reset();return}
         if(cacheAccount!=accountId) {
             reset()
             cacheAccount=accountId
@@ -68,7 +73,8 @@ internal class FriendMusicController(private val application: Application,privat
             if(epoch!=generation||cacheAccount!=accountId)return
             val access=withContext(Dispatchers.IO){vault.read()}
             currentCoroutineContext().ensureActive()
-            if(epoch!=generation||cacheAccount!=accountId||access?.accountId!=accountId)return
+            if(epoch!=generation||cacheAccount!=accountId)return
+            if(access?.accountId!=accountId){reset();return}
             restored=true
             if(saved!=null&&!state.value.friendsComplete) {
                 mutable.update { it.copy(friends=saved.friends,friendsTotal=saved.friends.size,
