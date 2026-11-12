@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import app.alcovaibe.vkmusicexport.R
@@ -59,7 +60,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
     menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,content: LazyListScope.()->Unit) {
-    BackHandler(onBack=onBack)
+    if(!LocalInspectionMode.current) BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
             colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
