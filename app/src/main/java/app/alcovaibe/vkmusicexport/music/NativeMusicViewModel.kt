@@ -1101,7 +1101,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(_state.value.busy)return
         Diagnostics.button("native_music_forget_access")
         run("forget") {g->
-            withContext(Dispatchers.IO){vault.delete();friends.clearPersisted();DuplicateCheckRuntime.forget(getApplication())};active(g);sessions?.reload()
+            withContext(Dispatchers.IO){friends.clearPersisted();vault.delete();DuplicateCheckRuntime.forget(getApplication())};active(g);sessions?.reload()
             _state.value=NativeMusicState(initialized=true,busy=true,stage="forget",message="Доступ ВК удалён с устройства.")
             artistController.reset()
         }
