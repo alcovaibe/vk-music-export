@@ -39,6 +39,13 @@ internal class FriendMusicController(private val application: Application,privat
         previews.clear();exportReads.clear();mutable.value=FriendMusicState()
     }
 
+    /** Allows offline restoration if the last verified VK owner is already in the credential vault. */
+    suspend fun ensureFreshFromSavedAccess() {
+        val owner=withContext(Dispatchers.IO) { (sessions?.current()?:vault.read())?.accountId }
+        currentCoroutineContext().ensureActive()
+        owner?.let { ensureFresh(it) }
+    }
+
     /** Called after verifying the signed-in VK account. Disk data precedes network work. */
     suspend fun ensureFresh(accountId: Long) {
         if(accountId<=0)return
