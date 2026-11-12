@@ -117,9 +117,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     // Verify the owner, restore encrypted local metadata, and refresh only if stale.
     // Returning from background also checks TTL without requesting VK on each tab switch.
     LaunchedEffect(state.probe?.owner,state.initialized,state.configured,state.busy,friendsResumeEpoch) {
-        val owner=state.probe?.owner
-        if(owner!=null&&state.initialized&&state.configured&&!state.busy)
-            model.friends.ensureFresh(owner)
+        if(state.initialized&&state.configured&&!state.busy) {
+            val owner=state.probe?.owner
+            if(owner!=null)model.friends.ensureFresh(owner)
+            else model.friends.ensureFreshFromSavedAccess()
+        }
     }
     val friendsRootScroll=rememberLazyListState()
     LaunchedEffect(destination,friendState.user?.id,friendsRootScroll) {
