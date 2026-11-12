@@ -102,7 +102,7 @@ internal fun LazyListScope.musicSearchItems(
 
     itemsIndexed(state.tracks,key={index,track->"search_${index}_${track.id}"}) { index,track->
         val ready=state.audio!=CapabilityStatus.UNAVAILABLE && state.active &&
-            (state.phase==MusicSearchPhase.RESULTS || state.phase==MusicSearchPhase.LOADING) &&
+            state.phase==MusicSearchPhase.RESULTS &&
             track.duration>0 && !track.restricted && track.metadataError==null
         MusicSearchTrackRow(
             track=track,artwork=preview(track),
