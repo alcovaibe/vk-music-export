@@ -133,11 +133,10 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
     val searchState by model.musicSearch.collectAsState()
-    var searchOpen by rememberSaveable {mutableStateOf(false)}
-    DisposableEffect(lifecycle,model,searchOpen,playerExpanded) {
-        model.setSearchActive(searchOpen&&!playerExpanded&&lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    DisposableEffect(lifecycle,model,destination,playerExpanded) {
+        model.setSearchActive(destination==MusicDestination.SEARCH&&!playerExpanded&&lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer=LifecycleEventObserver{_,event->when(event) {
-            Lifecycle.Event.ON_RESUME->model.setSearchActive(searchOpen&&!playerExpanded)
+            Lifecycle.Event.ON_RESUME->model.setSearchActive(destination==MusicDestination.SEARCH&&!playerExpanded)
             Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.setSearchActive(false)
             else->Unit
         }}
@@ -147,8 +146,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var aboutOpen by rememberSaveable {mutableStateOf(false)}
     var accessOpen by rememberSaveable {mutableStateOf(false)}
     var toolsOpen by rememberSaveable {mutableStateOf(false)}
-    DisposableEffect(lifecycle,model,destination,playerExpanded,aboutOpen,accessOpen,searchOpen) {
-        model.friends.setPreviewVisible(destination==MusicDestination.FRIENDS&&!playerExpanded&&!aboutOpen&&!accessOpen&&!searchOpen)
+    DisposableEffect(lifecycle,model,destination,playerExpanded,aboutOpen,accessOpen) {
+        model.friends.setPreviewVisible(destination==MusicDestination.FRIENDS&&!playerExpanded&&!aboutOpen&&!accessOpen)
         val observer=LifecycleEventObserver{_,event->when(event) {
             Lifecycle.Event.ON_RESUME->model.friends.setForeground(true)
             Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.friends.setForeground(false)
@@ -179,7 +178,6 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var presentationWasOpen by remember{mutableStateOf(downloadsOpen)}
     LaunchedEffect(downloadsOpen) {
         if(downloadsOpen) {
-            searchOpen=false
             if(destination!=MusicDestination.DOWNLOADS)downloadsOrigin=destination
             aboutOpen=false;accessOpen=false;destination=MusicDestination.DOWNLOADS
         }else if(presentationWasOpen&&destination==MusicDestination.DOWNLOADS)destination=downloadsOrigin
@@ -262,12 +260,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
         onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
         onConfirm={model.openAuthChrome(context)},onForget=model::forget,onCancel=model::cancel)
-    else if(searchOpen)MusicSearchScreen(searchState,model::searchMusic,model::retryMusicSearch,model::moreMusicSearch,
-        onBack={searchOpen=false},onPlay={model.playSearchTrack(searchState,it)},
-        onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,
-        playback=playback,onPlayer={PlaybackRuntime.expanded.value=true})
     else MusicLibraryScaffold(
         title=when(destination) {
+            MusicDestination.SEARCH->"Поиск музыки"
             MusicDestination.SAVED->"Сохранённое"
             MusicDestination.DOWNLOADS->"Загрузки"
             MusicDestination.FRIENDS->if(friendState.playlist!=null)when(friendState.playlist?.kind){PlaylistKind.ALBUM->"Альбом";PlaylistKind.UNKNOWN->"Подборка";else->"Плейлист"} else if(friendState.user!=null)"Профиль друга" else "Друзья"
@@ -275,17 +270,20 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         },destination=destination,onDestination={if(model.downloadsOpen.value)model.dismissDownloads();destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         prominentTitle=destination==MusicDestination.FRIENDS&&friendState.user==null,
         playback=playback,onPlayerOpen={PlaybackRuntime.expanded.value=true},
-        tag=if(destination==MusicDestination.DOWNLOADS)"downloads_screen" else "native_music_screen",
+        tag=when(destination){MusicDestination.DOWNLOADS->"downloads_screen";MusicDestination.SEARCH->"music_search_screen";else->"native_music_screen"},
         listIdentity=if(destination==MusicDestination.DOWNLOADS)"downloads:${queue.queueId}:$downloadsTab:$downloadsOffset" else if(destination==MusicDestination.FRIENDS)"friends:${friendState.user?.id}:${friendState.playlist?.key}" else null,
         listState=if(destination==MusicDestination.DOWNLOADS)downloadsScroll else if(destination==MusicDestination.FRIENDS&&friendState.user==null)friendsRootScroll else null,
-        onBack=::back,showBack=destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
+        onBack=::back,showBack=destination==MusicDestination.SEARCH||destination==MusicDestination.DOWNLOADS||destination==MusicDestination.FRIENDS&&friendState.user!=null||destination==MusicDestination.LIBRARY&&(state.selected!=null||category==LibraryCategory.ARTISTS&&artists.selected!=null),
         menuItems={closeMenu->
-            DropdownMenuItem(text={Text("Поиск музыки")},modifier=Modifier.testTag("open_music_search"),onClick={closeMenu();searchOpen=true})
             DropdownMenuItem(text={Text(if(destination==MusicDestination.FRIENDS)"Обновить" else "Обновить библиотеку")},enabled=state.configured&&!state.busy&&!backgroundCheck&&!friendState.busy,onClick={closeMenu();if(destination==MusicDestination.FRIENDS)model.friends.refresh()else model.checkAccess()})
             DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();if(destination==MusicDestination.DOWNLOADS){destination=downloadsOrigin;model.dismissDownloads()};onUpdates()})
             HorizontalDivider()
         }) {
-        if(destination==MusicDestination.FRIENDS) {
+        if(destination==MusicDestination.SEARCH) {
+            musicSearchItems(searchState,model::searchMusic,model::retryMusicSearch,model::moreMusicSearch,
+                onPlay={model.playSearchTrack(searchState,it)},
+                onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,preview=model::previewArtwork)
+        }else if(destination==MusicDestination.FRIENDS) {
             friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
                 onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.prepare(context,index){PlaybackLists.friends(friendPlaybackSnapshot)}})
