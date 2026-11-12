@@ -1,0 +1,27 @@
+{
+  "authorization": "owner_requested_latest",
+  "repository": "alcovaibe/vk-music-export",
+  "branch": "main",
+  "pull_request": 87,
+  "version_name": "0.13.1",
+  "manual_acceptance": "pending",
+  "expires_at": "2026-11-19T23:59:59Z",
+  "build_inputs": {
+    "app": "5486b35d0c46915665690f581ff6c87c7cb2a5ba",
+    "gradle": "ca5c4fa6e4eeb01c8ba9a002fa2041bc66f86df7",
+    "config": "ccfdde76af1f8b3602a0cc9c70c9fa7f0cf696a0",
+    "tools": "a2a073a0696f4930fc1d0d25a0a40aae325cc19b",
+    ".github": "7a70169ed40428cad69719bd0925d338a9770d73",
+    "build.gradle.kts": "53cc67ebb9044a7a37c46557f0bdf139ce70b984",
+    "gradle.properties": "e6961679fc95d6da9ab1dc56ee2e9d98ecbe6e63",
+    "settings.gradle.kts": "d24a72dba35c8384d4b817ed615378f6dca0e0cf",
+    "version.properties": "fbd3c26068908da32d817664cc00654b4e82435e",
+    "gradlew": "249efbb032ce46a80c687c0723eb172e85f6a136",
+    "gradlew.bat": "03754c4c3d9206f5c9ef69e41990dfe26a05251e",
+    "CHANGELOG.md": "d97c70f6f1f92f2439ddab661c17013a477d08d0",
+    "LICENSE": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+    "NOTICE": "7e59d121ed67eb06e2003c4bb355a02482e46e91"
+  },
+  "request": "Владелец 12.11.2026 явно запросил выпуск VK Music Export 0.13.1 как стабильного GitHub Latest после слияния PR #86. Ручная приёмка нового APK на физическом устройстве, массового экспорта и длительной фоновой работы остаётся pending и не представляется как пройденная. Перед публикацией обязательны CI, проверка подписи и побайтовой идентичности APK, проверка обновления со старых версий и публикация полного пакета доказательств.",
+  "delete_other_branches": false
+}
