@@ -125,11 +125,46 @@ class FriendListCacheDeviceTest {
     }
 
     @Test fun incompletePaginationCannotReplaceVerifiedSnapshot()=runBlocking {
-        isolated {store,_->
-            store.write(FriendListSnapshot(12,1000L,friends))
-            val saved=store.read(12)
-            assertEquals(friends,saved?.friends)
+        val vault=MusicAccessStore(app)
+        val previous=withContext(Dispatchers.IO){vault.read()}
+        val dir=File(app.cacheDir,"friend-pagination-${System.nanoTime()}").apply{mkdirs()}
+        val ctx=object: ContextWrapper(app) { override fun getNoBackupFilesDir(): File=dir }
+        val store=FriendListCacheStore(ctx)
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
+        val initial=FriendListSnapshot(12,1_700_000_000_000L,friends)
+        var now=initial.updatedAtMs+FriendListRefreshPolicy.FRESH_MS+1
+        val api=Api().apply {
+            rows=(34L..134L).map { MusicFriend(it,"Друг","$it") }
+            failAtOffset=100
         }
-        // Multiple pages are validated in FriendMusicController before persist().
+        try {
+            withContext(Dispatchers.IO) {
+                vault.save(MusicAccess("a".repeat(64),"CI/1",accountId=12))
+                store.write(initial)
+            }
+            val controller=FriendMusicController(app,api,scope,cacheStore=store,nowMs={now})
+            withContext(Dispatchers.Main){controller.ensureFresh(12)}
+            withTimeout(15_000) {
+                while(api.calls.get()<2||controller.state.value.busy)delay(10)
+            }
+            assertEquals(friends,controller.state.value.friends)
+            assertEquals(initial,withContext(Dispatchers.IO){store.read(12)})
+            assertNotNull(controller.state.value.listProblem)
+
+            api.failAtOffset=null
+            withContext(Dispatchers.Main){controller.loadFriends()}
+            withTimeout(15_000) {
+                while(controller.state.value.busy||controller.state.value.friends.size!=101)delay(10)
+            }
+            assertEquals(api.rows,withContext(Dispatchers.IO){store.read(12)}?.friends)
+            controller.reset()
+        }finally {
+            scope.cancel()
+            withContext(Dispatchers.IO) {
+                store.clear()
+                if(previous==null)vault.delete()else vault.save(previous)
+            }
+            dir.deleteRecursively()
+        }
     }
 }
