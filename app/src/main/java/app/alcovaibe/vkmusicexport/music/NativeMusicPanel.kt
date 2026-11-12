@@ -53,12 +53,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
+    var friendsResumeEpoch by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycle,model) {
         // Adding an observer to a resumed owner immediately replays ON_RESUME.
         // The initial entry already loads the library; revalidate tracks and collections on later returns.
         var skipInitialResume=lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         val observer=LifecycleEventObserver{_,event->
             if(event==Lifecycle.Event.ON_RESUME) {
+                friendsResumeEpoch++
                 model.refreshSavedLibrary()
                 if(skipInitialResume)skipInitialResume=false
                 else if(model.state.value.probe!=null&&!model.state.value.busy)model.refreshOnResume()
@@ -112,9 +114,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var downloadsTab by rememberSaveable {mutableStateOf(DownloadsTab.QUEUE)}
     var downloadsOffset by rememberSaveable {mutableIntStateOf(0)}
     val downloadsScroll=rememberLazyListState()
-    // Warm the friends list after a successful VK connection; keep the manual refresh available.
-    LaunchedEffect(state.probe?.owner,state.initialized,state.configured,state.busy,friendState.friendsComplete,friendState.busy,friendState.listProblem) {
-        if(state.probe!=null&&state.initialized&&state.configured&&!state.busy&&!friendState.friendsComplete&&!friendState.busy&&friendState.listProblem==null)model.friends.loadFriends()
+    // Verify the owner, restore encrypted local metadata, and refresh only if stale.
+    // Returning from background also checks TTL without requesting VK on each tab switch.
+    LaunchedEffect(state.probe?.owner,state.initialized,state.configured,state.busy,friendsResumeEpoch) {
+        if(state.initialized&&state.configured&&!state.busy) {
+            val owner=state.probe?.owner
+            if(owner!=null)model.friends.ensureFresh(owner)
+            else model.friends.ensureFreshFromSavedAccess()
+        }
     }
     val friendsRootScroll=rememberLazyListState()
     LaunchedEffect(destination,friendState.user?.id,friendsRootScroll) {

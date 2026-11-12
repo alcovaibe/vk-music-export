@@ -102,10 +102,29 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<PlaybackExport>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
     onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={}) {
     if(!configured) {
-        item("friends_connect"){Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text("Подключи ВК, чтобы открыть друзей и доступную тебе музыку.")
-            Button(onClick=onConnect){Text("Подключить ВК")}
-        }}
+        item("friends_connect") {
+            Box(
+                modifier=Modifier.fillParentMaxSize().testTag("friends_connect"),
+                contentAlignment=Alignment.Center
+            ) {
+                Column(
+                    modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=24.dp),
+                    horizontalAlignment=Alignment.CenterHorizontally,
+                    verticalArrangement=Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        "Подключи ВК, чтобы открыть друзей и доступную тебе музыку.",
+                        textAlign=TextAlign.Center,
+                        style=MaterialTheme.typography.bodyLarge,
+                        modifier=Modifier.fillMaxWidth().testTag("friends_connect_prompt")
+                    )
+                    Button(
+                        onClick=onConnect,
+                        modifier=Modifier.heightIn(min=48.dp).testTag("friends_connect_button")
+                    ) { Text("Подключить ВК") }
+                }
+            }
+        }
         return
     }
     val user=state.user
@@ -115,8 +134,36 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
         val matches=state.friends.filter{query.isEmpty()||it.name.contains(query,true)||it.handle?.contains(query,true)==true}
         item("friends_count"){Text(if(query.isNotEmpty())"Найдено: ${matches.size}" else if(state.friendsComplete)"Друзей: ${state.friends.size}" else "Загружено друзей: ${state.friends.size}${state.friendsTotal?.let{" из $it"}.orEmpty()}",
             color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodyMedium)}
-        if(state.busy)item("friends_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Загружаем список друзей…",style=MaterialTheme.typography.bodySmall)}
-        state.listProblem?.let{problem->item("friends_problem"){FriendProblemCard(problem,controller::loadFriends)}}
+        state.listUpdatedAtMs?.takeIf{state.friendsComplete}?.let{time->
+            item("friends_last_updated") {
+                val formatted=java.text.DateFormat.getDateTimeInstance(
+                    java.text.DateFormat.SHORT,java.text.DateFormat.SHORT
+                ).format(java.util.Date(time))
+                Text((if(state.loadedFromCache)"Сохранённый список" else "Обновлено")+" · $formatted",
+                    style=MaterialTheme.typography.bodySmall,
+                    color=MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier=Modifier.testTag("friends_last_updated"))
+            }
+        }
+        if(state.busy)item("friends_loading") {
+            Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(if(state.friendsComplete)"Обновляем список друзей…" else "Загружаем список друзей…",
+                    style=MaterialTheme.typography.bodySmall,
+                    color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        state.listProblem?.let{problem->item("friends_problem") {
+            if(state.friendsComplete) {
+                Row(Modifier.fillMaxWidth().testTag("friends_cached_error"),
+                    horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Не удалось обновить список. Показаны сохранённые данные.",
+                        modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,
+                        color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick={controller.loadFriends()}){Text("Повторить")}
+                }
+            }else FriendProblemCard(problem){controller.loadFriends()}
+        }}
         items(matches,key={"friend_${it.id}"}){friend->
             val musicAccess=state.friendAccess[friend.id]
             Surface(onClick={controller.open(friend)},enabled=!state.preparing,shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
@@ -146,7 +193,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Icon(Icons.Default.Search,null,Modifier.size(40.dp));Text(if(query.isEmpty())"Список друзей пуст" else "Друзья по этому запросу не найдены")
             }
         }
-        if(!state.busy)item("friends_refresh"){TextButton(onClick=controller::loadFriends,modifier=Modifier.testTag("friends_reload")){Text("Загрузить друзей")}}
+        if(!state.busy)item("friends_refresh"){TextButton(onClick={controller.refresh()},modifier=Modifier.testTag("friends_reload")){Text(if(state.friendsComplete)"Обновить список" else "Загрузить друзей")}}
         return
     }
     val problem=if(state.playlist!=null)state.playlistProblem else state.problems[state.tab]

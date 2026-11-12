@@ -70,7 +70,10 @@ internal fun MusicAccessManagementScreen(
     Scaffold(modifier=Modifier.fillMaxSize().testTag("music_access_management"),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text("Доступ к музыке",fontWeight=FontWeight.Bold)},navigationIcon={
             IconButton(onClick={Diagnostics.button("music_access_management_back");onBack()}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}
-        },colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}) {padding->
+        },colors=TopAppBarDefaults.topAppBarColors(
+            containerColor=MaterialTheme.colorScheme.background,
+            scrolledContainerColor=MaterialTheme.colorScheme.background
+        ))}) {padding->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("music_access_management_list"),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=12.dp,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             item("connection") {

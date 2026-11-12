@@ -28,7 +28,10 @@ internal fun AppPage(title: String,onBack: ()->Unit,tag: String="app_page",
     Scaffold(modifier=Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title)},actions=actions,navigationIcon={
             IconButton(onClick={Diagnostics.button(tag+"_back");onBack()}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}
-        })}) { padding ->
+        },colors=TopAppBarDefaults.topAppBarColors(
+            containerColor=MaterialTheme.colorScheme.background,
+            scrolledContainerColor=MaterialTheme.colorScheme.background
+        ))}) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
     }
@@ -60,7 +63,10 @@ internal fun LazyAppPage(title: String,onBack: ()->Unit,tag: String,
     Scaffold(modifier=Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title)},actions=actions,navigationIcon={
             IconButton(onClick={Diagnostics.button(tag+"_back");onBack()}){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}
-        })}) {padding->
+        },colors=TopAppBarDefaults.topAppBarColors(
+            containerColor=MaterialTheme.colorScheme.background,
+            scrolledContainerColor=MaterialTheme.colorScheme.background
+        ))}) {padding->
         LazyColumn(Modifier.fillMaxSize().padding(padding).imePadding().testTag(tag+"_list"),
             contentPadding=PaddingValues(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
     }

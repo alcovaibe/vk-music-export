@@ -38,12 +38,12 @@ class FriendPreviewLifecycleDeviceTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate);val api=Api()
         val controller=FriendMusicController(app,api,scope)
         try {
-            withContext(Dispatchers.IO){vault.save(MusicAccess("vk1.a."+"SYNTHETIC".repeat(12),"CI",accountId=12))}
+            withContext(Dispatchers.IO){FriendListCacheStore(app).clear();vault.save(MusicAccess("vk1.a."+"SYNTHETIC".repeat(12),"CI",accountId=12))}
             main{controller.loadFriends()};until{controller.state.value.friendsComplete&&!controller.state.value.busy}
             block(controller,api,vault)
         }finally {
             main{controller.reset();scope.cancel()}
-            withContext(Dispatchers.IO){if(previous==null)vault.delete()else vault.save(previous)}
+            withContext(Dispatchers.IO){FriendListCacheStore(app).clear();if(previous==null)vault.delete()else vault.save(previous)}
         }
     }
     @Test fun pauseCancelsBothProbesAndReturnReusesOnlyConfirmedVisibleResults()=fixture {c,api,_->

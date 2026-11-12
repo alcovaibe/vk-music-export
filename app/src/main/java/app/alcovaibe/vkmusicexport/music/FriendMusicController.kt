@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.*
 /** Read-only remote profiles. File publication belongs to the existing persisted download job. */
 internal class FriendMusicController(private val application: Application,private val api: MusicApi,private val scope: CoroutineScope,
     private val onDownloads: ()->Unit={},private val queueStart: suspend()->Unit={AudioExportRuntime.start(application)},
-    clock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val blocked: ()->Boolean={false},previewBlocked: ()->Boolean=blocked) {
+    clock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val blocked: ()->Boolean={false},previewBlocked: ()->Boolean=blocked,
+    cacheStore: FriendListCacheStore=FriendListCacheStore(application),private val nowMs: ()->Long=System::currentTimeMillis) {
     private val vault=MusicAccessStore(application)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application)else null
     private val mutable=MutableStateFlow(FriendMusicState());val state=mutable.asStateFlow()
@@ -16,21 +17,79 @@ internal class FriendMusicController(private val application: Application,privat
     private val availabilityCache=FriendAvailabilityCache()
     private val exportReads=ExportReadCache(clock)
     private val sourceReads=MusicSourceReader(api,exportReads)
+    private val snapshots=FriendListRepository(cacheStore)
+    private var cacheAccount: Long?=null
+    private var restored=false
+    private var lastListAttemptMs: Long?=null
     private var foreground=false
     private var previewVisible=false
     private val previews=FriendAvailabilityReader(scope,api,availabilityCache,::checked,previewBlocked,
         publish={id,status->mutable.update{state->if(state.friends.any{it.id==id})
             state.copy(friendAccess=state.friendAccess+(id to status))else state}},
         changedSession={availabilityCache.clear();exportReads.clear();lease=null
-            mutable.update{it.copy(friendAccess=emptyMap(),listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))}},
+            // A failed renewal does not invalidate already verified friend identities.
+            scope.launch {
+                val owner=withContext(Dispatchers.IO){runCatching{vault.read()?.accountId}.getOrNull()}
+                if(owner==cacheAccount&&state.value.friendsComplete) {
+                    mutable.update{it.copy(friendAccess=emptyMap())}
+                }else {
+                    cacheAccount=null;restored=false;lastListAttemptMs=null
+                    mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))
+                }
+            }},
         report={issue->Diagnostics.event("music_friend_access_preview",mapOf("reason" to issue.code.name,"vk_code" to issue.remoteCode))})
     private fun updatePreviews(){previews.setActive(foreground&&previewVisible&&state.value.user==null)}
     fun setForeground(value: Boolean){foreground=value;updatePreviews()}
     fun setPreviewVisible(value: Boolean){previewVisible=value;updatePreviews()}
     fun reset(){
         generation++;work?.cancel();work=null;lease=null
+        cacheAccount=null;restored=false;lastListAttemptMs=null
         previews.clear();exportReads.clear();mutable.value=FriendMusicState()
     }
+
+    /** Allows offline restoration if the last verified VK owner is already in the credential vault. */
+    suspend fun ensureFreshFromSavedAccess() {
+        val owner=withContext(Dispatchers.IO) { vault.read()?.accountId }
+        currentCoroutineContext().ensureActive()
+        owner?.let { ensureFresh(it) }
+    }
+
+    /** Called after verifying the signed-in VK account. Disk data precedes network work. */
+    suspend fun ensureFresh(accountId: Long) {
+        if(accountId<=0)return
+        // Check the credential owner even when an in-memory snapshot is already hydrated.
+        // An external account switch must never leave the previous user's list visible.
+        val actualOwner=withContext(Dispatchers.IO){vault.read()?.accountId}
+        currentCoroutineContext().ensureActive()
+        if(actualOwner!=accountId){reset();return}
+        if(cacheAccount!=accountId) {
+            reset()
+            cacheAccount=accountId
+        }
+        if(!restored) {
+            val epoch=generation
+            val saved=runCatching { snapshots.restore(accountId) }.getOrNull()
+            currentCoroutineContext().ensureActive()
+            if(epoch!=generation||cacheAccount!=accountId)return
+            val access=withContext(Dispatchers.IO){vault.read()}
+            currentCoroutineContext().ensureActive()
+            if(epoch!=generation||cacheAccount!=accountId)return
+            if(access?.accountId!=accountId){reset();return}
+            restored=true
+            if(saved!=null&&!state.value.friendsComplete) {
+                mutable.update { it.copy(friends=saved.friends,friendsTotal=saved.friends.size,
+                    friendsComplete=true,listUpdatedAtMs=saved.updatedAtMs,loadedFromCache=true,
+                    listProblem=null) }
+            }
+            previews.bind(access)
+            updatePreviews()
+        }
+        val current=mutable.value
+        if(!current.busy&&!current.preparing&&!FriendListRefreshPolicy.fresh(current.listUpdatedAtMs,nowMs())&&
+            FriendListRefreshPolicy.retryAllowed(lastListAttemptMs,nowMs()))loadFriends()
+    }
+
+    suspend fun clearPersisted() { snapshots.clear() }
     fun pauseRead(){
         generation++;work?.cancel();work=null;previews.setActive(false)
         mutable.update{it.copy(busy=false,preparing=false,selecting=false,selection=emptySet())}
@@ -72,14 +131,15 @@ internal class FriendMusicController(private val application: Application,privat
              catch(e: CancellationException){throw e}
              catch(e: MusicReadChanged){if(g==generation){
                  previews.clear();exportReads.clear();lease=null
-                 mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))
+                 cacheAccount=null;restored=false;lastListAttemptMs=null
+                mutable.value=FriendMusicState(listProblem=FriendMusicProblem(MusicError.ACCOUNT_CHANGED))
              }}
              catch(e: Exception){if(g==generation) {
                   val error=FriendMusicProblem.from(e)
                   Diagnostics.event("music_friend_load_failure",mapOf("reason" to error.code.name,"vk_code" to error.remoteCode))
                   problem(error)
               }}
-            finally{if(g==generation){mutable.update{it.copy(busy=false,preparing=false)};work=null}}
+            finally{if(g==generation){mutable.update{it.copy(busy=false,preparing=false,listRefreshing=false)};work=null;updatePreviews()}}
         }
     }
     private fun problem(value: FriendMusicProblem){mutable.update{when {
@@ -89,17 +149,24 @@ internal class FriendMusicController(private val application: Application,privat
         else->it.copy(problems=it.problems+(it.tab to value))
     }}}
     fun loadFriends(forceStatuses: Boolean=false) {
+        val hadComplete=state.value.friendsComplete
+        lastListAttemptMs=nowMs()
         previews.setActive(false)
         previews.visible(emptyList())
-        mutable.update{it.copy(user=null,friends=emptyList(),friendAccess=emptyMap(),
-            friendsComplete=false,friendsTotal=null,listProblem=null)}
-        run {_,guard->
+        mutable.update{it.copy(user=null,
+            friends=if(hadComplete)it.friends else emptyList(),
+            friendAccess=if(hadComplete)it.friendAccess else emptyMap(),
+            friendsComplete=hadComplete,friendsTotal=if(hadComplete)it.friendsTotal else null,
+            listRefreshing=true,listProblem=null)}
+        run {initial,guard->
+            val owner=initial.accountId?:api.accountOwner(guard())
+            musicCheck(owner>0&&(cacheAccount==null||cacheAccount==owner),MusicError.ACCOUNT_CHANGED)
             val rows=mutableListOf<MusicFriend>();val seen=mutableSetOf<Long>();var total: Int?=null
-            var access: MusicAccess?=null
+            var firstAccess: MusicAccess?=null
             do {
                 val current=guard()
-                if(access==null) {
-                    access=current
+                if(firstAccess==null) {
+                    firstAccess=current
                     previews.bind(current,forceStatuses)
                 }
                 val page=api.friendsPage(current,rows.size);guard()
@@ -107,14 +174,27 @@ internal class FriendMusicController(private val application: Application,privat
                 musicCheck(rows.size+page.items.size<=page.count,MusicError.LIBRARY_CHANGED)
                 musicCheck(page.items.isNotEmpty()||rows.size==page.count,MusicError.INCOMPLETE)
                 page.items.forEach{musicCheck(seen.add(it.id),MusicError.INCOMPLETE)};rows.addAll(page.items)
-                val restored=availabilityCache.snapshot(rows)
-                mutable.update{state->
-                    state.copy(friends=rows.toList(),friendsTotal=page.count,
-                        friendAccess=state.friendAccess.filterKeys{it in seen}+restored)
+                // Refresh keeps the previous complete snapshot visible until all pages verify.
+                if(!hadComplete) {
+                    val restoredStatuses=availabilityCache.snapshot(rows)
+                    mutable.update{state->state.copy(friends=rows.toList(),friendsTotal=page.count,
+                        friendAccess=state.friendAccess.filterKeys{it in seen}+restoredStatuses)}
                 }
                 updatePreviews()
             }while(rows.size<total!!)
-            mutable.update{it.copy(friendsComplete=true)}
+            guard()
+            val updated=nowMs()
+            try {
+                snapshots.persist(FriendListSnapshot(owner,updated,rows.toList()))
+            }catch(e: CancellationException){throw e}catch(_: Exception) {
+                Diagnostics.event("music_friends_cache_write_failed",emptyMap())
+            }
+            guard()
+            cacheAccount=owner;restored=true
+            val statuses=availabilityCache.snapshot(rows)
+            mutable.update{state->state.copy(friends=rows.toList(),friendsTotal=rows.size,
+                friendsComplete=true,friendAccess=statuses,listUpdatedAtMs=updated,
+                loadedFromCache=false,listProblem=null)}
             updatePreviews()
             Diagnostics.event("music_friends_loaded",mapOf("count" to rows.size))
         }

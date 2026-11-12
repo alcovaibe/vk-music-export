@@ -47,7 +47,7 @@ class MusicLibraryRedesignDeviceTest {
         }
         lateinit var model: NativeMusicViewModel
         try {
-            vault.delete()
+            vault.delete();FriendListCacheStore(context).clear()
             ui.runOnUiThread {
                 model=ViewModelProvider(vmStore,object: ViewModelProvider.Factory {
                     @Suppress("UNCHECKED_CAST") override fun <T: androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T=NativeMusicViewModel(context,api) as T
@@ -58,7 +58,7 @@ class MusicLibraryRedesignDeviceTest {
             ui.waitUntil(10_000){!model.state.value.busy&&model.state.value.page!=null}
             ui.runOnUiThread{ui.activity.setContent{MusicTheme{NativeMusicPanel(model,true,{})}}}
             block(model)
-        }finally{ui.runOnUiThread{vmStore.clear()};vault.delete()}
+        }finally{ui.runOnUiThread{vmStore.clear()};vault.delete();FriendListCacheStore(context).clear()}
     }
     @Test fun warmLibraryKeepsToolsAndShowsVersionSeparatelyWithoutArtistLinks()=fixture {
         awaitTestWindowFocus(ui.activity)

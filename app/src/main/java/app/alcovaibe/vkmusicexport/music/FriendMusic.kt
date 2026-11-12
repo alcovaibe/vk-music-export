@@ -36,7 +36,8 @@ internal data class FriendMusicState(val friends: List<MusicFriend> = emptyList(
     val user: MusicFriend?=null,val tab: FriendMusicTab=FriendMusicTab.TRACKS,val tracks: NativePage?=null,val tracksComplete: Boolean=false,
     val catalog: NativeCatalog?=null,val playlist: NativePlaylist?=null,val playlistTracks: NativePage?=null,val playlistComplete: Boolean=false,
     val problems: Map<FriendMusicTab,FriendMusicProblem> = emptyMap(),val listProblem: FriendMusicProblem?=null,val playlistProblem: FriendMusicProblem?=null,
-    val selecting: Boolean=false,val selection: Set<Int> = emptySet(),val message: String?=null,val viewerAccount: Long?=null,val readSessionId: String?=null) {
+    val selecting: Boolean=false,val selection: Set<Int> = emptySet(),val message: String?=null,val viewerAccount: Long?=null,val readSessionId: String?=null,
+    val listUpdatedAtMs: Long?=null,val loadedFromCache: Boolean=false,val listRefreshing: Boolean=false) {
     val page get()=if(playlist!=null)playlistTracks else tracks
     val complete get()=if(playlist!=null)playlistComplete else tracksComplete
     fun collections()=catalog?.lists.orEmpty().filter{it.kind==kind(tab)}

@@ -63,7 +63,10 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
     if(!LocalInspectionMode.current) BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
         topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
-            colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
+            colors=TopAppBarDefaults.topAppBarColors(
+                containerColor=MaterialTheme.colorScheme.background,
+                scrolledContainerColor=MaterialTheme.colorScheme.background
+            ),
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
                 if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
