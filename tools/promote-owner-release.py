@@ -13,7 +13,8 @@ from apk_manifest import configured_min_sdk
 REQUESTS = {48: ('codex/music-library-redesign', '0.11.0'),
             50: ('codex/music-followups', '0.11.2'),
             61: ('main', '0.12.0'),
-            64: ('main', '0.12.1')}
+            64: ('main', '0.12.1'),
+             87: ('main', '0.13.1')}
 
 
 def configured_version(path=Path('version.properties')):

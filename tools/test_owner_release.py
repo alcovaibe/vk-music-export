@@ -108,6 +108,31 @@ class OwnerReleaseTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             owner.request_path(env, '0.12.2')
 
+    def test_0131_latest_requires_exact_owner_request_and_pending_manual_acceptance(self):
+        request = dict(authorization='owner_requested_latest', manual_acceptance='pending',
+                       repository='alcovaibe/vk-music-export', branch='main',
+                       pull_request=87, version_name='0.13.1',
+                       expires_at='2026-11-19T23:59:59Z')
+        env = dict(GITHUB_REPOSITORY=request['repository'],
+                   GITHUB_REF='refs/heads/main', GITHUB_EVENT_NAME='push',
+                   GITHUB_SHA='e' * 40)
+        event = {'head_commit': {'message': 'Release v0.13.1 [publish-main-0.13.1]'}}
+        now = dt.datetime(2026, 11, 12, tzinfo=dt.timezone.utc)
+        self.assertEqual(owner.request_path(env, '0.13.1'),
+                         Path('docs/release-requests/pr-87.json'))
+        owner.validate_context(request, env, event, now)
+        for bad_message in ('Merge PR #87', '[publish-main-0.13.0]', '[publish-main-0.12.1]'):
+            with self.subTest(message=bad_message), self.assertRaises(AssertionError):
+                owner.validate_context(request, env,
+                                       {'head_commit': {'message': bad_message}}, now)
+        for changed in (dict(request, version_name='0.13.0'),
+                        dict(request, manual_acceptance='passed'),
+                        dict(request, pull_request=64)):
+            with self.assertRaises(AssertionError):
+                owner.validate_context(changed, env, event, now)
+        with self.assertRaises(AssertionError):
+            owner.validate_context(request, env, event, now + dt.timedelta(days=8))
+
     def test_branch_cleanup_deletes_only_exact_requested_nonmain_heads(self):
         request = dict(repository='alcovaibe/vk-music-export',branch='main',pull_request=58,delete_other_branches=True,
                        branches_to_delete={'codex/fix':'b'*40})
