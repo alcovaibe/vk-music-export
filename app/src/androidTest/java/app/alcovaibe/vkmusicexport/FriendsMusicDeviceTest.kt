@@ -59,7 +59,7 @@ class FriendsMusicDeviceTest {
     private fun fixture(block:(NativeMusicViewModel,Api)->Unit) {
         val app=ui.activity.application;val vault=MusicAccessStore(app);val holder=ViewModelStore();val api=Api()
         lateinit var model: NativeMusicViewModel
-        vault.delete()
+        vault.delete();FriendListCacheStore(app).clear()
         try {
             ui.runOnUiThread{model=ViewModelProvider(holder,object: ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")override fun <T: androidx.lifecycle.ViewModel> create(c: Class<T>): T=NativeMusicViewModel(app,api) as T
@@ -69,7 +69,7 @@ class FriendsMusicDeviceTest {
             ui.waitUntil(15000){!model.state.value.busy&&model.state.value.page!=null}
             ui.runOnUiThread{ui.activity.setContent{MusicTheme{NativeMusicPanel(model,true,{})}}}
             block(model,api)
-        }finally{ui.runOnUiThread{holder.clear()};vault.delete()}
+        }finally{ui.runOnUiThread{holder.clear()};vault.delete();FriendListCacheStore(app).clear()}
     }
     private fun shot(name: String) {
         ui.waitForIdle();inst.waitForIdleSync();inst.uiAutomation.waitForIdle(200,5_000)
