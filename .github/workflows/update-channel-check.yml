@@ -20,7 +20,7 @@ jobs:
         run: python3 -m unittest discover -s tools -p 'test_*.py'
       - name: Validate this revision's channel schema
         run: python3 tools/check-update-channel.py --manifest docs/updates/android.json --schema-only
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         with:
           distribution: temurin
