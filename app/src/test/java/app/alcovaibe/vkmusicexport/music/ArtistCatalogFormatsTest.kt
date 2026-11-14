@@ -32,6 +32,40 @@ class ArtistCatalogFormatsTest {
         }
         assertEquals(listOf("a"),result.map{it.id})
     }
+    @Test fun headingWithoutArtistContentDoesNotSuppressTheCurrentUserCatalogue() = runTest {
+        val calls = mutableListOf<Map<String, String>>()
+        val result = MusicArtists.subscriptions(12) { method, fields ->
+            assertEquals("catalog.getAudio", method)
+            calls += fields
+            if (fields.isEmpty()) {
+                json("""{"catalog":{"sections":[{"title":"Моя музыка","blocks":[{"layout":{"title":"Мои исполнители"},"data_type":"none"}]}]}}""")
+            } else {
+                json("""{"section":{"title":"Мои исполнители","artists":[{"id":"a","name":"Подписка"}]}}""")
+            }
+        }
+        assertEquals(listOf("a"), result.map { it.id })
+        assertEquals(listOf(emptyMap<String, String>(), mapOf("current_user" to "1")), calls)
+    }
+    @Test fun artistUrlResolvesItsDefaultSectionWithoutReadingNeighbouringRecommendations() = runTest {
+        val calls = mutableListOf<String>()
+        val result = MusicArtists.subscriptions(12) { method, fields ->
+            calls += method
+            when {
+                method == "catalog.getSection" -> {
+                    assertEquals("followed", fields["section_id"])
+                    json("""{"section":{"title":"Исполнители","artists":[{"id":"a","name":"Подписка"}]}}""")
+                }
+                "url" in fields -> json("""{"artists":[{"id":"b","name":"Рекомендация"}],"catalog":{
+                    "default_section":"followed","sections":[{"id":"followed","title":"Исполнители"},
+                    {"id":"for-you","title":"Для вас","blocks":[{"artists_ids":["b"]}]}]}}""")
+                else -> json("""{"catalog":{"sections":[{"title":"Моя музыка","blocks":[
+                    {"actions":[{"title":"Исполнители","url":"/audios12?section=artists","action":{"type":"open_url"}}]}
+                ]}]}}""")
+            }
+        }
+        assertEquals(listOf("a"), result.map { it.id })
+        assertEquals(listOf("catalog.getAudio", "catalog.getAudio", "catalog.getSection"), calls)
+    }
     @Test fun structuralReportContainsOnlyWhitelistedNamesTypesAndCounts() {
         val value=json("""{"catalog":{"sections":[{"id":"PRIVATE_ID","title":"PRIVATE_TITLE","blocks":[{"artists_ids":["PRIVATE_ARTIST"],"buttons":[{"url":"https://private.test/?access_token=SECRET"}]}]}]},"SECRET_AS_KEY":"PRIVATE_TOKEN"}""")
         val shape=ArtistCatalogShape.describe(value)

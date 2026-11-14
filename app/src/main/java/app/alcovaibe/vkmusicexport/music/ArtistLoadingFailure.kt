@@ -1,12 +1,12 @@
 package app.alcovaibe.vkmusicexport.music
 
 /** Fixed categories only: server text, catalogue titles, IDs, URLs and credentials never become error text. */
-internal enum class ArtistFailureReason { REQUEST,SUBSCRIPTIONS_NOT_FOUND,MISSING_ARTIST,CURSOR_LOOP,NO_PROGRESS,UNEXPECTED_FORMAT,PAGE_LIMIT }
+internal enum class ArtistFailureReason { REQUEST,SUBSCRIPTIONS_NOT_FOUND,MISSING_ARTIST,CURSOR_LOOP,NO_PROGRESS,UNEXPECTED_FORMAT,PAGE_LIMIT,RESULT_LIMIT }
 internal class ArtistLoadingFailure(val reason: ArtistFailureReason,code: MusicError,
     val method: String?=null,val pages: Int=0,val sections: Int=0,val blocks: Int=0,val pool: Int=0,
     failure: MusicFailure?=null): MusicFailure(code,failure?.remoteCode,failure?.kind,failure?.httpStatus) {
     init {require(method==null||method in METHODS)}
-    companion object {val METHODS=setOf("catalog.getAudio","catalog.getSection","catalog.getBlockItems","catalog.getAudioArtist","audio.getAudiosByArtist")}
+    companion object {val METHODS=setOf(NativeProtocol.FOLLOWED_ARTISTS,"catalog.getAudio","catalog.getSection","catalog.getBlockItems","catalog.getAudioArtist","audio.getAudiosByArtist")}
 }
 internal object ArtistFailureText {
     fun describe(error: Exception): String {
@@ -20,10 +20,11 @@ internal object ArtistFailureText {
             ArtistFailureReason.CURSOR_LOOP->"ВК повторил уже прочитанную страницу каталога. Загрузка остановлена, чтобы не повторять запросы бесконечно."
             ArtistFailureReason.NO_PROGRESS->"Продолжение каталога не добавляет исполнителей. Полноту списка подтвердить не удалось."
             ArtistFailureReason.PAGE_LIMIT->"Достигнут предел числа страниц каталога. Список загружен не полностью."
+            ArtistFailureReason.RESULT_LIMIT->"ВК сообщил, что у списка подписок есть продолжение. Показана полученная часть списка."
             ArtistFailureReason.UNEXPECTED_FORMAT->"Ответ получен, но приложение не смогло разобрать его структуру."
             else->when {
                 failure?.remoteCode!=null->"ВК вернул ошибку API ${failure.remoteCode}: "+when(failure.code) {
-                    MusicError.METHOD->"метод недоступен для текущего подключения."
+                    MusicError.METHOD->if(failure.remoteCode==8)"ВК отклонил версию API для этого метода." else "метод недоступен для текущего подключения."
                     MusicError.DENIED->"доступ к этому методу запрещён."
                     MusicError.ACCESS->"сохранённый доступ не принят. Требуется повторный вход."
                     MusicError.RATE_LIMIT->"ограничено количество запросов."
