@@ -1,6 +1,6 @@
 # VK Music Export
 
-**Android 10+**
+[![Количество скачиваний](https://raw.githubusercontent.com/alcovaibe/vk-music-export/download-count/downloads.svg)](https://github.com/alcovaibe/vk-music-export/releases)
 
 [Скачать APK](https://github.com/alcovaibe/vk-music-export/releases) · [Сообщить об ошибке](https://github.com/alcovaibe/vk-music-export/issues/new/choose)
 
