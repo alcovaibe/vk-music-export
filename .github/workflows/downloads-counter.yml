@@ -1,0 +1,53 @@
+name: Public APK download counter
+
+on:
+  schedule:
+    - cron: '19 * * * *'
+  workflow_dispatch:
+  release:
+    types: [published, edited, deleted, prereleased, released]
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/download-counter.mjs'
+      - '.github/workflows/downloads-counter.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vk-music-export-apk-download-counter
+  cancel-in-progress: false
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Count APK downloads
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node --check scripts/download-counter.mjs
+          node scripts/download-counter.mjs "$RUNNER_TEMP/downloads.svg"
+      - name: Publish to dedicated badge branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin download-count
+          git worktree add "$RUNNER_TEMP/download-count" origin/download-count
+          cp "$RUNNER_TEMP/downloads.svg" "$RUNNER_TEMP/download-count/downloads.svg"
+          cd "$RUNNER_TEMP/download-count"
+          if git diff --quiet -- downloads.svg; then
+            echo 'Download count unchanged'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add downloads.svg
+          git commit -m 'chore: refresh APK download count [skip ci]'
+          git push origin HEAD:download-count
