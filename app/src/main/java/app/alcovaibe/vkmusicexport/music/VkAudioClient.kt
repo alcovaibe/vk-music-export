@@ -141,12 +141,19 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     ): List<MusicArtist> {
         musicCheck(owner > 0 && (access.accountId == null || access.accountId == owner), MusicError.ACCOUNT_CHANGED)
         val method = NativeProtocol.FOLLOWED_ARTISTS
+        var requests = 0
+        suspend fun fetch(limit: Int): JsonElement = MusicPagination.retryTransientPage(
+            retryAlso = MusicArtists::isFollowedServerFailure,
+        ) {
+            requests++
+            artistRequest(access, method, mapOf("limit" to limit.toString()))
+        }
+
         val first = try {
-            artistRequest(access, method, mapOf("limit" to MusicArtists.FOLLOWED_LIMIT.toString()))
+            fetch(MusicArtists.FOLLOWED_LIMIT)
         } catch (failure: ArtistLoadingFailure) {
             if (failure.code != MusicError.METHOD && failure.code != MusicError.DENIED) throw failure
             return try {
-                var requests = 1
                 MusicArtists.subscriptions(owner, { artists, _ -> progress(artists, requests) }) { catalogMethod, fields ->
                     val params = fields.filterKeys { it != "current_user" }.toMutableMap()
                     params["lang"] = "ru"
@@ -162,9 +169,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
                 throw catalogFailure
             }
         }
-        return MusicArtists.followed(first, progress) { limit ->
-            artistRequest(access, method, mapOf("limit" to limit.toString()))
-        }
+        return MusicArtists.followed(first, { artists -> progress(artists, requests) }, ::fetch)
     }
     private suspend fun artistRequest(access: MusicAccess, method: String, fields: Map<String, String>): JsonElement {
         val current = sessions?.continueRead(access) ?: access
@@ -204,7 +209,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             method == "audio.search" -> "cover_search"
             else -> "resolve_media"
         }
-        observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "start","transport" to "native_https_api"))
+        val startFields = mutableMapOf<String, Any?>(
+            "stage" to step, "method" to method, "phase" to "start", "transport" to "native_https_api",
+        )
+        if (method == NativeProtocol.FOLLOWED_ARTISTS) startFields["limit"] = fields["limit"]?.toIntOrNull()
+        observe("native_music_request", startFields)
         return try {
             MusicApiPacer.awaitSlot()
             val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
