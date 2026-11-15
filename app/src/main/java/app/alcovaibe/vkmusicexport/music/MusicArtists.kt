@@ -10,6 +10,7 @@ internal data class MusicArtistDetails(val artist: MusicArtist,val tracks: Nativ
 internal object MusicArtists {
     const val FOLLOWED_LIMIT = 150
     private const val MAX_FOLLOWED_LIMIT = 1_000
+    private const val MAX_INTERMEDIATE_LIMITS = 4
 
     private val subscriptionTitles=setOf("мои исполнители","ваши исполнители","мои артисты","любимые исполнители","музыкальные подписки","подписки на исполнителей","подписки на артистов","вы подписаны","вы подписаны на","подписки","my artists","your artists","followed artists","artists you follow","subscriptions","following")
     private val ownTitles=setOf("моя музыка","моя библиотека","my music","my library")
@@ -64,29 +65,57 @@ internal object MusicArtists {
     }
     private fun artist(o: JsonObject)=MusicArtist(text(o,"id"),text(o,"name"),photo(o["photo"]?:o["photos"]?:o["thumb"]?:o["images"]?:o["cover"]?:o))
 
+    fun isFollowedServerFailure(failure: MusicFailure): Boolean =
+        failure.remoteCode == 10 || MusicPagination.isTransientHttpFailure(failure)
+
     suspend fun followed(
         first: JsonElement,
-        progress: (List<MusicArtist>, Int) -> Unit,
+        progress: (List<MusicArtist>) -> Unit,
         fetch: suspend (limit: Int) -> JsonElement,
     ): List<MusicArtist> {
-        var response = first
         var limit = FOLLOWED_LIMIT
-        var requests = 1
-        while (true) {
-            val (rows, hasNext) = try {
-                followedPage(response, limit)
-            } catch (failure: MusicFailure) {
-                throw ArtistLoadingFailure(ArtistFailureReason.UNEXPECTED_FORMAT, failure.code, NativeProtocol.FOLLOWED_ARTISTS, pages = requests)
-            }
-            progress(rows, requests)
-            if (!hasNext) return rows
-            if (limit == MAX_FOLLOWED_LIMIT)
-                throw ArtistLoadingFailure(ArtistFailureReason.RESULT_LIMIT, MusicError.INCOMPLETE, NativeProtocol.FOLLOWED_ARTISTS, pages = requests)
+        var lastSuccessfulLimit = 0
+        var failedLimit = 0
+        var lastServerFailure: MusicFailure? = null
+        var intermediateLimits = 0
+        var pages = 0
 
-            // VK's client supplies a limit; grow the snapshot when the response advertises more.
-            limit = (limit * 2).coerceAtMost(MAX_FOLLOWED_LIMIT)
-            response = fetch(limit)
-            requests++
+        while (true) {
+            val response = try {
+                if (limit == FOLLOWED_LIMIT) first else fetch(limit)
+            } catch (failure: MusicFailure) {
+                if (!isFollowedServerFailure(failure)) throw failure
+                failedLimit = limit
+                lastServerFailure = failure
+                null
+            }
+
+            if (response != null) {
+                pages++
+                val (rows, hasNext) = try {
+                    followedPage(response, limit)
+                } catch (failure: MusicFailure) {
+                    throw ArtistLoadingFailure(ArtistFailureReason.UNEXPECTED_FORMAT, failure.code,
+                        NativeProtocol.FOLLOWED_ARTISTS, pages = pages)
+                }
+                progress(rows)
+                if (!hasNext) return rows
+                if (limit == MAX_FOLLOWED_LIMIT)
+                    throw ArtistLoadingFailure(ArtistFailureReason.RESULT_LIMIT, MusicError.INCOMPLETE,
+                        NativeProtocol.FOLLOWED_ARTISTS, pages = pages)
+                lastSuccessfulLimit = limit
+            }
+
+            // Each reply is a snapshot. After a persistent server failure, try a size
+            // between the last successful limit and the smallest failed one.
+            limit = if (lastServerFailure == null) {
+                (limit * 2).coerceAtMost(MAX_FOLLOWED_LIMIT)
+            } else {
+                val gap = failedLimit - lastSuccessfulLimit
+                if (gap <= 1 || intermediateLimits == MAX_INTERMEDIATE_LIMITS) throw lastServerFailure
+                intermediateLimits++
+                lastSuccessfulLimit + gap / 2
+            }
         }
     }
 

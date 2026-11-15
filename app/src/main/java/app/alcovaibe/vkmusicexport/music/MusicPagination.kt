@@ -36,15 +36,22 @@ internal object MusicPagination {
     suspend fun catalog(fetch: suspend(Int)->NativeCatalog,progress:(Int,Int)->Unit={_,_->})=
         catalogCursor({offset,_->fetch(offset)},progress)
 
-    /** Retry only bounded transient failures; never retry authentication, rate limits or invalid payloads. */
-    suspend fun <T> retryTransientPage(onRetry: ()->Unit={},fetch:suspend()->T): T {
+    fun isTransientHttpFailure(failure: MusicFailure): Boolean =
+        failure.code == MusicError.HTTP && failure.httpStatus in setOf(500, 502, 503, 504)
+
+    /** Bound retries for transport failures and transient errors known to the caller. */
+    suspend fun <T> retryTransientPage(
+        onRetry: () -> Unit = {},
+        retryAlso: (MusicFailure) -> Boolean = { false },
+        fetch: suspend () -> T,
+    ): T {
         var attempt=0
         while(true) {
             currentCoroutineContext().ensureActive()
             try {return fetch()}
             catch(e: MusicFailure) {
                 val transient=e.code in setOf(MusicError.NETWORK,MusicError.TIMEOUT) ||
-                    (e.code==MusicError.HTTP && e.httpStatus in setOf(500,502,503,504))
+                    isTransientHttpFailure(e) || retryAlso(e)
                 if(!transient||attempt>=2)throw e
                 attempt++;onRetry()
                 delay(attempt*500L)

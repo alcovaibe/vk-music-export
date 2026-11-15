@@ -27,6 +27,13 @@ class FollowedArtistsClientTest {
         return VkAudioClient(http, observe = { type, fields -> events.add(type to fields) })
     }
 
+    private val Request.limit: Int get() = params.getValue("limit").toInt()
+
+    private fun snapshot(limit: Int, total: Int): String {
+        val rows = (1..minOf(limit, total)).joinToString(",") { """{"id":"artist-$it","name":"Artist $it"}""" }
+        return """{"response":{"has_next":${total > limit},"artists":[$rows]}}"""
+    }
+
     @Test fun readsSubscriptionCardsDirectlyWithoutAnOwnerOrCatalogueRequest() = runBlocking {
         val api = client {
             """{"response":{"has_next":false,"artists":[
@@ -56,6 +63,49 @@ class FollowedArtistsClientTest {
         assertEquals(listOf("150", "300"), calls.map { it.params["limit"] })
         assertEquals(listOf(1 to listOf("one"), 2 to listOf("one", "two")), snapshots)
         assertEquals(listOf("one", "two"), actual.map { it.id })
+    }
+
+    @Test fun retriesVkError10AndHttp500AtTheSameLimit() = runBlocking {
+        val api = client(status = { request ->
+            if (request.limit == 1000 && calls.count { it.limit == 1000 } == 1) 500 else 200
+        }) {
+            if (it.limit == 600 && calls.count { call -> call.limit == 600 } == 1) """{"error":{"error_code":10}}"""
+            else snapshot(it.limit, 702)
+        }
+        val progress = mutableListOf<Pair<Int, Int>>()
+        val actual = api.followedArtists(access, 12) { cards, requests -> progress += requests to cards.size }
+
+        val limits = listOf(150, 300, 600, 600, 1000, 1000)
+        assertEquals(limits, calls.map { it.limit })
+        assertEquals(limits, events.filter { it.first == "native_music_request" && it.second["phase"] == "start" }
+            .map { it.second["limit"] })
+        assertEquals(listOf(1 to 150, 2 to 300, 4 to 600, 6 to 702), progress)
+        assertEquals(702, actual.size)
+    }
+
+    @Test fun smallerLimitsCanCompleteTheListAfterPersistentServerErrors() = runBlocking {
+        val api = client(status = { if (it.limit >= 900) 500 else 200 }) { snapshot(it.limit, 840) }
+        val progress = mutableListOf<Int>()
+        val actual = api.followedArtists(access, 12) { cards, _ -> progress += cards.size }
+
+        assertEquals(listOf(150, 300, 600, 1000, 1000, 1000, 800, 900, 900, 900, 850), calls.map { it.limit })
+        assertEquals(listOf(150, 300, 600, 800, 840), progress)
+        assertEquals(840, actual.size)
+    }
+
+    @Test fun persistentServerErrorLeavesTheLargestSuccessfulSnapshotPartial() = runBlocking {
+        val api = client(status = { if (it.limit == 1000) 500 else 200 }) { snapshot(it.limit, 1001) }
+        val progress = mutableListOf<Int>()
+        try {
+            api.followedArtists(access, 12) { cards, _ -> progress += cards.size }
+            fail("No response confirmed a complete list.")
+        } catch (failure: ArtistLoadingFailure) {
+            assertEquals(ArtistFailureReason.REQUEST, failure.reason)
+            assertEquals(500, failure.httpStatus)
+        }
+
+        assertEquals(listOf(150, 300, 600, 1000, 1000, 1000, 800, 900, 950, 975), calls.map { it.limit })
+        assertEquals(listOf(150, 300, 600, 800, 900, 950, 975), progress)
     }
 
     @Test fun aContinuingResponseAtTheLimitReportsAPartialList() = runBlocking {
