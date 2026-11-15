@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -36,6 +37,7 @@ import androidx.compose.ui.res.painterResource
 import app.alcovaibe.vkmusicexport.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.alcovaibe.vkmusicexport.diagnostics.LatestReportMenu
 import kotlinx.coroutines.*
@@ -59,20 +61,29 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 @Composable
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
-    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,content: LazyListScope.()->Unit) {
+    menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,
+    headerArtist: MusicArtist?=null,showHeaderActions: Boolean=true,itemSpacing: Dp=if(destination==MusicDestination.FRIENDS)8.dp else 12.dp,content: LazyListScope.()->Unit) {
     if(!LocalInspectionMode.current) BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
-        topBar={TopAppBar(title={Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)},
+        topBar={TopAppBar(title={
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                headerArtist?.let{MusicThumbnail(url=it.photo,artist=true,size=32.dp)}
+                Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
+                    fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
+            }
+        },
             colors=TopAppBarDefaults.topAppBarColors(
                 containerColor=MaterialTheme.colorScheme.background,
                 scrolledContainerColor=MaterialTheme.colorScheme.background
             ),
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
-                if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
-                    BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
+                if(showHeaderActions) {
+                    if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
+                        BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
+                    }
+                    LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
                 }
-                LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
             })},
         bottomBar={Column {
             PlaybackMiniPlayer(playback,onPlayerOpen)
@@ -96,7 +107,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
         }}) {padding->
         key(listIdentity) {LazyColumn(Modifier.fillMaxSize().padding(padding).testTag(tag+"_list"),state=listState?:rememberLazyListState(),
             contentPadding=PaddingValues(start=16.dp,end=16.dp,top=8.dp,bottom=24.dp),
-            verticalArrangement=Arrangement.spacedBy(if(destination==MusicDestination.FRIENDS)8.dp else 12.dp),content=content)}
+            verticalArrangement=Arrangement.spacedBy(itemSpacing),content=content)}
     }
 }
 
@@ -160,10 +171,13 @@ private object MusicThumbnailCache {
 
 /** Only visible rows load thumbnails. Signed image addresses live in memory, never in the saved-file index. */
 @Composable
-internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String=uri?:url.orEmpty(),artist: Boolean=false,size: androidx.compose.ui.unit.Dp=if(artist)64.dp else 52.dp) {
+internal fun MusicThumbnail(
+    url: String?=null,uri: String?=null,identity: String=uri?:url.orEmpty(),artist: Boolean=false,size: Dp=if(artist)64.dp else 52.dp,
+    modifier: Modifier=Modifier.size(size),shape: Shape=if(artist)CircleShape else RoundedCornerShape(12.dp),maxPixels: Int=160,
+) {
     val context=LocalContext.current
-    val key=identity+":"+(uri?:url.orEmpty())
-    val bitmap by produceState<ImageBitmap?>(MusicThumbnailCache.images.get(key),key) {
+    val cacheKey="$maxPixels:$identity:"+(uri?:url.orEmpty())
+    val bitmap=key(cacheKey) { produceState<ImageBitmap?>(MusicThumbnailCache.images.get(cacheKey)) {
         if(value==null&&(url!=null||uri!=null))withContext(Dispatchers.IO) {
             MusicThumbnailCache.gate.withPermit {
                 try {
@@ -179,18 +193,18 @@ internal fun MusicThumbnail(url: String?=null,uri: String?=null,identity: String
                         val info=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(raw,0,raw.size,info)
                         if(info.outWidth in 1..4096&&info.outHeight in 1..4096&&info.outWidth.toLong()*info.outHeight<=16_000_000) {
                             info.inJustDecodeBounds=false;info.inSampleSize=1
-                            while(maxOf(info.outWidth,info.outHeight)/info.inSampleSize>160)info.inSampleSize*=2
-                            BitmapFactory.decodeByteArray(raw,0,raw.size,info)?.asImageBitmap()?.let{image->MusicThumbnailCache.images.put(key,image);value=image}
+                            while(maxOf(info.outWidth,info.outHeight)/info.inSampleSize>maxPixels)info.inSampleSize*=2
+                            BitmapFactory.decodeByteArray(raw,0,raw.size,info)?.asImageBitmap()?.let{image->MusicThumbnailCache.images.put(cacheKey,image);value=image}
                         }
                     }
                 }catch(e: CancellationException){throw e}catch(_: Exception){/* A missing image never blocks music navigation. */}
             }
         }
-    }
-    Box(Modifier.size(size).clip(if(artist)CircleShape else RoundedCornerShape(12.dp))
+    }.value }
+    Box(modifier.clip(shape)
         .background(MaterialTheme.colorScheme.secondaryContainer),contentAlignment=Alignment.Center) {
-        if(bitmap!=null)Image(bitmap!!,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
-        else Icon(if(artist)Icons.Default.Person else LibraryNoteIcon,null,tint=MaterialTheme.colorScheme.onSecondaryContainer,modifier=Modifier.size(26.dp))
+        if(bitmap!=null)Image(bitmap,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+        else Icon(if(artist)Icons.Default.Person else LibraryNoteIcon,null,tint=MaterialTheme.colorScheme.onSecondaryContainer,modifier=Modifier.size(if(maxPixels>160)46.dp else 26.dp))
     }
 }
 

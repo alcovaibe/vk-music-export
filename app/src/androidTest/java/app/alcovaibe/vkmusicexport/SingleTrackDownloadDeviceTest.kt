@@ -22,7 +22,9 @@ class SingleTrackDownloadDeviceTest {
         val artist=MusicArtist("ci-artist","Snapshot CI artist")
         override suspend fun followedArtists(access: MusicAccess,owner: Long)=listOf(artist)
         override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
-            read();return MusicArtistDetails(artist,snapshot,listOf(NativePlaylist(12,990803,"Snapshot CI album",3,null,null,null,null,PlaylistKind.ALBUM)))
+            read()
+            val album=NativePlaylist(12,990803,"Snapshot CI album",3,null,null,null,null,PlaylistKind.ALBUM)
+            return MusicArtistDetails(artist,snapshot,listOf(MusicArtistRelease(album)))
         }
         override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/synthetic.mp3")
         var allowLists=true;var owner=12L;var liveTracks=snapshot.tracks

@@ -61,7 +61,7 @@ class MusicArtistsTest {
     }
     @Test fun artistAlbumsUseOnlyReleaseBlocksNotRecommendations()=runTest {
         val response=json("""{"playlists":[{"owner_id":12,"id":1,"title":"Альбом","count":0},{"owner_id":12,"id":2,"title":"Рекомендация","count":0}],"catalog":{"sections":[{"blocks":[{"title":"Альбомы","playlists_ids":["12_1"]},{"title":"Вам понравится","playlists_ids":["12_2"]}]}]}}""")
-        val rows=MusicArtists.albums(response){_,_->error("No extra request")}
+        val rows=MusicArtists.artistCatalogue(response,MusicArtist("example","Артист")){_,_->error("No extra request")}.releases.map{it.playlist}
         assertEquals(listOf("Альбом"),rows.map{it.title});assertEquals(PlaylistKind.ALBUM,rows.single().kind)
     }
     @Test fun thumbnailsAcceptOnlyTrustedHttpsImageHosts() {

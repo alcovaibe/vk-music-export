@@ -106,20 +106,22 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun showArtists(refresh: Boolean=false)=artistController.show(refresh)
     fun selectArtist(artist: MusicArtist?)=artistController.select(artist)
     fun selectArtistAlbum(album: NativePlaylist?)=artistController.selectAlbum(album)
+    fun openArtistTracks(group: ArtistTracks)=artistController.openTracks(group)
     fun backFromArtist()=artistController.back()
     fun pauseArtists()=artistController.pause()
-    private fun artistEntries(snapshot: MusicArtistsState): List<PlaybackEntry> {
+    private fun artistEntries(snapshot: MusicArtistsState, group: ArtistTracks): List<PlaybackEntry> {
         val current=artistController.state.value
         val own=_state.value
-        if(snapshot!=current||own.stage in setOf("browser_auth","configure","forget")||
+        if(snapshot.selected?.id!=current.selected?.id||snapshot.album?.key!=current.album?.key||snapshot.queue!=current.queue||
+            snapshot.readSessionId!=current.readSessionId||own.stage in setOf("browser_auth","configure","forget")||
             snapshot.owner!=own.probe?.owner||snapshot.readSessionId!=own.readSessionId)return emptyList()
-        return PlaybackLists.artist(snapshot)
+        return PlaybackLists.artist(snapshot, group)
     }
-    fun playArtistTrack(snapshot: MusicArtistsState,index: Int) {
-        PlaybackRuntime.play(getApplication(),artistEntries(snapshot),index)
+    fun playArtistTrack(snapshot: MusicArtistsState,index: Int,group: ArtistTracks = snapshot.queue ?: ArtistTracks.ALL) {
+        PlaybackRuntime.play(getApplication(),artistEntries(snapshot, group),index)
     }
-    fun downloadArtistTrack(snapshot: MusicArtistsState,index: Int) {
-        artistEntries(snapshot).getOrNull(index)?.let(::downloadPlayback)
+    fun downloadArtistTrack(snapshot: MusicArtistsState,index: Int,group: ArtistTracks = snapshot.queue ?: ArtistTracks.ALL) {
+        artistEntries(snapshot, group).getOrNull(index)?.let(::downloadPlayback)
     }
     private val _queueAccount=MutableStateFlow<Long?>(null);val queueAccount=_queueAccount.asStateFlow()
     private var pendingQueueRetry=false

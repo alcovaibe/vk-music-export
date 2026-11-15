@@ -147,7 +147,7 @@ internal object NativeProtocol {
         val a = response as? JsonArray; musicCheck(a?.size == 1)
         val id = long(a!![0].jsonObject, "id"); musicCheck(id > 0); return id
     }
-    private fun track(o: JsonObject,warning:(String)->Unit={}): NativeTrack {
+    fun track(o: JsonObject,warning:(String)->Unit={}): NativeTrack {
         val owner = long(o, "owner_id"); val id = long(o, "id")
         if(owner==0L)throw NativeDataFailure("owner_id")
         if(id<=0)throw NativeDataFailure("id")
