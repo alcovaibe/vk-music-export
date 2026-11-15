@@ -5,7 +5,8 @@ import kotlinx.serialization.json.*
 /** Whitelisted field names and value types only. Never export IDs, titles, URLs, tokens or unknown keys. */
 internal object ArtistCatalogShape {
     private val keys=setOf("catalog","section","sections","block","blocks","blocks_ids","artists","artists_ids","artist_ids","items",
-        "layout","header","meta","show_all_info","actions","buttons","links","action","link","title","text","id","section_id","block_id","url","next_from","type","is_following","is_followed","default_section","data_type","caption","label")
+        "layout","header","meta","show_all_info","actions","buttons","links","action","link","title","text","id","section_id","block_id","url","next_from","type","is_following","is_followed","default_section","data_type","caption","label",
+        "has_next","name","photo")
     fun describe(value: JsonElement): String {
         val lines=mutableListOf<String>();var nodes=0
         val root=value as? JsonObject

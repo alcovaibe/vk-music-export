@@ -134,14 +134,49 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         }
     }
     override suspend fun followedArtists(access: MusicAccess,owner: Long)=followedArtists(access,owner){_,_->}
-    override suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit)=MusicArtists.subscriptions(owner,progress) {method,fields->
-        val current=sessions?.continueRead(access)?:access
-        val currentUser=fields["current_user"]=="1"
-        try{request(current,method,fields.filterKeys{it!="current_user"}+mapOf("lang" to "ru")+
-            (if(method=="catalog.getAudio")mapOf("need_blocks" to "1")+(if(currentUser)emptyMap()else mapOf("owner_id" to owner.toString()))else emptyMap())).also{
-            observe("artist_catalog_shape",mapOf("method" to method,"shape" to ArtistCatalogShape.describe(it)))
-        }}
-        catch(e: MusicFailure){throw ArtistLoadingFailure(ArtistFailureReason.REQUEST,e.code,method,failure=e)}
+    override suspend fun followedArtists(
+        access: MusicAccess,
+        owner: Long,
+        progress: (List<MusicArtist>, Int) -> Unit,
+    ): List<MusicArtist> {
+        musicCheck(owner > 0 && (access.accountId == null || access.accountId == owner), MusicError.ACCOUNT_CHANGED)
+        val method = NativeProtocol.FOLLOWED_ARTISTS
+        val first = try {
+            artistRequest(access, method, mapOf("limit" to MusicArtists.FOLLOWED_LIMIT.toString()))
+        } catch (failure: ArtistLoadingFailure) {
+            if (failure.code != MusicError.METHOD && failure.code != MusicError.DENIED) throw failure
+            return try {
+                var requests = 1
+                MusicArtists.subscriptions(owner, { artists, _ -> progress(artists, requests) }) { catalogMethod, fields ->
+                    val params = fields.filterKeys { it != "current_user" }.toMutableMap()
+                    params["lang"] = "ru"
+                    if (catalogMethod == "catalog.getAudio") {
+                        params["need_blocks"] = "1"
+                        if (fields["current_user"] != "1") params["owner_id"] = owner.toString()
+                    }
+                    artistRequest(access, catalogMethod, params).also { requests++ }
+                }
+            } catch (catalogFailure: ArtistLoadingFailure) {
+                if (catalogFailure.reason == ArtistFailureReason.SUBSCRIPTIONS_NOT_FOUND ||
+                    catalogFailure.code in setOf(MusicError.METHOD, MusicError.DENIED)) throw failure
+                throw catalogFailure
+            }
+        }
+        return MusicArtists.followed(first, progress) { limit ->
+            artistRequest(access, method, mapOf("limit" to limit.toString()))
+        }
+    }
+    private suspend fun artistRequest(access: MusicAccess, method: String, fields: Map<String, String>): JsonElement {
+        val current = sessions?.continueRead(access) ?: access
+        try {
+            return request(current, method, fields).also {
+                observe("artist_catalog_shape", mapOf("method" to method, "shape" to ArtistCatalogShape.describe(it)))
+            }
+        } catch (failure: MusicFailure) {
+            val code = if (method == NativeProtocol.FOLLOWED_ARTISTS && failure.remoteCode == 8)
+                MusicError.METHOD else failure.code
+            throw ArtistLoadingFailure(ArtistFailureReason.REQUEST, code, method, failure = failure)
+        }
     }
     override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
         val catalogue=request(access,"catalog.getAudioArtist",mapOf("artist_id" to artist.id,"need_blocks" to "1","lang" to "ru"))
@@ -160,7 +195,15 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         fields.forEach { (k,v) -> form.add(k,v) }
         val req = Request.Builder().url("https://api.vk.com/method/$method")
             .header("User-Agent",access.agent).post(form.build()).build()
-        val step = when(method) {"users.get"->"identity";"audio.get"->"tracks";"audio.getPlaylists","audio.getPlaylistById"->"catalog";"audio.delete"->"library_remove";"audio.search"->"cover_search";else->"resolve_media"}
+        val step = when {
+            method in ArtistLoadingFailure.METHODS -> "artists"
+            method == "users.get" -> "identity"
+            method == "audio.get" -> "tracks"
+            method in setOf("audio.getPlaylists", "audio.getPlaylistById") -> "catalog"
+            method == "audio.delete" -> "library_remove"
+            method == "audio.search" -> "cover_search"
+            else -> "resolve_media"
+        }
         observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "start","transport" to "native_https_api"))
         return try {
             MusicApiPacer.awaitSlot()
@@ -170,7 +213,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             // A private friend's section or a denied search is not proof that the account token expired.
             val scopedRead=method=="friends.get"||method=="users.get"&&fields["user_ids"]!=null||
                 method in setOf("audio.get","audio.getPlaylists","audio.getPlaylistById")&&fields["owner_id"]?.toLongOrNull()?.let{it!=access.accountId}==true
-            if(response.status==403&&(scopedRead||method in setOf("audio.search","audio.getById"))) {
+            if(response.status==403&&(scopedRead||method in ArtistLoadingFailure.METHODS||method in setOf("audio.search","audio.getById"))) {
                 val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
                 if(explicit?.remoteCode!=null)throw explicit
                 throw MusicFailure(MusicError.DENIED,httpStatus=response.status)
