@@ -193,7 +193,7 @@ internal fun MusicThumbnail(
                         val info=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeByteArray(raw,0,raw.size,info)
                         if(info.outWidth in 1..4096&&info.outHeight in 1..4096&&info.outWidth.toLong()*info.outHeight<=16_000_000) {
                             info.inJustDecodeBounds=false;info.inSampleSize=1
-                            while(maxOf(info.outWidth,info.outHeight)/(info.inSampleSize*2)>=maxPixels)info.inSampleSize*=2
+                            while(maxOf(info.outWidth,info.outHeight)/info.inSampleSize>maxPixels)info.inSampleSize*=2
                             BitmapFactory.decodeByteArray(raw,0,raw.size,info)?.asImageBitmap()?.let{image->MusicThumbnailCache.images.put(cacheKey,image);value=image}
                         }
                     }

@@ -3,6 +3,7 @@ package app.alcovaibe.vkmusicexport
 import android.app.Application
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
+import android.view.KeyEvent
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -166,7 +167,8 @@ class MusicLibraryRedesignDeviceTest {
         ui.onNodeWithTag("artist_queue_track_1_12_1").assertHasClickAction()
         ui.onNodeWithTag("artist_queue_track_1_12_1").performTouchInput { longClick() }
         ui.onNodeWithText("Скачать трек").assertIsDisplayed()
-        ui.runOnUiThread { ui.activity.onBackPressedDispatcher.onBackPressed() }
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        ui.onNodeWithTag("artist_queue_count").assertTextEquals("3 трека")
         screenshot("redesign-artist-tracks")
         ui.onNodeWithContentDescription("Назад").performClick()
         list.performScrollToNode(hasTestTag("artist_guest_12_5"))

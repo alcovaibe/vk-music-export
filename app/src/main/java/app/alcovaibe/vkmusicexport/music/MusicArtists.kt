@@ -3,6 +3,7 @@ package app.alcovaibe.vkmusicexport.music
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -54,11 +55,12 @@ internal object MusicArtists {
     private fun cursor(raw: JsonElement?): String?=str(raw)?.takeIf{it.isNotEmpty()}?.also{
         musicCheck(it.length<=8192&&it.none{c->c<' '||c=='\u007f'})
     }
-    fun photo(e: JsonElement?): String? {
+    fun photo(e: JsonElement?, large: Boolean = false): String? {
+        val widths = if (large) listOf(1200, 800, 600, 540, 300, 270, 135, 100, 68) else listOf(300, 270, 135, 100, 68)
         val values=when(e) {
-            is JsonObject->listOfNotNull(str(e["url"]))+listOf(300,270,135,100,68).mapNotNull{str(e["photo_$it"])}+
-                listOfNotNull(e["photo"],e["sizes"],e["photos"]).mapNotNull{photo(it)}
-            is JsonArray->e.reversed().mapNotNull{photo(it)}
+            is JsonObject->listOfNotNull(str(e["url"]))+widths.mapNotNull{str(e["photo_$it"])}+
+                listOfNotNull(e["photo"],e["sizes"],e["photos"]).mapNotNull{photo(it, large)}
+            is JsonArray->e.reversed().mapNotNull{photo(it, large)}
             is JsonPrimitive->listOfNotNull(e.contentOrNull)
             else->emptyList()
         }
@@ -446,7 +448,8 @@ internal object MusicArtists {
                 val rows = listOfNotNull(container["artist"] as? JsonObject, container["artist_info"] as? JsonObject) + artistRows(container["artists"])
                 val profile = rows.firstOrNull { str(it["id"]) == artist.id }
                 if (profile != null) {
-                    artistPhoto = photo(profile["cover"]) ?: photo(profile["photo"] ?: profile["photos"] ?: profile["thumb"] ?: profile) ?: artistPhoto
+                    artistPhoto = photo(profile["cover"], large = true)
+                        ?: photo(profile["photo"] ?: profile["photos"] ?: profile["thumb"] ?: profile, large = true) ?: artistPhoto
                 }
             }
             val pageBlocks = blocks(root, sections)

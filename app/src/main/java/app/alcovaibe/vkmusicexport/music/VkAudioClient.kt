@@ -209,11 +209,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         val appearances = catalogue.appearances.toMutableList()
         var complete = catalogue.complete
 
-        fun snapshot(finished: Boolean): MusicArtistDetails {
+        suspend fun snapshot(finished: Boolean): MusicArtistDetails = withContext(Dispatchers.Default) {
             val popular = catalogue.popular?.map { track ->
                 albumsByTrack[track.id]?.let { track.copy(album = it) } ?: track
             }
-            return catalogue.copy(
+            catalogue.copy(
                 tracks = artistDiscography(tracks + popular.orEmpty()),
                 popular = popular,
                 appearances = appearances.toList(),
@@ -256,7 +256,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         }
 
         var lastUpdate = System.nanoTime()
-        fun publishProgress() {
+        suspend fun publishProgress() {
             if (System.nanoTime() - lastUpdate < 1_000_000_000L) return
             progress(snapshot(finished = false))
             lastUpdate = System.nanoTime()

@@ -59,8 +59,8 @@ internal class MusicArtistsController(
         }
     }
     fun select(artist: MusicArtist?) {
-        if(blocked())return
         if(artist==null){pause();_artists.update{it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null,queue=null)};return}
+        if(blocked())return
         val s=_artists.value
         if(s.owner!=owner()||s.artists.none{it.id==artist.id})return
         _artists.update{it.copy(selected=artist,details=null,error=null,message=null,album=null,albumTracks=null,queue=null)}
@@ -101,8 +101,8 @@ internal class MusicArtistsController(
         }
     }
     fun selectAlbum(album: NativePlaylist?) {
-        if(blocked())return
         if(album==null){pause();_artists.update{it.copy(album=null,albumTracks=null,error=null,message=null)};return}
+        if(blocked())return
         val s=_artists.value
         val details=s.details?:return
         if(s.owner!=owner()||s.stage=="artist_details"||(details.releases+details.appearances).none{it.playlist.key==album.key})return
