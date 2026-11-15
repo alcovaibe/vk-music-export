@@ -57,23 +57,24 @@ internal object PlaybackLists {
         val label=source+" · "+(user.handle?:user.name)
         return friendPositions(state).map {row->PlaybackEntry(row.value,label,viewer,export=references.getOrNull(row.index),readSessionId=state.readSessionId)}
     }
-    fun artist(state: MusicArtistsState): List<PlaybackEntry> {
+    fun artist(state: MusicArtistsState, group: ArtistTracks = state.queue ?: ArtistTracks.ALL): List<PlaybackEntry> {
         val artist=state.selected?:return emptyList()
         val session=state.readSessionId?:return emptyList()
         if(state.owner<=0)return emptyList()
         val album=state.album
-        val page=(if(album!=null)state.albumTracks else state.details?.takeIf{it.artist.id==artist.id}?.tracks)?:return emptyList()
+        val tracks = if (album != null) state.albumTracks?.tracks else state.details?.takeIf { it.artist.id == artist.id }?.tracks(group)
+        if (tracks == null) return emptyList()
         val references=if(album!=null) {
-            if(album.kind==PlaylistKind.UNKNOWN)emptyList()else ExportLayout.playback(page,state.owner,album)
+            if(album.kind==PlaylistKind.UNKNOWN)emptyList()else ExportLayout.playback(NativePage(tracks, tracks.size),state.owner,album)
         } else {
             val occurrences=mutableMapOf<String,Int>()
-            page.tracks.mapIndexed { index,track->
+            tracks.mapIndexed { index,track->
                 val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
                 PlaybackExport(listOf("Исполнители",ExportLayout.component(artist.name)),index+1,
                     ExportSource(state.owner,"artist",artist.id),occurrence)
             }
         }
-        return page.tracks.mapIndexed { index,track->
+        return tracks.mapIndexed { index,track->
             PlaybackEntry(track,"Исполнитель · ${album?.title?:artist.name}",state.owner,
                 export=references.getOrNull(index),readSessionId=session)
         }

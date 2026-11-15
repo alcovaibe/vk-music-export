@@ -53,8 +53,8 @@
     {
       "rule": "java/android/missing-certificate-pinning",
       "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
-      "line": 201,
-      "source_sha256": "bf808b121755515135c59430a7a90852bb520e0f73b77d625ef1911f6c47cef9",
+      "line": 289,
+      "source_sha256": "9ed0c989ed0379be1750c07a5fc4ee43c4dd6dc02ba9171ebcdb4d846d89ced3",
       "rationale": "Provider requests use the fixed api.vk.com HTTPS host, a method allowlist and platform certificate and hostname validation. Bounded followed-artist retries use the same read method and revalidate the current read session. An intermediate request changes only the numeric limit, which is safe to log. Catalogue URLs are form values sent to the fixed VK API host. The configured client disables redirects, cookies and automatic authentication. Provider SPKI pins would require a maintained rotation scheme."
     }
   ]

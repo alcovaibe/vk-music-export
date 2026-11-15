@@ -38,6 +38,8 @@ internal interface MusicApi {
     suspend fun followedArtists(access: MusicAccess,owner: Long): List<MusicArtist> = throw MusicFailure(MusicError.METHOD)
     suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> = followedArtists(access,owner).also{progress(it,1)}
     suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails = throw MusicFailure(MusicError.METHOD)
+    suspend fun artistDetails(access: MusicAccess, artist: MusicArtist, progress: (MusicArtistDetails) -> Unit): MusicArtistDetails =
+        artistDetails(access, artist)
     fun previewArtwork(track: NativeTrack): String? = null
     suspend fun library(access: MusicAccess): NativeProbe
     suspend fun catalog(access: MusicAccess, owner: Long): NativeCatalog
@@ -183,12 +185,98 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             throw ArtistLoadingFailure(ArtistFailureReason.REQUEST, code, method, failure = failure)
         }
     }
-    override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
-        val catalogue=request(access,"catalog.getAudioArtist",mapOf("artist_id" to artist.id,"need_blocks" to "1","lang" to "ru"))
-        val albums=MusicArtists.albums(catalogue){method,fields->request(sessions?.continueRead(access)?:access,method,fields)}
-        val page=MusicPagination.tracks({offset->NativeProtocol.page(request(sessions?.continueRead(access)?:access,
-            "audio.getAudiosByArtist",mapOf("artist_id" to artist.id,"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())))})
-        return MusicArtistDetails(artist,page,albums)
+    override suspend fun artistDetails(access: MusicAccess, artist: MusicArtist) = artistDetails(access, artist) {}
+
+    override suspend fun artistDetails(
+        access: MusicAccess,
+        artist: MusicArtist,
+        progress: (MusicArtistDetails) -> Unit,
+    ): MusicArtistDetails {
+        suspend fun getCatalogue(method: String, fields: Map<String, String>) =
+            MusicPagination.retryTransientPage(retryAlso = MusicArtists::isFollowedServerFailure) {
+                artistRequest(access, method, fields + mapOf("lang" to "ru", "extended" to "1"))
+            }
+
+        val catalogue = try {
+            val initial = getCatalogue("catalog.getAudioArtist", mapOf("artist_id" to artist.id, "need_blocks" to "1"))
+            MusicArtists.artistCatalogue(initial, artist, ::getCatalogue)
+        } catch (failure: MusicFailure) {
+            if (failure.blocksArtistRead()) throw failure
+            MusicArtistDetails(artist, NativePage(emptyList(), 0), emptyList(), complete = false)
+        }
+        val tracks = mutableListOf<NativeTrack>()
+        val albumsByTrack = mutableMapOf<String, MusicAlbum>()
+        val appearances = catalogue.appearances.toMutableList()
+        var complete = catalogue.complete
+
+        fun snapshot(finished: Boolean): MusicArtistDetails {
+            val popular = catalogue.popular?.map { track ->
+                albumsByTrack[track.id]?.let { track.copy(album = it) } ?: track
+            }
+            return catalogue.copy(
+                tracks = artistDiscography(tracks + popular.orEmpty()),
+                popular = popular,
+                appearances = appearances.toList(),
+                complete = finished && complete,
+            )
+        }
+
+        // Keep pages already received if an optional endpoint fails further into its result.
+        suspend fun readTracks(fetch: suspend (Int) -> NativePage): List<NativeTrack> {
+            var received: List<NativeTrack> = emptyList()
+            try {
+                received = MusicPagination.tracks(fetch, partial = { received = it.tracks }).tracks
+            } catch (failure: MusicFailure) {
+                if (failure.blocksArtistRead()) throw failure
+                complete = false
+            }
+            return received
+        }
+
+        progress(snapshot(finished = false))
+        tracks += readTracks { offset ->
+            val result = artistRequest(access, "audio.getAudiosByArtist", mapOf("artist_id" to artist.id,
+                "count" to NativeProtocol.LIMIT.toString(), "offset" to offset.toString()))
+            decoded("audio.getAudiosByArtist", offset) { NativeProtocol.page(result) }
+        }
+        val knownArtistTracks = (tracks + catalogue.popular.orEmpty()).mapTo(hashSetOf(), NativeTrack::id)
+        progress(snapshot(finished = false))
+
+        suspend fun releaseTracks(release: MusicArtistRelease, guest: Boolean): List<NativeTrack> {
+            val credited = mutableSetOf<String>()
+            val page = readTracks { offset ->
+                val result = playlistResponse(sessions?.continueRead(access) ?: access, release.playlist, offset, extended = guest)
+                if (guest) credited += MusicArtists.creditedTracks(result, artist)
+                trackPage(result, offset)
+            }
+            return page.filter { !guest || it.id in knownArtistTracks || it.id in credited }.map { track ->
+                albumsByTrack.putIfAbsent(track.id, release.trackAlbum)
+                track.copy(album = release.trackAlbum)
+            }
+        }
+
+        var lastUpdate = System.nanoTime()
+        fun publishProgress() {
+            if (System.nanoTime() - lastUpdate < 1_000_000_000L) return
+            progress(snapshot(finished = false))
+            lastUpdate = System.nanoTime()
+        }
+        for (release in catalogue.releases) {
+            tracks += releaseTracks(release, guest = false)
+            publishProgress()
+        }
+        for ((index, release) in catalogue.appearances.withIndex()) {
+            val guestTracks = releaseTracks(release, guest = true)
+            tracks += guestTracks
+            appearances[index] = release.copy(featuredTracks = guestTracks.map { it.displayTitle }.distinct())
+            publishProgress()
+        }
+        // The feed may omit release metadata or refer to another edition of the same recording.
+        for (index in tracks.indices) {
+            val track = tracks[index]
+            albumsByTrack[track.id]?.let { tracks[index] = track.copy(album = it) }
+        }
+        return snapshot(finished = true)
     }
     private suspend fun request(access: MusicAccess, method: String, fields: Map<String,String> = emptyMap()): JsonElement {
         return sessions?.request(access){requestRaw(it,method,fields)}?:requestRaw(access,method,fields)
@@ -294,11 +382,15 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         observe("native_music_record_metadata",mapOf("incomplete" to (field!="album"),"method" to "audio.get","offset" to offset,"field" to field,"position" to offset+index))
     }}
     override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
-    override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
+    override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage =
+        trackPage(playlistResponse(access, list, offset), offset)
+
+    private suspend fun playlistResponse(access: MusicAccess, list: NativePlaylist, offset: Int, extended: Boolean = false): JsonElement {
         musicCheck(offset in 0..1_000_000)
         val params = mutableMapOf("owner_id" to list.owner.toString(),"playlist_id" to list.id.toString(),"count" to NativeProtocol.LIMIT.toString(),"offset" to offset.toString())
         list.accessKey?.let {params["access_key"]=it}
-        return trackPage(request(access,"audio.get",params),offset)
+        if (extended) params["extended"] = "1"
+        return request(access,"audio.get",params)
     }
     override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack) {
         val id=LibraryRemovalProtocol.audioId(owner,track)

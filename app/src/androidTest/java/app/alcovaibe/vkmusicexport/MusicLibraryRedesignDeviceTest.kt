@@ -17,6 +17,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.time.LocalDate
 
 @RunWith(AndroidJUnit4::class)
 class MusicLibraryRedesignDeviceTest {
@@ -43,7 +44,14 @@ class MusicLibraryRedesignDeviceTest {
             override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=NativePage(tracks,3)
             override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio request")
             override suspend fun followedArtists(access: MusicAccess,owner: Long)=listOf(MusicArtist("creed","Егор Крид"),MusicArtist("north","Север"))
-            override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist)=MusicArtistDetails(artist,NativePage(tracks,3),listOf(album))
+            override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
+                val release=MusicArtistRelease(album,"Альбом",LocalDate.of(2026,11,6))
+                val artistTracks=tracks.map{it.copy(album=release.trackAlbum)}
+                val guest=MusicArtistRelease(NativePlaylist(12,5,"Гостевой релиз",1,null,null,null,null,PlaylistKind.ALBUM),
+                    performer="Другой артист",featuredTracks=listOf("Ночной рейс"))
+                return MusicArtistDetails(artist,NativePage(artistTracks,3),listOf(release),
+                    popular=listOf(artistTracks[1],artistTracks[0]),appearances=listOf(guest),latest=release)
+            }
         }
         lateinit var model: NativeMusicViewModel
         try {
@@ -142,11 +150,29 @@ class MusicLibraryRedesignDeviceTest {
         screenshot("redesign-artists")
         ui.onNodeWithTag("followed_artist_creed").performClick()
         ui.waitUntil(10_000){model.artists.value.details!=null&&!model.artists.value.busy}
-        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_1_12_1"))
-        ui.onNodeWithTag("music_track_1_12_1").assertHasClickAction()
-        ui.onNodeWithContentDescription("Скачать Миражи (hehehe Cover sped up), Егор Крид",useUnmergedTree=true).assertExists()
-        ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("artist_album_12_4"))
+        val list=ui.onNodeWithTag("native_music_screen_list")
+        ui.onNodeWithTag("artist_play").assertIsEnabled()
         screenshot("redesign-artist-details")
+        list.performScrollToNode(hasTestTag("artist_open_POPULAR"))
+        ui.onNodeWithTag("artist_open_POPULAR").performClick()
+        ui.onNodeWithTag("artist_queue_count").assertTextEquals("2 трека")
+        ui.onNodeWithTag("artist_queue_track_1_12_2").assertHasClickAction()
+        ui.onNodeWithTag("artist_queue_track_3_12_3").assertDoesNotExist()
+        screenshot("redesign-artist-popular")
+        ui.onNodeWithContentDescription("Назад").performClick()
+        list.performScrollToNode(hasTestTag("artist_open_ALL"))
+        ui.onNodeWithTag("artist_open_ALL").performClick()
+        ui.onNodeWithTag("artist_queue_count").assertTextEquals("3 трека")
+        ui.onNodeWithTag("artist_queue_track_1_12_1").assertHasClickAction()
+        ui.onNodeWithTag("artist_queue_track_1_12_1").performTouchInput { longClick() }
+        ui.onNodeWithText("Скачать трек").assertIsDisplayed()
+        ui.runOnUiThread { ui.activity.onBackPressedDispatcher.onBackPressed() }
+        screenshot("redesign-artist-tracks")
+        ui.onNodeWithContentDescription("Назад").performClick()
+        list.performScrollToNode(hasTestTag("artist_guest_12_5"))
+        ui.onNodeWithTag("artist_guest_12_5").assertIsDisplayed()
+        list.performScrollToNode(hasTestTag("artist_album_12_4"))
+        screenshot("redesign-artist-releases")
         ui.onNodeWithTag("artist_album_12_4").performClick()
         ui.waitUntil(10_000){model.artists.value.albumTracks!=null&&!model.artists.value.busy}
         ui.onNodeWithTag("native_music_screen_list").performScrollToNode(hasTestTag("music_track_3_12_3"))
