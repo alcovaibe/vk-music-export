@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       channel:
-        description: Checks only, or an explicitly requested release candidate
+        description: Checks only, release candidate, or draft release
         type: choice
-        options: [checks, rc]
+        options: [checks, rc, draft]
         default: checks
       expected_sha:
         description: Optional inspected channel PR head; fail if the branch moved before dispatch
@@ -519,7 +519,7 @@ jobs:
   release:
     # Normal pushes/PRs run checks only. An owner-requested release requires its marker and pinned build inputs.
     if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')) ||
+      (github.event_name == 'workflow_dispatch' && (inputs.channel == 'rc' || inputs.channel == 'draft') && startsWith(github.ref, 'refs/heads/')) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]')) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-followups' && contains(github.event.head_commit.message, '[publish-pr-50]')) ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(github.event.head_commit.message, '[publish-main-0.12.0]') || contains(github.event.head_commit.message, '[publish-main-0.12.1]') || contains(github.event.head_commit.message, '[publish-main-0.13.1]')))
@@ -560,7 +560,7 @@ jobs:
         env:
           ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
         run: python3 tools/prepare-signing.py
-      - name: Build RC and verify signatures against current stable and oldest supported baseline
+      - name: Build signed APK and verify signatures against current stable and oldest supported baseline
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -619,11 +619,11 @@ jobs:
           python3 tools/toolchain-inventory.py
           python3 tools/dependency-audit.py --build-inventory build/reports/dependencies/build-tools.txt --toolchain dependency-reports/toolchain.json
           cp dependency-reports/*.json release-output/
-      - name: Publish tested RC to GitHub Releases
+      - name: Save the tested APK to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_CHANNEL: rc
+          RELEASE_CHANNEL: ${{ inputs.channel == 'draft' && 'draft' || 'rc' }}
         run: python3 tools/publish-release.py
       - name: Publish this owner-requested build as Latest
         if: github.event_name == 'push'

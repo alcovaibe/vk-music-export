@@ -19,8 +19,13 @@ class PublisherTest(unittest.TestCase):
             if args[2] == 'create':
                 self.release_notes = Path(args[args.index('--notes-file') + 1]).read_text()
                 return subprocess.CompletedProcess(args, 0)
-            if '--json' in args and args[-1] == 'targetCommitish,assets,prerelease':
-                value = {'targetCommitish': 'a' * 40, 'assets': [{'name': name} for name in (apk, 'SHA256SUMS.txt', 'release-evidence.zip')], 'prerelease':channel == 'rc'}
+            if '--json' in args and args[-1] == 'targetCommitish,assets,isDraft,isPrerelease':
+                value = {
+                    'targetCommitish': 'a' * 40,
+                    'assets': [{'name': name} for name in (apk, 'SHA256SUMS.txt', 'release-evidence.zip')],
+                    'isDraft': channel == 'draft',
+                    'isPrerelease': channel == 'rc',
+                }
                 return subprocess.CompletedProcess(args, 0 if existing else 1, json.dumps(value), '')
             return subprocess.CompletedProcess(args, 0 if latest else 1, json.dumps({'tagName': latest}), '')
         with tempfile.TemporaryDirectory() as td:
@@ -75,6 +80,15 @@ class PublisherTest(unittest.TestCase):
     def test_old_recovery_cannot_downgrade_latest(self):
         calls = self.publish('v0.3.0-build.1025')
         self.assertIn('--latest=false', calls[-1])
+
+    def test_draft_saves_the_signed_assets_without_publishing(self):
+        call = self.publish(channel='draft')[-1]
+        self.assertIn('--draft', call)
+        self.assertIn('--latest=false', call)
+        self.assertNotIn('--prerelease', call)
+        self.assertEqual(call[3:call.index('--target')],
+                         ['v0.3.0-build.1024', 'release-output/VK-Music-Export-0.3.0-1024.apk',
+                          'release-output/SHA256SUMS.txt', 'release-output/release-evidence.zip'])
 
     def test_existing_release_is_not_replaced(self):
         self.assertEqual(len(self.publish(existing=True)), 1)

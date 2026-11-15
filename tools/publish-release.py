@@ -1,4 +1,4 @@
-"""Publish a tested RC, or promote the exact manually accepted APK to stable."""
+"""Save a tested APK as a draft or RC, or promote a manually accepted APK to stable."""
 import json
 import os
 import re
@@ -11,7 +11,7 @@ from release_evidence import bundle
 
 info = json.loads(Path('release-output/build-info.json').read_text())
 channel = os.environ['RELEASE_CHANNEL']
-assert channel in ('rc', 'stable'), 'Explicit release channel is required'
+assert channel in ('draft', 'rc', 'stable'), 'Explicit release channel is required'
 source_sha = os.environ.get('RELEASE_SOURCE_SHA', os.environ['GITHUB_SHA'])
 assert re.fullmatch(r'[0-9a-f]{40}', source_sha) and info['commit'] == source_sha
 release_commit = os.environ.get('RELEASE_TARGET_SHA', source_sha)
@@ -23,11 +23,11 @@ if channel == 'stable':
     verify_stable(info, apk)
 tag = info['tag'] + ('-rc' if channel == 'rc' else '')
 changes = notes_for(info['versionName'])
-existing = subprocess.run(['gh', 'release', 'view', tag, '--json', 'targetCommitish,assets,prerelease'], capture_output=True, text=True)
+existing = subprocess.run(['gh', 'release', 'view', tag, '--json', 'targetCommitish,assets,isDraft,isPrerelease'], capture_output=True, text=True)
 if existing.returncode == 0:
     release = json.loads(existing.stdout)
     assert release['targetCommitish'] == release_commit, 'Tag points to another source revision'
-    assert release['prerelease'] == (channel == 'rc'), 'Existing release has another channel'
+    assert release['isDraft'] == (channel == 'draft') and release['isPrerelease'] == (channel == 'rc'), 'Existing release has another channel'
     assert {info['apk'], 'SHA256SUMS.txt', 'release-evidence.zip'} <= {a['name'] for a in release['assets']}, 'Existing release is incomplete; inspect it manually'
     print(f'Release {tag} already exists; assets were not replaced.')
 else:
@@ -61,7 +61,9 @@ else:
     command = ['gh', 'release', 'create', tag, *assets, '--target', release_commit,
         '--title', f"VK Music Export {info['versionName']} · {info['versionCode']}" + (' RC' if channel == 'rc' else ''),
         '--notes-file', str(notes), '--latest=' + str(make_latest).lower()]
-    if channel == 'rc':
+    if channel == 'draft':
+        command.append('--draft')
+    elif channel == 'rc':
         command.append('--prerelease')
     subprocess.run(command, check=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
