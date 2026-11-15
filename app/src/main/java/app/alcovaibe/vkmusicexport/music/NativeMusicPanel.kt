@@ -204,7 +204,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         DeviceConfirmationScreen(state,model::submitAuthCode,model::cancel,{model.openAuthChrome(context)})
         return
     }
-    val artists by model.artists.collectAsState()
+    // The lazy list can be measured before recomposition after Back. Use one snapshot for the route and its items.
+    val artists = model.artists.collectAsState().value
     val unsortedLocalFiles by model.savedLibrary.collectAsState()
     val savedPreferences=remember(context){context.getSharedPreferences("saved_music",android.content.Context.MODE_PRIVATE)}
     var savedSort by remember {mutableStateOf(runCatching{SavedMusicSort.valueOf(savedPreferences.getString("sort",null).orEmpty())}.getOrDefault(SavedMusicSort.NEWEST))}
@@ -263,7 +264,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     val canPlayLibrary=state.localPlayback?.let{SavedPlaybackPolicy.allowed(state)&&it.rows.isNotEmpty()}
         ?:(state.page?.tracks?.any{it.duration>0&&!it.restricted&&it.metadataError==null}==true&&state.readSessionId!=null)
-    val artistRoute = destination == MusicDestination.LIBRARY && category == LibraryCategory.ARTISTS && artists.selected != null
+    val selectedArtist = artists.selected.takeIf { destination == MusicDestination.LIBRARY && category == LibraryCategory.ARTISTS }
+    val artistRoute = selectedArtist != null
     val artistProfile = artistRoute && artists.queue == null && artists.album == null
     val artistScroll = key(artists.selected?.id) { rememberLazyListState() }
     val artistHeader by remember(artistScroll) { derivedStateOf { artistScroll.firstVisibleItemIndex > 0 } }
@@ -367,8 +369,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 legacy.message?.let{Text(it)};legacyMessage?.let{Text(it)}
                 legacy.files.forEach{file->TextButton(onClick={legacySelection=file.name;legacyExport.launch(file.name)}){Text("Сохранить копию: ${file.name}")}}
             }}
-        } else if (artistRoute) {
-            val selected = requireNotNull(artists.selected)
+        } else if (selectedArtist != null) {
             val remote = artists.owner == state.probe?.owner && artists.readSessionId != null && artists.readSessionId == state.readSessionId
             val album = artists.album
             val group = artists.queue
@@ -397,9 +398,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }
                 group != null && details != null -> artistQueueItems(details, group, actions)
-                else -> artistProfileItems(selected, details, actions, artists.busy, model::openArtistTracks) { model.selectArtistAlbum(it) }
+                else -> artistProfileItems(selectedArtist, details, actions, artists.busy, model::openArtistTracks) { model.selectArtistAlbum(it) }
             }
-            artistLoadingItems(artists) { if (album == null) model.selectArtist(selected) else model.selectArtistAlbum(album) }
+            artistLoadingItems(artists) { if (album == null) model.selectArtist(selectedArtist) else model.selectArtistAlbum(album) }
         } else {
             item("connection") {MusicConnectionCard(state.configured,session,state.busy){accessOpen=true}}
             item("categories") {MusicCategoryGrid(category,mapOf(
