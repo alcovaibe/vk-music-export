@@ -50,7 +50,8 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
 @Serializable internal data class MusicAlbum(val id: String, val title: String)
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
     val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null,
-    val releaseYear: Int?=null) {
+    val releaseYear: Int?=null, val accessKey: String?=null) {
+    override fun toString() = "NativeTrack([metadata omitted])"
     val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
         if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
     }?:title
@@ -92,7 +93,7 @@ internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
     const val FOLLOWED_ARTISTS = "audio.getFollowedArtists"
-    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.search",
+    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.add", "audio.search",
         "catalog.getAudio","catalog.getAudioArtist","catalog.getSection","catalog.getBlockItems","audio.getAudiosByArtist",FOLLOWED_ARTISTS)
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
@@ -179,7 +180,9 @@ internal object NativeProtocol {
         val year=listOf("release_year","year").firstNotNullOfOrNull{field->
             (o[field] as? JsonPrimitive)?.intOrNull?.takeIf{it in 1800..2100}
         }?:releaseDate?.take(4)?.toIntOrNull()?.takeIf{it in 1800..2100}
-        return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(), restricted, album,subtitle,releaseYear=year)
+        val accessKey = VkMusicLinks.accessKey((o["access_key"] as? JsonPrimitive)?.takeIf { it.isString }?.content)
+        return NativeTrack("${owner}_$id", text(o,"title"), text(o,"artist"), duration.toInt(),
+            restricted, album, subtitle, releaseYear = year, accessKey = accessKey)
     }
     fun page(response: JsonElement,warning:(String,Int)->Unit={_,_->}): NativePage = parse {
         val o = response as? JsonObject ?: throw MusicFailure(MusicError.RESPONSE)
@@ -299,13 +302,17 @@ internal object NativeProtocol {
         val items=response as? JsonArray?:throw MusicFailure(MusicError.RESPONSE)
         if(items.isEmpty())throw TrackUnavailable(TrackAccessIssue.NOT_RETURNED)
         musicCheck(items.size==1)
-        val o=items[0].jsonObject;val actual=track(o)
+        return resolveMediaRow(items[0].jsonObject, expected)
+    }
+    fun resolveMediaRow(o: JsonObject, expected: NativeTrack): ResolvedAudio = parse {
+        val actual=track(o)
         musicCheck(actual.id==expected.id&&(expected.duration<=0||actual.duration==expected.duration))
         if(actual.restricted)throw TrackUnavailable(TrackAccessIssue.RESTRICTED)
         if(actual.duration<=0)throw TrackUnavailable(TrackAccessIssue.NO_DURATION)
         val url=(o["url"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotBlank()}
             ?:throw TrackUnavailable(TrackAccessIssue.NO_STREAM)
-        ResolvedAudio(if("subtitle" in o)actual else actual.copy(subtitle=expected.subtitle),MediaAddress.require(url).toString())
+        ResolvedAudio(actual.copy(subtitle=if("subtitle" in o)actual.subtitle else expected.subtitle,
+            accessKey=expected.accessKey?:actual.accessKey),MediaAddress.require(url).toString())
     }
 
 }

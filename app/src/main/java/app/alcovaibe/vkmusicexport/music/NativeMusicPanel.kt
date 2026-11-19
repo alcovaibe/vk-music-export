@@ -52,6 +52,9 @@ import kotlinx.coroutines.withContext
 internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDismiss:()->Unit,onUpdates:()->Unit={}) {
     if(!visible)return
     val context=LocalContext.current;val scope=rememberCoroutineScope()
+    fun shareLink(url: String) = shareVkMusicLink(context, url)
+    fun shareTrack(track: NativeTrack): (() -> Unit)? =
+        VkMusicLinks.track(track.id, track.accessKey)?.let { link -> { shareLink(link.url) } }
     val lifecycle=LocalLifecycleOwner.current
     var friendsResumeEpoch by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycle,model) {
@@ -140,10 +143,15 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     var category by rememberSaveable {mutableStateOf(LibraryCategory.TRACKS)}
     LaunchedEffect(state.catalogSection) {if(category!=LibraryCategory.ARTISTS)category=when(state.catalogSection){CatalogSection.LIBRARY->LibraryCategory.TRACKS;CatalogSection.ALBUMS->LibraryCategory.ALBUMS;else->LibraryCategory.PLAYLISTS}}
     val searchState by model.musicSearch.collectAsState()
-    DisposableEffect(lifecycle,model,destination,playerExpanded) {
-        model.setSearchActive(destination==MusicDestination.SEARCH&&!playerExpanded&&lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    val musicLink by model.musicLink.collectAsState()
+    val addedTracks by model.addedTracks.collectAsState()
+    val trackActionMessage by model.trackActionMessage.collectAsState()
+    val showingLink = destination == MusicDestination.SEARCH && musicLink.request != 0L
+    DisposableEffect(lifecycle,model,destination,playerExpanded,showingLink) {
+        val active = destination == MusicDestination.SEARCH && !playerExpanded && !showingLink
+        model.setSearchActive(active && lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer=LifecycleEventObserver{_,event->when(event) {
-            Lifecycle.Event.ON_RESUME->model.setSearchActive(destination==MusicDestination.SEARCH&&!playerExpanded)
+            Lifecycle.Event.ON_RESUME->model.setSearchActive(active)
             Lifecycle.Event.ON_PAUSE,Lifecycle.Event.ON_STOP->model.setSearchActive(false)
             else->Unit
         }}
@@ -182,6 +190,22 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     val downloadsOpen by model.downloadsOpen.collectAsState()
     val downloadsPage by model.downloadsPage.collectAsState()
+    var linkInputOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(musicLink.request) {
+        if (musicLink.request != 0L) {
+            if (model.downloadsOpen.value) model.dismissDownloads()
+            PlaybackRuntime.expanded.value = false
+            aboutOpen = false
+            accessOpen = false
+            toolsOpen = false
+            linkInputOpen = false
+            destination = MusicDestination.SEARCH
+        }
+    }
+    LaunchedEffect(musicLink.request, state.initialized, state.configured, state.stage) {
+        if (state.initialized && state.configured && musicLink.music == null && musicLink.error == null)
+            model.retryMusicLink()
+    }
     var presentationWasOpen by remember{mutableStateOf(downloadsOpen)}
     LaunchedEffect(downloadsOpen) {
         if(downloadsOpen) {
@@ -249,6 +273,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         when {
             accessOpen->accessOpen=false
             destination==MusicDestination.DOWNLOADS->{destination=downloadsOrigin;model.dismissDownloads()}
+            showingLink->model.dismissMusicLink()
             destination==MusicDestination.FRIENDS&&friendState.user!=null->model.friends.back()
             destination!=MusicDestination.LIBRARY->destination=MusicDestination.LIBRARY
             category==LibraryCategory.ARTISTS&&artists.album!=null->model.backFromArtist()
@@ -276,7 +301,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         onConfirm={model.openAuthChrome(context)},onForget=model::forget,onCancel=model::cancel)
     else MusicLibraryScaffold(
         title=when(destination) {
-            MusicDestination.SEARCH->"Поиск музыки"
+            MusicDestination.SEARCH->if (showingLink) musicLink.music?.list?.title ?: "Музыка по ссылке" else "Поиск музыки"
             MusicDestination.SAVED->"Сохранённое"
             MusicDestination.DOWNLOADS->"Загрузки"
             MusicDestination.FRIENDS->if(friendState.playlist!=null)when(friendState.playlist?.kind){PlaylistKind.ALBUM->"Альбом";PlaylistKind.UNKNOWN->"Подборка";else->"Плейлист"} else if(friendState.user!=null)"Профиль друга" else "Друзья"
@@ -295,6 +320,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         playback=playback,onPlayerOpen={PlaybackRuntime.expanded.value=true},
         tag=when(destination){MusicDestination.DOWNLOADS->"downloads_screen";MusicDestination.SEARCH->"music_search_screen";else->"native_music_screen"},
         listIdentity=when {
+            showingLink -> "vk-link:${musicLink.request}"
             destination==MusicDestination.DOWNLOADS -> "downloads:${queue.queueId}:$downloadsTab:$downloadsOffset"
             destination==MusicDestination.FRIENDS -> "friends:${friendState.user?.id}:${friendState.playlist?.key}"
             artistRoute -> "artist:${artists.selected?.id}:${artists.queue}:${artists.album?.key}"
@@ -312,14 +338,22 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             DropdownMenuItem(text={Text("Обновления приложения")},modifier=Modifier.testTag("open_app_updates"),onClick={closeMenu();if(destination==MusicDestination.DOWNLOADS){destination=downloadsOrigin;model.dismissDownloads()};onUpdates()})
             HorizontalDivider()
         }) {
-        if(destination==MusicDestination.SEARCH) {
+        if (showingLink) {
+            linkedMusicItems(musicLink, state.initialized, state.configured, canPrepare, trackActionMessage?.text,
+                onConnect = { accessOpen = true }, onRetry = model::retryMusicLink, onPlay = model::playLinkedMusic,
+                onDownload = model::downloadLinkedTrack, onDownloadCollection = model::downloadLinkedCollection,
+                onShare = ::shareLink, onPaste = { linkInputOpen = true }, preview = model::previewArtwork)
+        } else if(destination==MusicDestination.SEARCH) {
             musicSearchItems(searchState,model::searchMusic,model::retryMusicSearch,model::moreMusicSearch,
                 onPlay={model.playSearchTrack(searchState,it)},
-                onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,preview=model::previewArtwork)
+                onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,preview=model::previewArtwork,
+                onAdd = { model.addSearchTrack(searchState, it) }, canAdd = state.configured && !state.busy && !backgroundCheck,
+                added = addedTracks.keys, notice = trackActionMessage?.text, onShare = ::shareLink, onOpenLink = { linkInputOpen = true })
         }else if(destination==MusicDestination.FRIENDS) {
             friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
-                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.prepare(context,index){PlaybackLists.friends(friendPlaybackSnapshot)}})
+                onOpenVk={user->runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(user.vkUrl)))}.onFailure{openError=true}},onConnect={accessOpen=true},onPlay={index->PlaybackRuntime.prepare(context,index){PlaybackLists.friends(friendPlaybackSnapshot)}},
+                onShare=::shareLink)
         }else if(destination==MusicDestination.DOWNLOADS) {
             downloadsItems(queue,downloadsPage,downloadsTab,state.busy||backgroundCheck||friendState.preparing,state.error,
                 onTab={downloadsTab=it;downloadsOffset=0},onPage={downloadsOffset=it},onReload=model::retryDownloadsPage,
@@ -355,7 +389,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             itemsIndexed(localFiles,key={_,row->"saved_${row.file.uri}"}){i,entry->
                 val row=entry.file
                 Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.playable},onOpen=if(entry.playable&&savedListeningAllowed)({openFile(row)})else null)
+                    MusicTrackRow(row.track,i+1,saved=row.takeIf{entry.playable},onOpen=if(entry.playable&&savedListeningAllowed)({openFile(row)})else null, onShare=shareTrack(row.track))
                     if(entry.availability==SavedAvailability.UNKNOWN)Text("Доступность проверяется в фоне. Можно запустить трек.",style=MaterialTheme.typography.bodySmall)
                     if(!entry.playable)Text("${row.displayName}: файл недоступен или размер изменился. Открой проверку сохранённых файлов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 }
@@ -385,16 +419,22 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 playFile = ::openFile,
             )
             when {
-                album != null -> artists.albumTracks?.let { page ->
-                    item("artist_album_count") { Text("Треки · ${page.count}", style = MaterialTheme.typography.titleMedium) }
-                    itemsIndexed(page.tracks, key = { index, track -> "artist_album_track_${index}_${track.id}" }) { index, track ->
-                        val saved = savedById[track.id]?.file
-                        MusicTrackRow(track, index + 1, preview = model.previewArtwork(track), saved = saved,
-                            downloading = queue.status == "RUNNING" && queue.account == artists.owner && queue.currentTask?.track?.id == track.id,
-                            enabled = actions.canDownload(track),
-                            onDownload = if (album.kind != PlaylistKind.UNKNOWN) ({ model.downloadArtistTrack(artists, index) }) else null,
-                            onOpen = saved?.let { { openFile(it) } },
-                            onPlay = if (actions.canPlay(track)) ({ actions.play(ArtistTracks.ALL, index, track) }) else null)
+                album != null -> {
+                    VkMusicLinks.collectionUrl(album)?.let { url ->
+                        item("artist_album_share") { TextButton(onClick = { shareLink(url) }) { Text("Поделиться ссылкой") } }
+                    }
+                    artists.albumTracks?.let { page ->
+                        item("artist_album_count") { Text("Треки · ${page.count}", style = MaterialTheme.typography.titleMedium) }
+                        itemsIndexed(page.tracks, key = { index, track -> "artist_album_track_${index}_${track.id}" }) { index, track ->
+                            val saved = savedById[track.id]?.file
+                            MusicTrackRow(track, index + 1, preview = model.previewArtwork(track), saved = saved,
+                                downloading = queue.status == "RUNNING" && queue.account == artists.owner && queue.currentTask?.track?.id == track.id,
+                                enabled = actions.canDownload(track),
+                                onDownload = if (album.kind != PlaylistKind.UNKNOWN) ({ model.downloadArtistTrack(artists, index) }) else null,
+                                onOpen = saved?.let { { openFile(it) } },
+                                onPlay = if (actions.canPlay(track)) ({ actions.play(ArtistTracks.ALL, index, track) }) else null,
+                                onShare = shareTrack(track))
+                        }
                     }
                 }
                 group != null && details != null -> artistQueueItems(details, group, actions)
@@ -463,6 +503,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                         }
                     }else {
                         if(state.selected!=null) {
+                            state.selected?.let(VkMusicLinks::collectionUrl)?.let { url ->
+                                TextButton(onClick = { shareLink(url) }) { Text("Поделиться ссылкой") }
+                            }
                             TextButton(enabled=!state.busy,onClick={model.section(state.catalogSection)}){Text("Назад к подборкам")}
                             Button(enabled=canPrepare&&state.localPlayback==null&&state.readSessionId!=null,onClick={model.prepare()},modifier=Modifier.fillMaxWidth()){Text(if(state.selected?.kind==PlaylistKind.ALBUM)"Скачать альбом" else "Скачать плейлист")}
                         }else if(MusicCatalog.visible(state).isNotEmpty())Button(enabled=canPrepareLibrary,onClick={model.prepare(catalogKind=state.catalogSection.kind)},modifier=Modifier.fillMaxWidth().testTag("catalog_download_category")) {
@@ -549,7 +592,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                             onRemove=if(state.selected==null&&state.catalogSection==CatalogSection.LIBRARY)({model.inspectRemoval(track)})else null,
                             onOpen=if(localRow!=null)({playLibrary(displayIndex)})else saved?.let{({openFile(it)})},
                             onPlay=if(localRow!=null||state.readSessionId!=null&&track.metadataError==null&&!track.restricted&&track.duration>0)
-                                ({playLibrary(displayIndex)})else saved?.let{({openFile(it)})})
+                                ({playLibrary(displayIndex)})else saved?.let{({openFile(it)})}, onShare=shareTrack(track))
                     }
                 }
             }
@@ -592,8 +635,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             }
         }
     }
+    if (linkInputOpen) MusicLinkInput(onOpen = { model.openMusicLink(it); linkInputOpen = false },
+        onDismiss = { linkInputOpen = false })
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
-    if(playerExpanded)PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare)
+    if(playerExpanded)PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare,
+        downloadNotice=trackActionMessage?.takeIf { it.downloadError }?.text)
     }
 }
 

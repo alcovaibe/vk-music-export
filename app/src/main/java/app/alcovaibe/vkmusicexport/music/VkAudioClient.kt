@@ -52,6 +52,10 @@ internal interface MusicApi {
         musicCheck(startFrom==null,MusicError.INCOMPLETE);return albumCatalogPage(access,owner,offset)
     }
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
+    suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack): Long =
+        throw MusicFailure(MusicError.METHOD)
+    suspend fun linkedTrack(access: MusicAccess, link: VkMusicLink.Track): NativeTrack? =
+        metadata(access, link.trackId)?.copy(accessKey = link.accessKey)
     suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack): Unit = throw MusicFailure(MusicError.METHOD)
     suspend fun artwork(access: MusicAccess,track: NativeTrack): String? = null
     suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack): List<ArtworkCandidate> =
@@ -65,6 +69,7 @@ internal interface MusicApi {
         musicCheck(!track.restricted&&track.duration>0,MusicError.UNAVAILABLE)
         return ResolvedAudio(track,media(access,track))
     }
+    suspend fun resolveFresh(access: MusicAccess, track: NativeTrack): ResolvedAudio = resolve(access, track)
     suspend fun media(access: MusicAccess, track: NativeTrack): String
     suspend fun libraryPage(access: MusicAccess,owner: Long,offset: Int): NativePage {
         musicCheck(offset==0,MusicError.INCOMPLETE);return library(access).library
@@ -95,9 +100,11 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun searchMusic(access: MusicAccess,query: String,offset: Int): MetadataMatches {
         val text=MusicSearchQuery.text(query)
         musicCheck(offset>=0&&offset<MusicSearchQuery.MAX_RESULTS,MusicError.RESPONSE)
-        val page=NativeProtocol.page(request(access,"audio.search",mapOf("q" to text,
+        val response = request(access,"audio.search",mapOf("q" to text,
             "count" to MusicSearchQuery.PAGE_SIZE.toString(),"offset" to offset.toString(),
-            "auto_complete" to "0","search_own" to "0","sort" to "2")))
+            "auto_complete" to "0","search_own" to "0","sort" to "2"))
+        val page = NativeProtocol.page(response)
+        rememberStreams(access, (response as JsonObject)["items"] as JsonArray, page.tracks)
         return MetadataMatches(page.tracks,page.count,offset)
     }
     private val mutationClient=client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
@@ -294,6 +301,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             method == "audio.get" -> "tracks"
             method in setOf("audio.getPlaylists", "audio.getPlaylistById") -> "catalog"
             method == "audio.delete" -> "library_remove"
+            method == "audio.add" -> "library_add"
             method == "audio.search" -> "cover_search"
             else -> "resolve_media"
         }
@@ -304,13 +312,13 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         observe("native_music_request", startFields)
         return try {
             MusicApiPacer.awaitSlot()
-            val response = (if(method=="audio.delete")mutationClient else client).newCall(req).readBounded(1_048_576)
+            val response = (if(method in setOf("audio.add", "audio.delete"))mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
             // A private friend's section or a denied search is not proof that the account token expired.
             val scopedRead=method=="friends.get"||method=="users.get"&&fields["user_ids"]!=null||
                 method in setOf("audio.get","audio.getPlaylists","audio.getPlaylistById")&&fields["owner_id"]?.toLongOrNull()?.let{it!=access.accountId}==true
-            if(response.status==403&&(scopedRead||method in ArtistLoadingFailure.METHODS||method in setOf("audio.search","audio.getById"))) {
+            if(response.status==403&&(scopedRead||method in ArtistLoadingFailure.METHODS||method in setOf("audio.search","audio.getById","audio.add"))) {
                 val explicit=runCatching{NativeProtocol.envelope(strictUtf8(response.bytes))}.exceptionOrNull() as? MusicFailure
                 if(explicit?.remoteCode!=null)throw explicit
                 throw MusicFailure(MusicError.DENIED,httpStatus=response.status)
@@ -382,8 +390,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         observe("native_music_record_metadata",mapOf("incomplete" to (field!="album"),"method" to "audio.get","offset" to offset,"field" to field,"position" to offset+index))
     }}
     override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=playlistPage(access,list,0)
-    override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage =
-        trackPage(playlistResponse(access, list, offset), offset)
+    override suspend fun playlistPage(access: MusicAccess,list: NativePlaylist,offset: Int): NativePage {
+        val response = playlistResponse(access, list, offset)
+        val page = trackPage(response, offset)
+        rememberStreams(access, (response as JsonObject)["items"] as JsonArray, page.tracks)
+        return page
+    }
 
     private suspend fun playlistResponse(access: MusicAccess, list: NativePlaylist, offset: Int, extended: Boolean = false): JsonElement {
         musicCheck(offset in 0..1_000_000)
@@ -391,6 +403,17 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         list.accessKey?.let {params["access_key"]=it}
         if (extended) params["extended"] = "1"
         return request(access,"audio.get",params)
+    }
+    override suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack): Long {
+        val source = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
+        musicCheck(owner > 0 && (access.accountId == null || access.accountId == owner), MusicError.ACCOUNT_CHANGED)
+        val fields = mutableMapOf("owner_id" to source.owner.toString(), "audio_id" to source.id.toString())
+        source.accessKey?.let { fields["access_key"] = it }
+        // Authorize the exact token used for the write. A transport failure must not replay audio.add.
+        musicCheck(NativeProtocol.owner(requestRaw(access, "users.get", emptyMap())) == owner, MusicError.ACCOUNT_CHANGED)
+        val response = requestRaw(access, "audio.add", fields) as? JsonPrimitive
+        return response?.takeUnless { it.isString }?.longOrNull?.takeIf { it > 0 }
+            ?: throw MusicFailure(MusicError.RESPONSE)
     }
     override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack) {
         val id=LibraryRemovalProtocol.audioId(owner,track)
@@ -423,14 +446,54 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun artwork(access: MusicAccess,track: NativeTrack): String? = artworkCandidates(access,track).firstOrNull()?.url
     override suspend fun artworkCandidates(access: MusicAccess,track: NativeTrack): List<ArtworkCandidate> {
         synchronized(coverHints){coverHints.remove(track.id)?.takeIf{it.token==access.credentialId}?.let{return it.result.getOrThrow()}}
-        return NativeProtocol.artworkCandidates(request(access,"audio.getById",mapOf("audios" to track.id)),track)
+        val link = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
+        return NativeProtocol.artworkCandidates(audioRecord(access, link), track)
     }
+    override suspend fun linkedTrack(access: MusicAccess, link: VkMusicLink.Track): NativeTrack? {
+        val response = audioRecord(access, link)
+        val track = NativeProtocol.metadataRecord(response, link.trackId) ?: return null
+        val shared = track.copy(accessKey = link.accessKey ?: track.accessKey)
+        val rows = response as JsonArray
+        rememberStreams(access, rows, listOf(shared))
+        rememberPreviews(buildJsonObject { put("items", rows) })
+        return shared
+    }
+
+    private suspend fun audioRecord(access: MusicAccess, link: VkMusicLink.Track): JsonElement {
+        if (link.accessKey != null) {
+            try {
+                val response = request(access, "audio.getById", mapOf("audios" to link.audioReference))
+                if ((response as? JsonArray)?.isEmpty() != true) return response
+            } catch (e: MusicFailure) {
+                // Some VK clients accept only the two-part ID for public audio.
+                if (e.code != MusicError.DENIED && e.remoteCode != 100) throw e
+            }
+        }
+        return request(access, "audio.getById", mapOf("audios" to link.trackId))
+    }
+
+    private fun rememberStreams(access: MusicAccess, rows: JsonArray, tracks: List<NativeTrack>) {
+        rows.zip(tracks).forEach { (row, track) ->
+            if (row is JsonObject && track.metadataError == null && track.duration > 0 && !track.restricted) {
+                try { VkStreamHints.remember(access, track, NativeProtocol.resolveMediaRow(row, track)) }
+                catch (_: MusicFailure) { /* A missing or unusable URL leaves on-demand resolution available. */ }
+            }
+        }
+    }
+
     override suspend fun media(access: MusicAccess,track: NativeTrack): String=resolve(access,track).url
-    override suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
-        val response=try{request(access,"audio.getById",mapOf("audios" to track.id))}
-            catch(e: MusicFailure){if(e.code==MusicError.DENIED)throw TrackUnavailable(TrackAccessIssue.DENIED,e.remoteCode);throw e}
-        val resolved=NativeProtocol.resolveMedia(response,track)
-        val cover=runCatching{NativeProtocol.artworkCandidates(response,track)}
+    override suspend fun resolve(access: MusicAccess, track: NativeTrack): ResolvedAudio =
+        VkStreamHints.read(access, track) ?: resolveFresh(access, track)
+
+    override suspend fun resolveFresh(access: MusicAccess, track: NativeTrack): ResolvedAudio {
+        val link = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
+        val response = try { audioRecord(access, link) }
+        catch (e: MusicFailure) {
+            if (e.code == MusicError.DENIED) throw TrackUnavailable(TrackAccessIssue.DENIED, e.remoteCode)
+            throw e
+        }
+        val resolved = NativeProtocol.resolveMedia(response,track)
+        val cover = runCatching { NativeProtocol.artworkCandidates(response,track) }
         synchronized(coverHints){coverHints[track.id]=CoverHint(access.credentialId,cover)}
         return resolved
     }

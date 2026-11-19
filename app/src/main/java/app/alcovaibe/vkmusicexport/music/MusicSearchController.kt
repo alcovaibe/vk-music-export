@@ -91,15 +91,18 @@ internal class MusicSearchController(private val scope: CoroutineScope,private v
             }finally {if(g==generation)work=null}
         }
     }
+    fun isCurrent(snapshot: MusicSearchState): Boolean =
+        snapshot == mutable.value && snapshot.active && snapshot.phase == MusicSearchPhase.RESULTS &&
+            snapshot.account > 0 && snapshot.readSessionId != null
+
     fun entries(snapshot: MusicSearchState): List<PlaybackEntry> {
-        if(snapshot!=mutable.value||!snapshot.active||snapshot.phase!=MusicSearchPhase.RESULTS||
-            snapshot.account<=0||snapshot.readSessionId==null||
-            api.capabilities.directAudioStream==CapabilityStatus.UNAVAILABLE)return emptyList()
+        if (!isCurrent(snapshot) || api.capabilities.directAudioStream == CapabilityStatus.UNAVAILABLE)
+            return emptyList()
         val occurrences=mutableMapOf<String,Int>()
-        return snapshot.tracks.mapIndexed{index,track->
+        return snapshot.tracks.mapIndexed { index, track ->
             val occurrence=(occurrences[track.id]?:0)+1;occurrences[track.id]=occurrence
             PlaybackEntry(track,"Поиск ВК",snapshot.account,
-                export=PlaybackExport(listOf("Поиск"),index+1,ExportSource(snapshot.account,"search",track.id),occurrence),
+                export=directTrackExport(snapshot.account, track).copy(position=index+1, occurrence=occurrence),
                 readSessionId=snapshot.readSessionId)
         }
     }

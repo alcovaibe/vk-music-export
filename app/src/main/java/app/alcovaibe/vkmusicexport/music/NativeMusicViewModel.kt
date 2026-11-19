@@ -23,11 +23,14 @@ internal data class NativeMusicState(val initialized: Boolean=false,val configur
     val localCatalogAccount: Long?=null,
     val localPlayback: LocalCollectionPlayback?=null)
 
+internal data class TrackActionMessage(val text: String, val downloadError: Boolean = false)
+
 internal class NativeMusicViewModel @JvmOverloads constructor(application: Application,
     private val api: MusicApi=VkAudioClient(sessions=MusicSessions.get(application)),private val deviceAuth: DeviceAuthApi=VkDeviceAuthClient(),
     private val authClock: ()->Long={android.os.SystemClock.elapsedRealtime()},private val authPollMs: Long=5000,
     private val authBrowser: (android.content.Context,String)->Boolean=::openDeviceAuthBrowser,
     private val lookupImages:((ArtworkMatch)->ArtworkSource)?=null,private val artistTimeoutMs: Long=45_000,private val duplicateTransfer: AudioTransfer=AudioTransfer(),private val maintenanceLauncher: ((Job)->Unit)?=null,private val maintenanceBeforeItem: suspend(String,Int)->Unit={_,_->},private val queueStart: (suspend(Boolean)->Unit)?=null): AndroidViewModel(application) {
+    private val accessChangeStages = setOf("browser_auth", "configure", "forget")
     private val vault=MusicAccessStore(application)
     private val exportReads=ExportReadCache(authClock)
     private val sessions=if(api is VkAudioClient)MusicSessions.get(application) else null
@@ -96,6 +99,125 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         PlaybackRuntime.play(getApplication(),searchController.entries(snapshot),index)
     fun downloadSearchTrack(snapshot: MusicSearchState,index: Int) {
         searchController.entries(snapshot).getOrNull(index)?.let(::downloadPlayback)
+    }
+    private val _musicLink = MutableStateFlow(MusicLinkState())
+    val musicLink = _musicLink.asStateFlow()
+    private var linkWork: Job? = null
+    private var linkRequest = 0L
+    private val _addedTracks = MutableStateFlow<Map<String, String>>(emptyMap())
+    val addedTracks = _addedTracks.asStateFlow()
+    private val _trackActionMessage = MutableStateFlow<TrackActionMessage?>(null)
+    val trackActionMessage = _trackActionMessage.asStateFlow()
+
+    fun openMusicLink(text: CharSequence) {
+        linkWork?.cancel()
+        _trackActionMessage.value = null
+        val link = VkMusicLinks.fromText(text)
+        _musicLink.value = MusicLinkState(++linkRequest, link = link, error = if (link == null) MusicError.RESPONSE else null)
+    }
+
+    fun dismissMusicLink() {
+        linkWork?.cancel()
+        _trackActionMessage.value = null
+        _musicLink.value = MusicLinkState()
+    }
+
+    fun retryMusicLink() {
+        val request = _musicLink.value
+        val link = request.link ?: return
+        if (request.loading || !_state.value.configured || _state.value.stage in accessChangeStages) return
+        linkWork?.cancel()
+        _musicLink.value = request.copy(loading = true, error = null)
+        linkWork = viewModelScope.launch {
+            try {
+                val result = withTimeout(90_000) {
+                    val initial = sessions?.current() ?: access()
+                    readLinkedMusic(api, initial, link).also { checkRead(initial) }
+                }
+                if (_musicLink.value.request == request.request) _musicLink.value = request.copy(music = result)
+            } catch (_: TimeoutCancellationException) {
+                if (_musicLink.value.request == request.request) _musicLink.value = request.copy(error = MusicError.TIMEOUT)
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) {
+                if (_musicLink.value.request == request.request)
+                    _musicLink.value = request.copy(error = (e as? MusicFailure)?.code ?: MusicError.RESPONSE)
+            }
+        }
+    }
+
+    private suspend fun checkRead(initial: MusicAccess): MusicAccess =
+        sessions?.continueRead(initial) ?: access().also { MusicReadIdentity(initial).require(it) }
+
+    private fun linkedEntries(snapshot: LinkedMusic): List<PlaybackEntry> =
+        if (_musicLink.value.music === snapshot && _state.value.stage !in accessChangeStages &&
+            api.capabilities.directAudioStream != CapabilityStatus.UNAVAILABLE) snapshot.entries() else emptyList()
+
+    fun playLinkedMusic(snapshot: LinkedMusic, index: Int = -1) =
+        PlaybackRuntime.play(getApplication(), linkedEntries(snapshot), index)
+
+    fun downloadLinkedTrack(snapshot: LinkedMusic, index: Int) {
+        linkedEntries(snapshot).getOrNull(index)?.let(::downloadPlayback)
+    }
+
+    fun downloadLinkedCollection(snapshot: LinkedMusic) {
+        val entry = linkedEntries(snapshot).firstOrNull { !it.track.restricted && it.track.duration > 0 && it.track.metadataError == null }
+            ?: return
+        enqueuePlayback(entry) { snapshot.collectionTasks().filter { !it.track.restricted && it.track.duration > 0 && it.track.metadataError == null } }
+    }
+
+    fun addSearchTrack(snapshot: MusicSearchState, index: Int) {
+        if (!searchController.isCurrent(snapshot)) return
+        val track = snapshot.tracks.getOrNull(index) ?: return
+        val session = snapshot.readSessionId ?: return
+        if (track.restricted || track.metadataError != null || track.id in _addedTracks.value) return
+        _trackActionMessage.value = null
+        run("library_add") { g ->
+            try {
+                val initial = sessions?.current() ?: access()
+                musicCheck(initial.readSessionId == session, MusicError.ACCESS)
+                musicCheck(initial.accountId == null || initial.accountId == snapshot.account, MusicError.ACCOUNT_CHANGED)
+                active(g)
+                val proof = _state.value.probe
+                val alreadyAdded = proof != null && proof.owner == snapshot.account && _state.value.readSessionId == session &&
+                    proof.library.tracks.any { it.id == track.id }
+                val libraryId = if (alreadyAdded) track.id else "${snapshot.account}_${api.addLibraryTrack(initial, snapshot.account, track)}"
+                val current = checkRead(initial)
+                active(g)
+                _addedTracks.update { it + (track.id to libraryId) }
+                _trackActionMessage.value = TrackActionMessage(
+                    if (alreadyAdded) "Трек уже в «Моей музыке»." else "Трек добавлен в «Мою музыку».")
+                if (!alreadyAdded) {
+                    exportReads.invalidateLibrary(exportReads.lease(snapshot.account, session), snapshot.account)
+                    _state.update { it.copy(libraryRefreshing = true) }
+                    try {
+                        val first = MusicPagination.retryTransientPage { api.library(current) }
+                        musicCheck(first.owner == snapshot.account, MusicError.ACCOUNT_CHANGED)
+                        checkRead(initial)
+                        active(g)
+                        if (exportReads.lease(first.owner, session) == null) exportReads.begin(first.owner, session)
+                        val full = fullLibrary(g, current, first)
+                        checkRead(initial)
+                        active(g)
+                        _state.update { old ->
+                            old.copy(probe = full, readSessionId = session, libraryStale = false,
+                                page = if (old.catalogSection == CatalogSection.LIBRARY && old.selected == null) full.library else old.page)
+                        }
+                    } catch (e: CancellationException) { throw e }
+                      catch (_: Exception) {
+                        active(g)
+                        _state.update { it.copy(libraryStale = true) }
+                        _trackActionMessage.value = TrackActionMessage("Трек добавлен. Не удалось сразу обновить список «Моя музыка».")
+                    } finally {
+                        if (g == generation) _state.update { it.copy(libraryRefreshing = false) }
+                    }
+                }
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) {
+                _trackActionMessage.value = TrackActionMessage("Не удалось добавить трек. " +
+                    ((e as? MusicFailure)?.code ?: MusicError.RESPONSE).label)
+                throw e
+            }
+        }
     }
     val artists=artistController.state
     private val savedRepository=SavedLibrary(application,viewModelScope)
@@ -547,6 +669,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 LibraryTrackRemoval(api){file->withContext(Dispatchers.IO){SharedAudioStore(getApplication()).valid(file)}}
                     .remove(a,ticket.owner,track,row){active(g);musicCheck(isLibraryTrack(track,ticket.owner),MusicError.ACCESS);attempted=true}
                 confirmed=true;active(g)
+                _addedTracks.update { tracks -> tracks.filterValues { it != track.id } }
                 // The library changed: reload the full snapshot, never patch counts optimistically.
                 _state.update{it.copy(probe=null,page=null)}
                 var refreshed=false
@@ -650,8 +773,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         catalogVerificationWork=null
         cancelledVerification?.cancel()
         _state.update{if(it.catalogVerifying)it.copy(catalogVerifying=false)else it}
-        if(stage in setOf("browser_auth","configure","forget")){exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset();availabilityController.reset();searchController.reset()}
-        if(stage in setOf("browser_auth","configure","forget"))_state.update{old->
+        if (stage in accessChangeStages) {
+            exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset();availabilityController.reset();searchController.reset()
+            linkWork?.cancel()
+            _musicLink.update { it.copy(music = null, loading = false, error = if (it.link == null) it.error else null) }
+            _addedTracks.value = emptyMap()
+            _trackActionMessage.value = null
+        }
+        if(stage in accessChangeStages)_state.update{old->
             val localKeys=old.localCatalogKeys
             old.copy(catalog=old.catalog?.let{catalog->
                 val lists=catalog.lists.filter{it.key !in localKeys}
@@ -973,21 +1102,44 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     fun downloadPlayback(entry: PlaybackEntry) {
-        val task=entry.download?:return
-        if(entry.offline||_state.value.busy)return
-        run("player_download") {g->withContext(Dispatchers.IO) {
-            AudioExportRuntime.initialize(getApplication())
-            val queue=AudioExportRuntime.state.value
-            musicCheck(!queue.unfinished&&queue.status !in setOf("RUNNING","QUEUED"),MusicError.BUSY)
-            val a=sessions?.current()?:access()
-            musicCheck(entry.readSessionId==null||entry.readSessionId==a.readSessionId,MusicError.ACCESS)
-            val owner=api.accountOwner(a);active(g)
-            musicCheck(owner==entry.account&&task.source?.account==owner,MusicError.ACCOUNT_CHANGED)
-            api.resolve(a,task.track);active(g)
-            if(sessions!=null)sessions.continueRead(a)else musicCheck(vault.read()?.readSessionId==a.readSessionId,MusicError.ACCESS)
-            AudioExportRuntime.replace(getApplication(),listOf(task),account=owner)
-            active(g);startDownloads(false)
-        }}
+        enqueuePlayback(entry) { listOfNotNull(entry.download) }
+    }
+
+    private fun enqueuePlayback(entry: PlaybackEntry, tasks: () -> List<AudioExportTask>) {
+        if (entry.offline || entry.export == null || _state.value.busy) return
+        _trackActionMessage.value = null
+        run("player_download") { g -> withContext(Dispatchers.IO) {
+            try {
+                AudioExportRuntime.initialize(getApplication())
+                val queue = AudioExportRuntime.state.value
+                musicCheck(!queue.unfinished && queue.status !in setOf("RUNNING", "QUEUED") &&
+                    !AudioExportRuntime.active.get(), MusicError.BUSY)
+                val initial = sessions?.current() ?: access()
+                musicCheck(entry.readSessionId == null || entry.readSessionId == initial.readSessionId, MusicError.ACCESS)
+                val owner = initial.accountId ?: api.accountOwner(initial)
+                active(g)
+                musicCheck(owner == entry.account, MusicError.ACCOUNT_CHANGED)
+                val items = tasks()
+                musicCheck(items.isNotEmpty(), MusicError.UNAVAILABLE)
+                musicCheck(items.all { it.source?.account == owner }, MusicError.ACCOUNT_CHANGED)
+                // Search and shared links can supply the worker with an already-issued stream.
+                if (entry.export.source.kind != "search") api.resolve(initial, entry.track)
+                checkRead(initial)
+                active(g)
+                AudioExportRuntime.replace(getApplication(), items, account = owner)
+                active(g)
+                if (entry.export.source.kind == "search") {
+                    _trackActionMessage.value = TrackActionMessage("Скачивание добавлено в очередь.")
+                    PlaybackRuntime.expanded.value = false
+                }
+                startDownloads()
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) {
+                _trackActionMessage.value = TrackActionMessage("Не удалось начать скачивание. " +
+                    ((e as? MusicFailure)?.code ?: MusicError.RESPONSE).label, downloadError = true)
+                throw e
+            }
+        } }
     }
     fun download(track: NativeTrack,position: Int) {
         Diagnostics.button("native_music_download_one")

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -179,7 +180,8 @@ private fun Modifier.swipeDownToCollapse(scroll: ScrollState,onDismiss:()->Unit)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: (PlaybackEntry)->Unit,canDownload: Boolean) {
+internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: (PlaybackEntry)->Unit,canDownload: Boolean,
+    downloadNotice: String? = null) {
     BackHandler(onBack=onDismiss)
     val context=LocalContext.current
     var queue by remember{mutableStateOf(false)}
@@ -194,7 +196,11 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                 Row(Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("player_header"),verticalAlignment=Alignment.CenterVertically) {
                     IconButton(onClick=onDismiss,modifier=Modifier.testTag("player_collapse")){Icon(PlayerCollapseIcon,"Свернуть плеер")}
                     Box(Modifier.weight(1f),contentAlignment=Alignment.Center){Text("Сейчас играет",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleLarge)}
-                    Spacer(Modifier.size(48.dp))
+                    val link = current?.track?.let { VkMusicLinks.track(it.id, it.accessKey) }
+                    if (link == null) Spacer(Modifier.size(48.dp))
+                    else IconButton(onClick = { shareVkMusicLink(context, link.url) }, modifier = Modifier.testTag("player_share")) {
+                        Icon(Icons.Default.Share, "Поделиться ссылкой на трек")
+                    }
                 }
                 PlayerArtwork(state,Modifier.size(cover).testTag("player_artwork"))
                 Column(Modifier.fillMaxWidth().padding(horizontal=3.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -251,6 +257,10 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                         shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),modifier=Modifier.weight(1f).testTag("player_download")) {
                         Icon(if(current?.offline==true)PlayerOfflineIcon else DownloadIcon,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text(if(current?.offline==true)"Сохранено" else "Скачать")
                     }
+                }
+                downloadNotice?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth().testTag("player_download_error"))
                 }
                 state.error?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth().testTag("player_error"))}
                 state.historyError?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall,modifier=Modifier.fillMaxWidth().testTag("player_history_error"))}

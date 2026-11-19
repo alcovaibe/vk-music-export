@@ -32,7 +32,8 @@ internal object ExportReportShare {
                             if(!first)out.write(",");first=false
                             val task=row.task
                             out.write(buildJsonObject {
-                                put("track",json.encodeToJsonElement(task.track));put("source",json.encodeToJsonElement(task.source))
+                                put("track", JsonObject(json.encodeToJsonElement(task.track).jsonObject - "accessKey"))
+                                put("source",json.encodeToJsonElement(task.source))
                                 put("position",task.position);put("occurrence",task.occurrence);put("state",row.state)
                                 row.error?.let{put("error",it.name)}
                                 row.details?.let{put("errorDetails",json.encodeToJsonElement(it))}

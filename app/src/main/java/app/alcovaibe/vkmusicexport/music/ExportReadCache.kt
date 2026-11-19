@@ -59,6 +59,9 @@ internal class ExportReadCache(private val clock:()->Long,
         if(!current(lease))return null
         return catalog?.takeIf{it.owner==owner&&fresh(it.at)&&it.value.completeFor(kind)}?.value
     }
+    @Synchronized fun invalidateLibrary(lease: Lease?, owner: Long) {
+        if (current(lease)) remove("library:$owner")
+    }
     @Synchronized fun rememberLibrary(lease: Lease?,page: NativePage,owner: Long=lease?.owner?:0)=remember(lease,"library:$owner",page,null)
     @Synchronized fun rememberPlaylist(lease: Lease?,list: NativePlaylist,page: NativePage) {
         if(page.count!=list.count){

@@ -100,7 +100,7 @@ private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit) {
 /** Rendering is driven by actual server/queue state; percentages are only used for known totals. */
 internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: FriendMusicController,configured: Boolean,enabled: Boolean,
     queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<PlaybackExport>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
-    onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={}) {
+    onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={},onShare:((String)->Unit)?=null) {
     if(!configured) {
         item("friends_connect") {
             Box(
@@ -213,6 +213,9 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 }
             }
         }
+    }
+    if (onShare != null) state.playlist?.let(VkMusicLinks::collectionUrl)?.let { url ->
+        item("friend_collection_share") { TextButton(onClick = { onShare(url) }) { Text("Поделиться ссылкой") } }
     }
     if(state.tab!=FriendMusicTab.TRACKS&&state.playlist==null) {
         if(state.busy&&state.catalog==null)item("friend_catalog_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Получаем плейлисты и альбомы…")}

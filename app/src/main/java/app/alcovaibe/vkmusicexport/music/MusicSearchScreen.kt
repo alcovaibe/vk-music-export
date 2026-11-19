@@ -8,8 +8,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,7 +34,13 @@ internal fun LazyListScope.musicSearchItems(
     onPlay: (Int) -> Unit,
     onDownload: (Int) -> Unit,
     canDownload: Boolean,
-    preview: (NativeTrack) -> String? = { null }
+    preview: (NativeTrack) -> String? = { null },
+    onAdd: ((Int) -> Unit)? = null,
+    canAdd: Boolean = false,
+    added: Set<String> = emptySet(),
+    notice: String? = null,
+    onShare: ((String) -> Unit)? = null,
+    onOpenLink: (() -> Unit)? = null
 ) {
     item("search_input") {
         OutlinedTextField(
@@ -56,6 +63,17 @@ internal fun LazyListScope.musicSearchItems(
                 unfocusedBorderColor=MaterialTheme.colorScheme.outline
             )
         )
+    }
+
+    onOpenLink?.let { action ->
+        item("search_open_link") {
+            TextButton(onClick = action, modifier = Modifier.testTag("open_vk_music_link")) { Text("Открыть ссылку ВК") }
+        }
+    }
+    notice?.let { message ->
+        item("search_action_status") {
+            Text(message, modifier = Modifier.testTag("search_action_status").semantics { liveRegion = LiveRegionMode.Polite })
+        }
     }
 
     if(state.query.trim().length>=2 || state.tracks.isNotEmpty()) {
@@ -101,13 +119,18 @@ internal fun LazyListScope.musicSearchItems(
     }
 
     itemsIndexed(state.tracks,key={index,track->"search_${index}_${track.id}"}) { index,track->
-        val ready=state.audio!=CapabilityStatus.UNAVAILABLE && state.active &&
-            state.phase==MusicSearchPhase.RESULTS &&
-            track.duration>0 && !track.restricted && track.metadataError==null
+        val actionable = state.active && state.phase == MusicSearchPhase.RESULTS &&
+            !track.restricted && track.metadataError == null
+        val ready = actionable && state.audio != CapabilityStatus.UNAVAILABLE && track.duration > 0
+        val sharedUrl = VkMusicLinks.track(track.id, track.accessKey)?.url
         MusicSearchTrackRow(
             track=track,artwork=preview(track),
             onPlay=if(ready)({onPlay(index)}) else null,
             onDownload=if(ready && canDownload)({onDownload(index)}) else null,
+            onAdd=onAdd?.let { add -> { add(index) } },
+            addEnabled=canAdd && actionable && track.id !in added,
+            added=track.id in added,
+            onShare=if (sharedUrl != null && onShare != null) ({ onShare(sharedUrl) }) else null,
             tag="search_track_$index"
         )
     }
@@ -135,8 +158,13 @@ private fun MusicSearchTrackRow(
     artwork: String?,
     onPlay: (() -> Unit)?,
     onDownload: (() -> Unit)?,
+    onAdd: (() -> Unit)?,
+    addEnabled: Boolean,
+    added: Boolean,
+    onShare: (() -> Unit)?,
     tag: String
 ) {
+    var menu by remember { mutableStateOf(false) }
     Surface(
         shape=RoundedCornerShape(18.dp),
         color=MaterialTheme.colorScheme.surface,
@@ -176,6 +204,25 @@ private fun MusicSearchTrackRow(
                 )
             ) {
                 Icon(DownloadIcon,contentDescription="Скачать ${track.displayTitle}")
+            }
+            if (onAdd != null || onShare != null) Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("${tag}_menu")) {
+                    Icon(Icons.Default.MoreVert, "Действия с треком ${track.displayTitle}")
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    onAdd?.let { add ->
+                        DropdownMenuItem(
+                            text = { Text(if (added) "В «Моей музыке»" else "Добавить в «Мою музыку»") },
+                            enabled = addEnabled,
+                            modifier = Modifier.testTag("${tag}_add"),
+                            onClick = { menu = false; add() }
+                        )
+                    }
+                    onShare?.let { share ->
+                        DropdownMenuItem(text = { Text("Поделиться ссылкой") },
+                            onClick = { menu = false; share() })
+                    }
+                }
             }
         }
     }

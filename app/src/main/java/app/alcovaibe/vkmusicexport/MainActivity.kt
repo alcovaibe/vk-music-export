@@ -52,10 +52,19 @@ class MainActivity : ComponentActivity() {
             nativeMusic.openDuplicateNotification();intent.removeExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA)
         }
     }
+    private fun openSharedMusic(intent: Intent) {
+        val text = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.dataString
+            Intent.ACTION_SEND -> if (intent.type == "text/plain") intent.getCharSequenceExtra(Intent.EXTRA_TEXT) else null
+            else -> null
+        }
+        text?.let(nativeMusic::openMusicLink)
+    }
     override fun onNewIntent(intent: Intent){
         super.onNewIntent(intent)
         // Notifications are one-shot navigation events; the saved route owns restoration.
         openNotification(intent)
+        openSharedMusic(intent)
     }
     override fun onResume(){super.onResume();nativeMusic.setForeground(true)}
     override fun onPause(){nativeMusic.setForeground(false);super.onPause()}
@@ -63,6 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openNotification(intent)
+        if (savedInstanceState == null) openSharedMusic(intent)
         enableEdgeToEdge()
         setContent {
             SideEffect {

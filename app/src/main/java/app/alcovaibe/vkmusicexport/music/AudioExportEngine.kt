@@ -80,7 +80,9 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                         for(attempt in 0..2) {
                             try {
                                 // Read the current encrypted access for every track/retry; never persist a signed media URL.
-                                val resolved=api.resolve(credential(),task.track);resolvedTrack=resolved.track
+                                val access=credential()
+                                val resolved=if(attempt==0)api.resolve(access,task.track)else api.resolveFresh(access,task.track)
+                                resolvedTrack=resolved.track
                                 val downloaded=transfer.download(resolved.url,resolved.track,temporary){progress->
                                     val now=System.nanoTime()
                                     if(now-lastProgress>=300_000_000||progress.stage=="verifying") {
