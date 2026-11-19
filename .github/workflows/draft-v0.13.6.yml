@@ -1,0 +1,79 @@
+name: Draft VK Music Export 0.13.6
+on:
+  push:
+    branches: [codex/draft-v0.13.6]
+    paths: [.github/workflows/draft-v0.13.6.yml]
+permissions:
+  contents: write
+concurrency:
+  group: draft-vk-music-export-0.13.6
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: aa80bb5db314fa59d24e08d3ba0afeb144e4a0e0
+      APP_VERSION_CODE: '1671'
+      GH_REPO: alcovaibe/vk-music-export
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: aa80bb5db314fa59d24e08d3ba0afeb144e4a0e0
+          persist-credentials: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          cmdline-tools-version: '15859902'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: Pin Android SDK tools and install platform
+        run: |
+          bash tools/pin-sdk-tools.sh "$ANDROID_HOME"
+          sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
+      - name: Verify source and version
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fx 'versionName=0.13.6' version.properties
+          grep -Fx "versionCode=$APP_VERSION_CODE" version.properties
+          test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
+      - name: Restore permanent signing key
+        env:
+          ANDROID_SIGNING: ${{ secrets.ANDROID_SIGNING }}
+        run: python3 tools/prepare-signing.py
+      - name: Build signed APK and verify its certificate and version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: GITHUB_SHA="$SOURCE_SHA" bash tools/build-release.sh
+      - name: Save draft with APK and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=v0.13.6-build.1671
+          apk=VK-Music-Export-0.13.6-1671.apk
+          if ! gh release view "$tag" --json isDraft,assets,targetCommitish > "$RUNNER_TEMP/draft-release.json" 2>/dev/null; then
+            cat > "$RUNNER_TEMP/draft-release-notes.md" <<'NOTES'
+          - Скачанные треки помечаются в поиске и воспроизводятся с устройства. Поиск сохраняет результаты при возврате из плеера.
+          - Ссылки ВК можно назначить VK Music Export в настройках Android. При открытии ссылки приложение предлагает выбор между VK Music Export и ВК.
+          - Уведомление о завершении скачивания показывает название последнего трека и список остальных.
+          - Повторное получение аудиопотока, сохранение ключа ссылки и защита порядка треков при неполной загрузке.
+
+          [Исходный код сборки](https://github.com/alcovaibe/vk-music-export/tree/aa80bb5db314fa59d24e08d3ba0afeb144e4a0e0).
+          Лицензия GPL-3.0-or-later.
+          NOTES
+            gh release create "$tag" "release-output/$apk" release-output/SHA256SUMS.txt release-output/build-info.json \
+              --draft --latest=false --target "$SOURCE_SHA" --title 'VK Music Export 0.13.6 · 1671' \
+              --notes-file "$RUNNER_TEMP/draft-release-notes.md"
+            gh release view "$tag" --json isDraft,assets,targetCommitish > "$RUNNER_TEMP/draft-release.json"
+          fi
+          jq -e --arg sha "$SOURCE_SHA" --arg apk "$apk" \
+            '.isDraft and .targetCommitish == $sha and (([$apk, "SHA256SUMS.txt", "build-info.json"] - [.assets[].name]) | length == 0)' \
+            "$RUNNER_TEMP/draft-release.json"
+      - name: Remove runner signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vk-music-export-release.p12"
