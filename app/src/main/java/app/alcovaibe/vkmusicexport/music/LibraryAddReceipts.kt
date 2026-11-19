@@ -3,6 +3,8 @@ package app.alcovaibe.vkmusicexport.music
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** A pending record means the request may already have reached VK. */
 internal class LibraryAddReceipts(private val context: Context) {
@@ -36,7 +38,12 @@ internal class LibraryAddReceipts(private val context: Context) {
         }
     }
 
-    companion object { const val PENDING = "pending" }
+    suspend fun <T> serialized(write: suspend () -> T): T = writes.withLock { write() }
+
+    companion object {
+        const val PENDING = "pending"
+        private val writes = Mutex()
+    }
 }
 
 internal data class SearchAdditionRetry(val search: MusicSearchState, val index: Int)

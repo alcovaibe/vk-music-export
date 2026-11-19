@@ -146,6 +146,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val musicLink by model.musicLink.collectAsState()
     val addedTracks by model.addedTracks.collectAsState()
     val additionRetry by model.additionRetry.collectAsState()
+    val searchAdding by model.searchAdding.collectAsState()
     LaunchedEffect(searchState.account, searchState.readSessionId) {
         model.loadAddedTracks(searchState.account, searchState.readSessionId)
     }
@@ -280,8 +281,9 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if(index>=0)PlaybackRuntime.play(context,savedPlayback,index)
         else PlaybackRuntime.play(context,listOf(PlaybackEntry(row.track,"Сохранённая музыка",saved=row)))
     }
+    val categoriesEnabled = !backgroundCheck && (!state.busy || state.probe != null && model.canBrowseLibrary(state))
     fun choose(value: LibraryCategory) {
-        if(state.busy||backgroundCheck)return
+        if (!categoriesEnabled) return
         if(category==LibraryCategory.ARTISTS&&value!=category)model.pauseArtists()
         category=value
         when(value) {
@@ -377,7 +379,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     else model.playSearchTrack(searchState, index)
                 },
                 onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,preview=model::previewArtwork,
-                onAdd = { model.addSearchTrack(searchState, it) }, canAdd = state.configured && !state.busy && !backgroundCheck,
+                onAdd = { model.addSearchTrack(searchState, it) }, canAdd = state.initialized && state.configured && model.canBrowseLibrary(state) && !searchAdding && !backgroundCheck,
                 added = searchAdded, notice = trackActionMessage?.text, onShare = ::shareLink, onOpenLink = { linkInputOpen = true },
                 savedTracks = searchCopies, canPlaySaved = savedListeningAllowed)
         }else if(destination==MusicDestination.FRIENDS) {
@@ -478,7 +480,8 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 LibraryCategory.TRACKS to state.probe?.library?.count,
                 LibraryCategory.PLAYLISTS to state.catalog?.let{MusicCatalog.visible(state,CatalogSection.PLAYLISTS).size},
                 LibraryCategory.ALBUMS to state.catalog?.let{MusicCatalog.visible(state,CatalogSection.ALBUMS).size},
-                LibraryCategory.ARTISTS to artists.takeIf{it.loaded}?.artists?.size),!state.busy&&!backgroundCheck,::choose)}
+                LibraryCategory.ARTISTS to artists.takeIf{it.loaded}?.artists?.size),
+                categoriesEnabled, ::choose)}
             if(!notifications)item("notifications") {TextButton(onClick={notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}){Text("Разрешить уведомления процессов")}}
             if(state.busy)item("busy") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -504,7 +507,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }}
                 itemsIndexed(artists.artists,key={_,artist->"artist_${artist.id}"}){_,artist->
-                    MusicCollectionRow(artist.name,"В подписках",!artists.busy,artist=true,photo=artist.photo,tag="followed_artist_${artist.id}"){model.selectArtist(artist)}
+                    MusicCollectionRow(artist.name,"В подписках",!artists.busy||artists.loaded,artist=true,photo=artist.photo,tag="followed_artist_${artist.id}"){model.selectArtist(artist)}
                 }
             }else {
                 if(state.probe!=null||state.localCatalogAccount!=null)item("library_actions") {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {

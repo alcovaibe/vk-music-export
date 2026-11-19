@@ -194,16 +194,13 @@ private fun MusicSearchTrackRow(
                 Text("${track.duration/60}:${(track.duration%60).toString().padStart(2,'0')}",
                     style=MaterialTheme.typography.bodySmall,
                     color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if (saved != null) {
-                    Text("Скачано", color = MaterialTheme.colorScheme.tertiary,
-                        style = MaterialTheme.typography.labelSmall, modifier = Modifier.testTag("${tag}_saved"))
-                } else if(track.restricted || track.metadataError!=null) {
+                if (saved == null && (track.restricted || track.metadataError != null)) {
                     Text("Недоступно для воспроизведения",
                         color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
                 }
             }
             if (saved != null) {
-                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(48.dp).testTag("${tag}_saved"), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.CheckCircle, "Есть копия на устройстве", tint = MaterialTheme.colorScheme.tertiary)
                 }
             } else FilledTonalIconButton(
