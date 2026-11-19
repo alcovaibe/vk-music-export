@@ -43,6 +43,26 @@ class SearchAndLinkedMusicTest {
         assertEquals("-20_8_synthetic", requests.single().fields["audios"])
     }
 
+    @Test fun persistedOriginReacquiresTheExactSearchStreamAfterMissingById() = runBlocking {
+        val calls = mutableListOf<Call>()
+        val client = api { call ->
+            calls.add(call)
+            when (call.method) {
+                "audio.getById" -> """{"response":[${record.replace(",\"url\":\"$cdn\"", "")}]}"""
+                "audio.search" -> """{"response":{"count":2,"items":[${record.replace("\"id\":8", "\"id\":9")},$record]}}"""
+                else -> error("Unexpected method")
+            }
+        }
+        val track = NativeTrack("-20_8", "Track", "Artist", 180, accessKey = "synthetic",
+            audioOrigin = AudioOrigin.Search("Artist Track", 0))
+        val resolved = client.resolveFresh(access, track)
+
+        assertEquals(cdn, resolved.url)
+        assertEquals(track.id, resolved.track.id)
+        assertEquals(track.audioOrigin, resolved.track.audioOrigin)
+        assertEquals(listOf("audio.getById", "audio.search"), calls.map { it.method })
+    }
+
     @Test fun addUsesSearchRecordOwnerAndTheVerifiedPersonalAccount() = runBlocking {
         val requests = mutableListOf<Call>()
         val client = api { call ->

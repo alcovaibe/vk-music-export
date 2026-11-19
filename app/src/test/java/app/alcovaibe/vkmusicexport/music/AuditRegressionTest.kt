@@ -10,6 +10,15 @@ import kotlinx.serialization.json.Json
 
 class AuditRegressionTest {
     private fun track(n: Int)=NativeTrack("12_$n","Песня $n","Исполнитель",180)
+    @Test fun incompleteCollectionCannotReplaceAnOrderWithMoreSavedOccurrences() {
+        val previous = "#EXTM3U\n#VKME-SELECTED:3\n./first.mp3\n./second.mp3\n./first.mp3\n"
+        val partial = "#EXTM3U\n#VKME-SELECTED:3\n./first.mp3\n./second.mp3\n"
+        val reordered = "#EXTM3U\n#VKME-SELECTED:3\n./second.mp3\n./first.mp3\n./first.mp3\n"
+        assertEquals(3, M3uPlaylist.selectedCount(previous))
+        assertTrue(M3uPlaylist.missingReferences(previous, partial))
+        assertFalse(M3uPlaylist.missingReferences(previous, reordered))
+    }
+
     @Test fun prependingAndReorderingDoNotChangeExistingTaskIdentities() {
         val old=ExportLayout.library(NativePage(listOf(track(1),track(2),track(3)),3),false,12)
         val next=ExportLayout.library(NativePage(listOf(track(99),track(3),track(1),track(2)),4),false,12)

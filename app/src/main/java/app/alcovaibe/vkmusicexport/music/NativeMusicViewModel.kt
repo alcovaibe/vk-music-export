@@ -104,16 +104,36 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     val musicLink = _musicLink.asStateFlow()
     private var linkWork: Job? = null
     private var linkRequest = 0L
+    private val libraryAddReceipts = LibraryAddReceipts(application)
     private val _addedTracks = MutableStateFlow<Map<String, String>>(emptyMap())
     val addedTracks = _addedTracks.asStateFlow()
+    private val _additionRetry = MutableStateFlow<SearchAdditionRetry?>(null)
+    val additionRetry = _additionRetry.asStateFlow()
+
+    suspend fun loadAddedTracks(account: Long, session: String?) {
+        if (account <= 0 || session == null) return
+        val receipts = try { libraryAddReceipts.confirmed(account) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { return }
+        if (musicSearch.value.account == account && musicSearch.value.readSessionId == session)
+            _addedTracks.update { receipts + it }
+    }
+
+    fun dismissAdditionRetry() { _additionRetry.value = null }
+    fun confirmAdditionRetry() {
+        val retry = _additionRetry.value ?: return
+        dismissAdditionRetry()
+        addSearchTrack(retry.search, retry.index, retryApproved = true)
+    }
     private val _trackActionMessage = MutableStateFlow<TrackActionMessage?>(null)
     val trackActionMessage = _trackActionMessage.asStateFlow()
 
-    fun openMusicLink(text: CharSequence) {
+    fun openMusicLink(text: CharSequence, chooseApp: Boolean = false) {
         linkWork?.cancel()
         _trackActionMessage.value = null
         val link = VkMusicLinks.fromText(text)
-        _musicLink.value = MusicLinkState(++linkRequest, link = link, error = if (link == null) MusicError.RESPONSE else null)
+        _musicLink.value = MusicLinkState(++linkRequest, link = link,
+            error = if (link == null) MusicError.RESPONSE else null, awaitingChoice = link != null && chooseApp)
     }
 
     fun dismissMusicLink() {
@@ -122,10 +142,16 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         _musicLink.value = MusicLinkState()
     }
 
+    fun chooseMusicLinkHere() {
+        _musicLink.update { it.copy(awaitingChoice = false) }
+        retryMusicLink()
+    }
+
     fun retryMusicLink() {
         val request = _musicLink.value
         val link = request.link ?: return
-        if (request.loading || !_state.value.configured || _state.value.stage in accessChangeStages) return
+        if (request.awaitingChoice || request.loading || !_state.value.initialized ||
+            !_state.value.configured || _state.value.stage in accessChangeStages) return
         linkWork?.cancel()
         _musicLink.value = request.copy(loading = true, error = null)
         linkWork = viewModelScope.launch {
@@ -162,25 +188,53 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun downloadLinkedCollection(snapshot: LinkedMusic) {
         val entry = linkedEntries(snapshot).firstOrNull { !it.track.restricted && it.track.duration > 0 && it.track.metadataError == null }
             ?: return
-        enqueuePlayback(entry) { snapshot.collectionTasks().filter { !it.track.restricted && it.track.duration > 0 && it.track.metadataError == null } }
+        enqueuePlayback(entry, snapshot::collectionTasks)
     }
 
-    fun addSearchTrack(snapshot: MusicSearchState, index: Int) {
+    fun addSearchTrack(snapshot: MusicSearchState, index: Int, retryApproved: Boolean = false) {
         if (!searchController.isCurrent(snapshot)) return
         val track = snapshot.tracks.getOrNull(index) ?: return
         val session = snapshot.readSessionId ?: return
-        if (track.restricted || track.metadataError != null || track.id in _addedTracks.value) return
+        if (track.restricted || track.metadataError != null) return
         _trackActionMessage.value = null
         run("library_add") { g ->
+            var pending = false
             try {
                 val initial = sessions?.current() ?: access()
                 musicCheck(initial.readSessionId == session, MusicError.ACCESS)
                 musicCheck(initial.accountId == null || initial.accountId == snapshot.account, MusicError.ACCOUNT_CHANGED)
                 active(g)
-                val proof = _state.value.probe
-                val alreadyAdded = proof != null && proof.owner == snapshot.account && _state.value.readSessionId == session &&
-                    proof.library.tracks.any { it.id == track.id }
-                val libraryId = if (alreadyAdded) track.id else "${snapshot.account}_${api.addLibraryTrack(initial, snapshot.account, track)}"
+                val receipt = libraryAddReceipts.read(snapshot.account, track.id)
+                val own = _state.value
+                val page = own.probe?.takeIf { it.owner == snapshot.account && own.readSessionId == session }?.library
+                val usable = !own.libraryStale && page != null && page.tracks.size == page.count
+                val library = if (receipt != null && (!usable || receipt == LibraryAddReceipts.PENDING)) {
+                    val first = api.library(initial)
+                    musicCheck(first.owner == snapshot.account, MusicError.ACCOUNT_CHANGED)
+                    MusicPagination.tracks({ offset ->
+                        active(g)
+                        if (offset == 0) first.library else api.libraryPage(initial, first.owner, offset)
+                    })
+                } else page
+                checkRead(initial)
+                active(g)
+                val existing = library?.tracks?.firstOrNull { it.id == track.id || it.id == receipt }
+                val alreadyAdded = existing != null
+                if (!alreadyAdded && receipt != null && !retryApproved) {
+                    _additionRetry.value = SearchAdditionRetry(snapshot, index)
+                    return@run
+                }
+                val libraryId = existing?.id ?: run {
+                    val id = api.addLibraryTrack(initial, snapshot.account, track) {
+                        checkRead(initial)
+                        active(g)
+                        libraryAddReceipts.save(snapshot.account, track.id, LibraryAddReceipts.PENDING)
+                        pending = true
+                    }
+                    "${snapshot.account}_$id"
+                }
+                withContext(NonCancellable) { libraryAddReceipts.save(snapshot.account, track.id, libraryId) }
+                pending = false
                 val current = checkRead(initial)
                 active(g)
                 _addedTracks.update { it + (track.id to libraryId) }
@@ -213,8 +267,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 }
             } catch (e: CancellationException) { throw e }
               catch (e: Exception) {
-                _trackActionMessage.value = TrackActionMessage("Не удалось добавить трек. " +
-                    ((e as? MusicFailure)?.code ?: MusicError.RESPONSE).label)
+                val failure = e as? MusicFailure
+                val rejected = failure?.remoteCode != null && failure.code in setOf(
+                    MusicError.ACCESS, MusicError.DENIED, MusicError.METHOD, MusicError.RATE_LIMIT,
+                    MusicError.CAPTCHA, MusicError.VALIDATION)
+                if (pending && rejected) libraryAddReceipts.clear(snapshot.account, track.id)
+                _trackActionMessage.value = TrackActionMessage(if (pending && !rejected)
+                    "ВК мог добавить трек. Проверь «Мою музыку» перед повторной попыткой."
+                else "Не удалось добавить трек. " + (failure?.code ?: MusicError.RESPONSE).label)
                 throw e
             }
         }
@@ -670,6 +730,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                     .remove(a,ticket.owner,track,row){active(g);musicCheck(isLibraryTrack(track,ticket.owner),MusicError.ACCESS);attempted=true}
                 confirmed=true;active(g)
                 _addedTracks.update { tracks -> tracks.filterValues { it != track.id } }
+                try { libraryAddReceipts.removed(ticket.owner, track.id) }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { /* The next add checks the current VK library. */ }
                 // The library changed: reload the full snapshot, never patch counts optimistically.
                 _state.update{it.copy(probe=null,page=null)}
                 var refreshed=false
@@ -778,6 +841,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             linkWork?.cancel()
             _musicLink.update { it.copy(music = null, loading = false, error = if (it.link == null) it.error else null) }
             _addedTracks.value = emptyMap()
+            dismissAdditionRetry()
             _trackActionMessage.value = null
         }
         if(stage in accessChangeStages)_state.update{old->

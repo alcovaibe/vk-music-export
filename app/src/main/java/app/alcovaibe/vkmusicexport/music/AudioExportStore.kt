@@ -13,7 +13,8 @@ internal data class ExportFailure(val task: AudioExportTask,val error: MusicErro
 internal data class ExportSnapshot(val status: String="EMPTY",val total: Int=0,val done: Int=0,val pending: Int=0,
     val failed: Int=0,val sourceIssues: Int=0,val error: MusicError?=null,val recent: List<PublishedAudio> = emptyList(),
     val covered: Int=0,val progress: AudioProgress?=null,val currentTask: AudioExportTask?=null,
-    val account: Long=0,val queueId: String="",val revision: Long=0) {
+    val account: Long=0,val queueId: String="",val revision: Long=0,
+    val savedTitles: List<String> = emptyList()) {
     val unfinished get()=pending>0
 }
 
@@ -182,6 +183,7 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
         musicCheck(account>=0&&tasks.all{it.source==null||it.source.account==account},MusicError.ACCOUNT_CHANGED)
         writableDatabase.delete("tasks",null,null)
         put("queue_identity",java.util.UUID.randomUUID().toString())
+        put("queue_saved_titles", "[]")
         writableDatabase.execSQL("DELETE FROM meta WHERE name GLOB 'failure_detail:*'")
         writableDatabase.delete("source_failures",null,null)
         for(task in tasks)writableDatabase.insertOrThrow("tasks",null,ContentValues().apply{
@@ -300,6 +302,12 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
         writeFile(record)
         writableDatabase.execSQL("UPDATE tasks SET state='DONE',error=NULL,prepared=NULL WHERE task_key=?",arrayOf(task.key))
         writableDatabase.delete("meta","name=?",arrayOf("failure_detail:"+task.key))
+        if (!wasDone) {
+            val titles = get("queue_saved_titles")?.let { json.decodeFromString<List<Pair<String, String>>>(it) }
+            if (titles != null)
+                put("queue_saved_titles", json.encodeToString(
+                    (listOf(task.key to record.track.displayTitle) + titles.filterNot { it.first == task.key }).take(5)))
+        }
         // Reusing an existing file completes the queue item without reviving cleared history.
         if(previous!=record&&!knownUri)put("recent_files",json.encodeToString((listOf(record)+recent.filterNot{it.taskKey==record.taskKey}).distinctBy{it.uri}.take(5)))
     }
@@ -458,6 +466,11 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
     @Synchronized fun failed(task: AudioExportTask,error: MusicError,details: ExportFailureDetails?=null)=transaction {
         val wasDone=readableDatabase.rawQuery("SELECT state FROM tasks WHERE task_key=?",arrayOf(task.key)).use{it.moveToFirst()&&it.getString(0)=="DONE"}
         if(wasDone&&existing(task.key)?.coverEmbedded==true)put("covered_count",((get("covered_count")?.toIntOrNull()?:0)-1).coerceAtLeast(0).toString())
+        if (wasDone) {
+            val titles = get("queue_saved_titles")?.let { json.decodeFromString<List<Pair<String, String>>>(it) }
+            if (titles != null)
+                put("queue_saved_titles", json.encodeToString(titles.filterNot { it.first == task.key }))
+        }
         writableDatabase.execSQL("UPDATE tasks SET state='FAILED',error=? WHERE task_key=?",arrayOf(error.name,task.key))
         if(details!=null)put("failure_detail:"+task.key,json.encodeToString(details))
         else writableDatabase.delete("meta","name=?",arrayOf("failure_detail:"+task.key))
@@ -473,6 +486,7 @@ internal class AudioExportStore(context: Context,private val queueQuery: ((Strin
         writableDatabase.execSQL("UPDATE tasks SET state='PENDING',error=NULL WHERE task_key=?",arrayOf(task.key))
     }
     @Synchronized fun clearQueue()=transaction {
+        put("queue_saved_titles", "[]")
         writableDatabase.delete("tasks",null,null);writableDatabase.delete("source_failures",null,null)
         put("queue_identity",java.util.UUID.randomUUID().toString())
         status("EMPTY");put("source_issues","0");put("covered_count","0");put("queue_account","0")

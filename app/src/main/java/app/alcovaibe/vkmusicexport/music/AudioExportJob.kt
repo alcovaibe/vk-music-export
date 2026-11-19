@@ -175,9 +175,25 @@ internal object AudioExportRuntime {
         val pause=PendingIntent.getBroadcast(context,0,Intent(context,AudioExportPauseReceiver::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val ongoing=snapshot.status in setOf("RUNNING","QUEUED")
         val text=when(snapshot.status){"FINISHED"->"Музыка сохранена";"FINISHED_WITH_ERRORS"->"Завершено с пропусками: ${snapshot.failed+snapshot.sourceIssues}";"PAUSED"->"Приостановлено. Продолжить можно в приложении";else->"Сохранено ${snapshot.done} из ${snapshot.total}"}
-        return Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.ic_music_note).setContentTitle("VK Music Export")
+        val completed = snapshot.status in setOf("FINISHED", "FINISHED_WITH_ERRORS")
+        val saved = snapshot.savedTitles.takeIf { completed }.orEmpty()
+        val title = saved.firstOrNull() ?: if (completed) "Скачивание музыки" else "VK Music Export"
+        return Notification.Builder(context,CHANNEL).setSmallIcon(R.drawable.ic_music_note).setContentTitle(title)
             .setContentText(text).setContentIntent(open).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE)
-            .setOngoing(ongoing).apply{if(ongoing){setProgress(snapshot.total,snapshot.done+snapshot.failed,snapshot.total==0);addAction(Notification.Action.Builder(R.drawable.ic_music_note,"Пауза",pause).build())}}
+            .setOngoing(ongoing).apply {
+                if (ongoing) {
+                    setProgress(snapshot.total, snapshot.done + snapshot.failed, snapshot.total == 0)
+                    addAction(Notification.Action.Builder(R.drawable.ic_music_note, "Пауза", pause).build())
+                }
+                if (saved.size > 1) {
+                    val remaining = (snapshot.done - saved.size).coerceAtLeast(0)
+                    val summary = if (remaining > 0) "$text · ещё $remaining" else text
+                    val inbox = Notification.InboxStyle().setBigContentTitle(title).setSummaryText(summary)
+                    saved.drop(1).forEach { inbox.addLine(it) }
+                    setStyle(inbox)
+                    setContentText("Сохранено треков: ${snapshot.done}")
+                }
+            }
             .build()
     }
 }

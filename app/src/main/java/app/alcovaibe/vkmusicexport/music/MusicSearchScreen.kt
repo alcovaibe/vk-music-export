@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
@@ -40,7 +41,9 @@ internal fun LazyListScope.musicSearchItems(
     added: Set<String> = emptySet(),
     notice: String? = null,
     onShare: ((String) -> Unit)? = null,
-    onOpenLink: (() -> Unit)? = null
+    onOpenLink: (() -> Unit)? = null,
+    savedTracks: Map<NativeTrack, PublishedAudio> = emptyMap(),
+    canPlaySaved: Boolean = false
 ) {
     item("search_input") {
         OutlinedTextField(
@@ -98,7 +101,7 @@ internal fun LazyListScope.musicSearchItems(
         }
     }
     val status=when(state.phase) {
-        MusicSearchPhase.READY->if(state.query.length<2)"Введите не менее двух символов для поиска." else null
+        MusicSearchPhase.READY->null
         MusicSearchPhase.EMPTY->"Ничего не найдено. Попробуйте другой запрос."
         MusicSearchPhase.DENIED->"ВК не разрешил поиск при текущем подключении. Проверьте доступ к музыке."
         MusicSearchPhase.CHALLENGE->"ВК требует подтверждения или капчи. Завершите проверку и повторите поиск."
@@ -123,10 +126,11 @@ internal fun LazyListScope.musicSearchItems(
             !track.restricted && track.metadataError == null
         val ready = actionable && state.audio != CapabilityStatus.UNAVAILABLE && track.duration > 0
         val sharedUrl = VkMusicLinks.track(track.id, track.accessKey)?.url
+        val saved = savedTracks[track]
         MusicSearchTrackRow(
-            track=track,artwork=preview(track),
-            onPlay=if(ready)({onPlay(index)}) else null,
-            onDownload=if(ready && canDownload)({onDownload(index)}) else null,
+            track=track,artwork=preview(track),saved=saved,
+            onPlay=if(ready || state.active && saved != null && canPlaySaved)({onPlay(index)}) else null,
+            onDownload=if(ready && canDownload && saved == null)({onDownload(index)}) else null,
             onAdd=onAdd?.let { add -> { add(index) } },
             addEnabled=canAdd && actionable && track.id !in added,
             added=track.id in added,
@@ -156,6 +160,7 @@ internal fun LazyListScope.musicSearchItems(
 private fun MusicSearchTrackRow(
     track: NativeTrack,
     artwork: String?,
+    saved: PublishedAudio?,
     onPlay: (() -> Unit)?,
     onDownload: (() -> Unit)?,
     onAdd: (() -> Unit)?,
@@ -180,7 +185,7 @@ private fun MusicSearchTrackRow(
             verticalAlignment=Alignment.CenterVertically,
             horizontalArrangement=Arrangement.spacedBy(12.dp)
         ) {
-            MusicThumbnail(url=artwork,identity=track.id,size=64.dp)
+            MusicThumbnail(url=artwork,uri=saved?.uri,identity=saved?.sha256?:track.id,size=64.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(track.displayTitle,style=MaterialTheme.typography.titleMedium,
                     fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis)
@@ -189,12 +194,19 @@ private fun MusicSearchTrackRow(
                 Text("${track.duration/60}:${(track.duration%60).toString().padStart(2,'0')}",
                     style=MaterialTheme.typography.bodySmall,
                     color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(track.restricted || track.metadataError!=null) {
+                if (saved != null) {
+                    Text("Скачано", color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.labelSmall, modifier = Modifier.testTag("${tag}_saved"))
+                } else if(track.restricted || track.metadataError!=null) {
                     Text("Недоступно для воспроизведения",
                         color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
                 }
             }
-            FilledTonalIconButton(
+            if (saved != null) {
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.CheckCircle, "Есть копия на устройстве", tint = MaterialTheme.colorScheme.tertiary)
+                }
+            } else FilledTonalIconButton(
                 onClick={onDownload?.invoke()},
                 enabled=onDownload!=null,
                 shape=RoundedCornerShape(12.dp),

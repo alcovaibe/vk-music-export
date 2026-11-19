@@ -145,9 +145,13 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val searchState by model.musicSearch.collectAsState()
     val musicLink by model.musicLink.collectAsState()
     val addedTracks by model.addedTracks.collectAsState()
+    val additionRetry by model.additionRetry.collectAsState()
+    LaunchedEffect(searchState.account, searchState.readSessionId) {
+        model.loadAddedTracks(searchState.account, searchState.readSessionId)
+    }
     val trackActionMessage by model.trackActionMessage.collectAsState()
     val showingLink = destination == MusicDestination.SEARCH && musicLink.request != 0L
-    DisposableEffect(lifecycle,model,destination,playerExpanded,showingLink) {
+    DisposableEffect(lifecycle,model,destination,playerExpanded,showingLink,state.configured) {
         val active = destination == MusicDestination.SEARCH && !playerExpanded && !showingLink
         model.setSearchActive(active && lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer=LifecycleEventObserver{_,event->when(event) {
@@ -202,7 +206,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             destination = MusicDestination.SEARCH
         }
     }
-    LaunchedEffect(musicLink.request, state.initialized, state.configured, state.stage) {
+    LaunchedEffect(musicLink.request, musicLink.awaitingChoice, state.initialized, state.configured, state.stage) {
         if (state.initialized && state.configured && musicLink.music == null && musicLink.error == null)
             model.retryMusicLink()
     }
@@ -252,6 +256,24 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     }
     val savedPlayback=remember(localFiles){PlaybackLists.saved(localFiles)}
     val savedListeningAllowed=SavedPlaybackPolicy.allowed(state)
+    val ownTrackIds = remember(state.probe, state.readSessionId, state.libraryRefreshing, state.libraryStale,
+        searchState.account, searchState.readSessionId) {
+        state.probe?.takeIf { it.owner == searchState.account && state.readSessionId == searchState.readSessionId &&
+            !state.libraryRefreshing && !state.libraryStale && it.library.tracks.size == it.library.count }
+            ?.library?.tracks?.mapTo(hashSetOf()) { it.id }
+    }
+    val searchAdded = remember(addedTracks, ownTrackIds, searchState.tracks) {
+        if (ownTrackIds == null) addedTracks.keys
+        else addedTracks.filterValues { it in ownTrackIds }.keys +
+            searchState.tracks.mapNotNull { it.id.takeIf(ownTrackIds::contains) }
+    }
+    val searchCopies by produceState<Map<NativeTrack, PublishedAudio>>(emptyMap(),
+        destination, searchState.tracks, unsortedLocalFiles, addedTracks, searchState.account) {
+        value = if (destination != MusicDestination.SEARCH || searchState.tracks.isEmpty()) emptyMap()
+        else withContext(Dispatchers.Default) {
+            SearchSavedTracks.match(searchState.tracks, unsortedLocalFiles, addedTracks, searchState.account)
+        }
+    }
     fun openFile(row: PublishedAudio) {
         if(!savedListeningAllowed)return
         val index=savedPlayback.indexOfFirst{it.saved?.uri==row.uri}
@@ -341,14 +363,23 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         if (showingLink) {
             linkedMusicItems(musicLink, state.initialized, state.configured, canPrepare, trackActionMessage?.text,
                 onConnect = { accessOpen = true }, onRetry = model::retryMusicLink, onPlay = model::playLinkedMusic,
+                onOpenHere = model::chooseMusicLinkHere,
+                onOpenVk = { url ->
+                    if (openLinkInVk(context, url)) model.dismissMusicLink()
+                },
                 onDownload = model::downloadLinkedTrack, onDownloadCollection = model::downloadLinkedCollection,
                 onShare = ::shareLink, onPaste = { linkInputOpen = true }, preview = model::previewArtwork)
         } else if(destination==MusicDestination.SEARCH) {
             musicSearchItems(searchState,model::searchMusic,model::retryMusicSearch,model::moreMusicSearch,
-                onPlay={model.playSearchTrack(searchState,it)},
+                onPlay={index->
+                    val copy = searchState.tracks.getOrNull(index)?.let(searchCopies::get)
+                    if (copy != null && savedListeningAllowed) openFile(copy)
+                    else model.playSearchTrack(searchState, index)
+                },
                 onDownload={model.downloadSearchTrack(searchState,it)},canDownload=canPrepare,preview=model::previewArtwork,
                 onAdd = { model.addSearchTrack(searchState, it) }, canAdd = state.configured && !state.busy && !backgroundCheck,
-                added = addedTracks.keys, notice = trackActionMessage?.text, onShare = ::shareLink, onOpenLink = { linkInputOpen = true })
+                added = searchAdded, notice = trackActionMessage?.text, onShare = ::shareLink, onOpenLink = { linkInputOpen = true },
+                savedTracks = searchCopies, canPlaySaved = savedListeningAllowed)
         }else if(destination==MusicDestination.FRIENDS) {
             friendMusicItems(friendState,model.friends,state.configured,canPrepare,queue,friendQueueItems,friendTasks,friendSavedById,model::previewArtwork,
                 onPause=model::pauseQueue,onDownloads=model::showDownloads,
@@ -635,8 +666,15 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             }
         }
     }
+    additionRetry?.let {
+        AlertDialog(onDismissRequest = model::dismissAdditionRetry,
+            title = { Text("Повторить добавление?") },
+            text = { Text("ВК мог выполнить предыдущий запрос. Если трек уже есть в «Моей музыке», повтор может создать копию.") },
+            confirmButton = { TextButton(onClick = model::confirmAdditionRetry) { Text("Повторить") } },
+            dismissButton = { TextButton(onClick = model::dismissAdditionRetry) { Text("Отмена") } })
+    }
     if (linkInputOpen) MusicLinkInput(onOpen = { model.openMusicLink(it); linkInputOpen = false },
-        onDismiss = { linkInputOpen = false })
+        onLinkSettings = { openMusicLinkSettings(context) }, onDismiss = { linkInputOpen = false })
     if(openError)AlertDialog(onDismissRequest={openError=false},title={Text("Файл не открыт")},text={Text("Не удалось проверить файл или найти приложение для его воспроизведения. Проверь файл в папке Music/VK Music Export.")},confirmButton={TextButton(onClick={openError=false}){Text("Понятно")}})
     if(playerExpanded)PlaybackScreen(playback,onDismiss={PlaybackRuntime.expanded.value=false},onDownload=model::downloadPlayback,canDownload=canPrepare,
         downloadNotice=trackActionMessage?.takeIf { it.downloadError }?.text)

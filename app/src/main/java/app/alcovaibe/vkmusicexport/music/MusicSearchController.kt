@@ -33,7 +33,9 @@ internal class MusicSearchController(private val scope: CoroutineScope,private v
         if(active==mutable.value.active)return
         if(!active){pause();return}
         mutable.update{it.copy(active=true)}
-        if(mutable.value.query.trim().length>=2)search(append=false)
+        val snapshot = mutable.value
+        if (snapshot.query.trim().length >= 2 && snapshot.phase !in setOf(MusicSearchPhase.RESULTS, MusicSearchPhase.EMPTY))
+            search(append = snapshot.tracks.isNotEmpty())
     }
     fun query(value: String) {
         val query=value.take(300)
@@ -63,11 +65,10 @@ internal class MusicSearchController(private val scope: CoroutineScope,private v
                 if(!append)delay(debounceMs)
                 active(g)
                 val initial=access();active(g)
-                if(append)musicCheck(initial.readSessionId==before.readSessionId&&
-                    initial.accountId==before.account,MusicError.ACCOUNT_CHANGED)
                 val current=checked(initial);active(g)
                 val owner=current.accountId?:api.accountOwner(current)
                 musicCheck(owner>0,MusicError.ACCOUNT_CHANGED)
+                if (append) musicCheck(initial.readSessionId == before.readSessionId && owner == before.account, MusicError.ACCOUNT_CHANGED)
                 val result=api.searchMusic(current,MusicSearchQuery.text(before.query),offset)
                 checked(initial);active(g)
                 musicCheck(result.offset==offset&&result.tracks.size<=MusicSearchQuery.PAGE_SIZE&&

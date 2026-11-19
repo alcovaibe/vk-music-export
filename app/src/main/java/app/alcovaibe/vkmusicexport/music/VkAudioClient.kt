@@ -52,7 +52,7 @@ internal interface MusicApi {
         musicCheck(startFrom==null,MusicError.INCOMPLETE);return albumCatalogPage(access,owner,offset)
     }
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
-    suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack): Long =
+    suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack, beforeSend: suspend () -> Unit = {}): Long =
         throw MusicFailure(MusicError.METHOD)
     suspend fun linkedTrack(access: MusicAccess, link: VkMusicLink.Track): NativeTrack? =
         metadata(access, link.trackId)?.copy(accessKey = link.accessKey)
@@ -100,13 +100,16 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
     override suspend fun searchMusic(access: MusicAccess,query: String,offset: Int): MetadataMatches {
         val text=MusicSearchQuery.text(query)
         musicCheck(offset>=0&&offset<MusicSearchQuery.MAX_RESULTS,MusicError.RESPONSE)
-        val response = request(access,"audio.search",mapOf("q" to text,
-            "count" to MusicSearchQuery.PAGE_SIZE.toString(),"offset" to offset.toString(),
-            "auto_complete" to "0","search_own" to "0","sort" to "2"))
+        val response = searchResponse(access, text, offset)
         val page = NativeProtocol.page(response)
-        rememberStreams(access, (response as JsonObject)["items"] as JsonArray, page.tracks)
-        return MetadataMatches(page.tracks,page.count,offset)
+        val tracks = page.tracks.map { it.copy(audioOrigin = AudioOrigin.Search(text, offset)) }
+        rememberStreams(access, (response as JsonObject)["items"] as JsonArray, tracks)
+        return MetadataMatches(tracks, page.count, offset)
     }
+    private suspend fun searchResponse(access: MusicAccess, text: String, offset: Int) =
+        request(access, "audio.search", mapOf("q" to text,
+            "count" to MusicSearchQuery.PAGE_SIZE.toString(), "offset" to offset.toString(),
+            "auto_complete" to "0", "search_own" to "0", "sort" to "2"))
     private val mutationClient=client.newBuilder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
         .authenticator(Authenticator.NONE).proxyAuthenticator(Authenticator.NONE).build()
     private val previews=object: java.util.LinkedHashMap<String,String>(128,.75f,true) {
@@ -404,13 +407,14 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         if (extended) params["extended"] = "1"
         return request(access,"audio.get",params)
     }
-    override suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack): Long {
+    override suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack, beforeSend: suspend () -> Unit): Long {
         val source = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
         musicCheck(owner > 0 && (access.accountId == null || access.accountId == owner), MusicError.ACCOUNT_CHANGED)
         val fields = mutableMapOf("owner_id" to source.owner.toString(), "audio_id" to source.id.toString())
         source.accessKey?.let { fields["access_key"] = it }
         // Authorize the exact token used for the write. A transport failure must not replay audio.add.
         musicCheck(NativeProtocol.owner(requestRaw(access, "users.get", emptyMap())) == owner, MusicError.ACCOUNT_CHANGED)
+        beforeSend()
         val response = requestRaw(access, "audio.add", fields) as? JsonPrimitive
         return response?.takeUnless { it.isString }?.longOrNull?.takeIf { it > 0 }
             ?: throw MusicFailure(MusicError.RESPONSE)
@@ -487,15 +491,47 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
 
     override suspend fun resolveFresh(access: MusicAccess, track: NativeTrack): ResolvedAudio {
         val link = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
-        val response = try { audioRecord(access, link) }
-        catch (e: MusicFailure) {
-            if (e.code == MusicError.DENIED) throw TrackUnavailable(TrackAccessIssue.DENIED, e.remoteCode)
-            throw e
+        return try {
+            val response = audioRecord(access, link)
+            val resolved = NativeProtocol.resolveMedia(response, track)
+            rememberCover(access, track, response)
+            resolved
+        } catch (failure: MusicFailure) {
+            if (failure is TrackUnavailable && failure.issue == TrackAccessIssue.RESTRICTED) throw failure
+            if (track.audioOrigin == null || failure.code !in setOf(
+                    MusicError.UNAVAILABLE, MusicError.DENIED, MusicError.METHOD, MusicError.MEDIA_URL))
+                throw if (failure.code == MusicError.DENIED) TrackUnavailable(TrackAccessIssue.DENIED, failure.remoteCode) else failure
+            refreshFromOrigin(access, track, track.audioOrigin)
         }
-        val resolved = NativeProtocol.resolveMedia(response,track)
-        val cover = runCatching { NativeProtocol.artworkCandidates(response,track) }
-        synchronized(coverHints){coverHints[track.id]=CoverHint(access.credentialId,cover)}
+    }
+
+    private fun rememberCover(access: MusicAccess, track: NativeTrack, record: JsonElement) {
+        val cover = runCatching { NativeProtocol.artworkCandidates(record, track) }
+        synchronized(coverHints) { coverHints[track.id] = CoverHint(access.credentialId, cover) }
+    }
+
+    private suspend fun refreshFromOrigin(access: MusicAccess, track: NativeTrack, origin: AudioOrigin): ResolvedAudio {
+        val response = when (origin) {
+            is AudioOrigin.Search -> searchResponse(access, MusicSearchQuery.text(origin.query), origin.offset)
+            is AudioOrigin.Collection -> playlistResponse(access,
+                NativePlaylist(origin.owner, origin.id, "", 0, origin.accessKey, null, null, null), origin.offset)
+        }
+        val row = streamRow(response, track) ?: if (origin is AudioOrigin.Search) {
+            val text = MusicSearchQuery.text("${track.artist} ${track.displayTitle}".take(300))
+            if (text == origin.query && origin.offset == 0) null
+            else streamRow(searchResponse(access, text, 0), track)
+        } else null
+        val record = row ?: throw TrackUnavailable(TrackAccessIssue.NOT_RETURNED)
+        val resolved = NativeProtocol.resolveMediaRow(record, track)
+        rememberCover(access, track, JsonArray(listOf(record)))
+        VkStreamHints.remember(access, track, resolved)
         return resolved
+    }
+
+    private fun streamRow(response: JsonElement, track: NativeTrack): JsonObject? {
+        val page = NativeProtocol.page(response)
+        val index = page.tracks.indexOfFirst { it.id == track.id && it.duration == track.duration && !it.restricted && it.metadataError == null }
+        return if (index >= 0) ((response as JsonObject)["items"] as JsonArray)[index] as? JsonObject else null
     }
 }
 

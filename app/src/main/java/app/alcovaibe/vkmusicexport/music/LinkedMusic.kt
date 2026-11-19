@@ -25,7 +25,8 @@ internal data class MusicLinkState(
     val link: VkMusicLink? = null,
     val music: LinkedMusic? = null,
     val loading: Boolean = false,
-    val error: MusicError? = null
+    val error: MusicError? = null,
+    val awaitingChoice: Boolean = false
 )
 
 internal suspend fun readLinkedMusic(api: MusicApi, access: MusicAccess, link: VkMusicLink): LinkedMusic {
@@ -45,9 +46,10 @@ internal suspend fun readLinkedMusic(api: MusicApi, access: MusicAccess, link: V
                 link.accessKey ?: detail.accessKey, detail.originalOwner, detail.originalId, detail.nativeType,
                 detail.kind, detail.following, photo = detail.photo, typeConflict = detail.typeConflict)
             val page = MusicPagination.tracks({ offset ->
-                api.playlistPage(access, list, offset).also {
-                    musicCheck(it.count <= 20_000, MusicError.TOO_LARGE)
-                }
+                val page = api.playlistPage(access, list, offset)
+                musicCheck(page.count <= 20_000, MusicError.TOO_LARGE)
+                val origin = AudioOrigin.Collection(list.owner, list.id, list.accessKey, offset)
+                page.copy(tracks = page.tracks.map { it.copy(audioOrigin = origin) })
             })
             LinkedMusic(page, account, access.readSessionId, list.withCount(page.count))
         }

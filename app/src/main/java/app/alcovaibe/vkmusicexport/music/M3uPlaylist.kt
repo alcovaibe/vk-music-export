@@ -11,6 +11,16 @@ internal object M3uPlaylist {
         musicCheck(!target.isAbsolute&&target.startsWith("Music"),MusicError.STORAGE)
         return "./"+Paths.get(directory).relativize(target).toString().replace('\\','/')
     }
+    fun missingReferences(previous: String, updated: String): Boolean {
+        fun references(text: String) = text.lineSequence().filter { it.startsWith("./") }.groupingBy { it }.eachCount()
+        val current = references(updated)
+        return references(previous).any { (path, count) -> (current[path] ?: 0) < count }
+    }
+
+    fun selectedCount(playlist: String): Int? =
+        playlist.lineSequence().firstOrNull { it.startsWith("#VKME-SELECTED:") }
+            ?.substringAfter(':')?.toIntOrNull()
+
     fun render(directory: String,selected: List<AudioExportTask>,files: Map<String,PublishedAudio>): String=buildString {
         append("#EXTM3U\n#VKME-SELECTED:").append(selected.size).append('\n')
         val ordered=selected.sortedBy{it.position}

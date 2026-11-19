@@ -48,9 +48,16 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
 }
 
 @Serializable internal data class MusicAlbum(val id: String, val title: String)
+@Serializable
+internal sealed interface AudioOrigin {
+    @Serializable data class Search(val query: String, val offset: Int) : AudioOrigin
+    @Serializable data class Collection(val owner: Long, val id: Long, val accessKey: String?, val offset: Int) : AudioOrigin {
+        override fun toString() = "Collection([metadata omitted])"
+    }
+}
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
     val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null,
-    val releaseYear: Int?=null, val accessKey: String?=null) {
+    val releaseYear: Int?=null, val accessKey: String?=null, val audioOrigin: AudioOrigin?=null) {
     override fun toString() = "NativeTrack([metadata omitted])"
     val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
         if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
@@ -312,7 +319,7 @@ internal object NativeProtocol {
         val url=(o["url"] as? JsonPrimitive)?.takeIf{it.isString}?.content?.takeIf{it.isNotBlank()}
             ?:throw TrackUnavailable(TrackAccessIssue.NO_STREAM)
         ResolvedAudio(actual.copy(subtitle=if("subtitle" in o)actual.subtitle else expected.subtitle,
-            accessKey=expected.accessKey?:actual.accessKey),MediaAddress.require(url).toString())
+            accessKey=expected.accessKey?:actual.accessKey, audioOrigin=expected.audioOrigin),MediaAddress.require(url).toString())
     }
 
 }
