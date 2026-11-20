@@ -58,7 +58,20 @@ class EvidenceTest(unittest.TestCase):
         folder=ci/'Dependency-evidence';folder.mkdir();(folder/'inventory.txt').write_text('fixture')
         with patch.dict(os.environ,{'GITHUB_ACTIONS':'true'}):
             with zipfile.ZipFile(self.build()) as z: self.assertIn('ci/Update-delivery-API-37/result.json',z.namelist())
-            proof=ci/'Update-delivery-API-37/result.json';value=json.loads(proof.read_text());value['sha256']='b'*64;proof.write_text(json.dumps(value))
+            fixture = {**manifest, 'release': {**manifest['release'], 'sha256': 'c'*64, 'size': 8}}
+            (fixtures/'integration-manifest.json').write_text(json.dumps(fixture))
+            for api in range(29, 38):
+                proof = ci/f'Update-delivery-API-{api}/result.json'
+                value = json.loads(proof.read_text())
+                value.update(sha256='c'*64, public_apk_sha256='a'*64)
+                proof.write_text(json.dumps(value))
+            self.assertTrue(self.build().is_file())
+            value['public_apk_sha256'] = 'b'*64
+            proof.write_text(json.dumps(value))
+            with self.assertRaisesRegex(ValueError, 'Inconsistent updater evidence API 37'):
+                self.build()
+            value.update(sha256='b'*64, public_apk_sha256='a'*64)
+            proof.write_text(json.dumps(value))
             with self.assertRaisesRegex(ValueError,'Inconsistent updater evidence API 37'): self.build()
     def test_equivalent_downloaded_files_produce_same_archive_despite_mtime(self):
         original=self.build().read_bytes()
