@@ -18,6 +18,24 @@ done
 package=app.alcovaibe.vkmusicexport
 host=$package.updatecheck
 appdata=/data/user/0/$package
+# Exercise the exact public APK on the same API before the isolated upgrade.
+public_apk=$(PYTHONPATH=tools python3 - <<'PYPUBLIC'
+import json
+from pathlib import Path
+from channel_contract import file_hash, validate_manifest
+
+directory = Path('channel-evidence')
+release = validate_manifest(json.loads((directory/'manifest.json').read_text()))
+apk = directory/release['apk']
+digest = file_hash(apk)
+if digest != release['sha256'] or apk.stat().st_size != release['size']:
+    raise SystemExit('Public APK differs from the verified channel manifest')
+Path('update-delivery-results/public-apk-sha256.txt').write_text(digest + '\n')
+print(apk)
+PYPUBLIC
+)
+adb install "$public_apk"
+adb uninstall "$package"
 adb install channel-evidence/baseline.apk
 uid=$(adb shell stat -c %u "$appdata" | tr -d '\r')
 [[ "$uid" =~ ^[0-9]+$ ]]
@@ -46,14 +64,17 @@ log=(out/'prepare-instrumentation.txt').read_text()+'\n'+(out/'instrumentation.t
 assert len(re.findall(r'OK \(1 test\)',log))==2, 'Integration test did not complete exactly one passing test'
 assert not any(s in log for s in ['FAILURES!!!','INSTRUMENTATION_FAILED','Process crashed','INSTRUMENTATION_ABORTED'])
 proof=json.loads((out/'updater-proof.json').read_text())
-manifest=json.loads(Path('channel-evidence/manifest.json').read_text())['release']
+manifest=json.loads(Path('channel-evidence/integration-manifest.json').read_text())['release']
+public=json.loads(Path('channel-evidence/manifest.json').read_text())['release']
+assert (out/'public-apk-sha256.txt').read_text().strip()==public['sha256']
 assert proof['api']==int(sys.argv[1]) and proof['from']==1343 and proof['to']==manifest['versionCode']
 assert proof['sha256']==manifest['sha256'] and proof['system_installer'] is True
 assert proof['process_restart'] is True and proof['offline_restore'] is True
 assert re.search(r'versionCode='+str(proof['to'])+r'\b',(out/'installed-package.txt').read_text())
 assert (out/'protected.bin').read_bytes()==(out/'protected-after.bin').read_bytes()
 proof['private_marker_preserved']=True
+proof['public_apk_sha256']=public['sha256']
 proof['marker_sha256']=hashlib.sha256((out/'protected-after.bin').read_bytes()).hexdigest()
 (out/'result.json').write_text(json.dumps(proof,indent=2)+'\n')
-print('PASS: public signed APK verified by the real updater, installed through Android UI; UID and private data retained.')
+print('PASS: signed fixture APK verified by the real updater, installed through Android UI; UID and private data retained.')
 PY

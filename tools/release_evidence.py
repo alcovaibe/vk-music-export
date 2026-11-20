@@ -53,13 +53,20 @@ def bundle(info, apk, output=Path('release-output'), ci=Path('release-evidence-i
         if (checked['state']!='candidate_verified' or checked['apk_verification']['sha256']!=subject['sha256']
                 or checked['apk_verification']['versionCode']!=subject['versionCode']):
             raise ValueError('Channel signature evidence has another subject')
+        integration_path = checked_path.with_name('integration-manifest.json')
+        integration_subject = subject
+        if integration_path.is_file():
+            integration_subject = validate_manifest(json.loads(integration_path.read_text()))
+            if any(integration_subject[key] != subject[key] for key in subject if key not in {'sha256', 'size'}):
+                raise ValueError('Updater fixture has another release identity')
         for api in range(29,38):
             if not any(name.startswith(f'ci/Android-interface-API-{api}/') and name.endswith('.xml') for name in files):
                 raise ValueError(f'Missing durable interface evidence API {api}')
             if not any(name==f'ci/Update-delivery-API-{api}/result.json' for name in files):
                 raise ValueError(f'Missing durable updater evidence API {api}')
             proof=json.loads((ci/f'Update-delivery-API-{api}/result.json').read_text())
-            if (proof['api']!=api or proof['to']!=subject['versionCode'] or proof['sha256']!=subject['sha256']
+            if (proof['api']!=api or proof['to']!=subject['versionCode'] or proof['sha256']!=integration_subject['sha256']
+                    or (integration_path.is_file() and proof.get('public_apk_sha256') != subject['sha256'])
                     or proof['system_installer'] is not True or proof['private_marker_preserved'] is not True
                     or proof['process_restart'] is not True or proof['offline_restore'] is not True):
                 raise ValueError(f'Inconsistent updater evidence API {api}')
