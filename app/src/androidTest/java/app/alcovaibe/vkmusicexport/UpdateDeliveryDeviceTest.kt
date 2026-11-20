@@ -26,7 +26,7 @@ import org.junit.runner.RunWith
 /** Two separate instrumentation processes, with an actual host force-stop between them. */
 @RunWith(AndroidJUnit4::class)
 class UpdateDeliveryDeviceTest {
-    @Test fun signedPublicApkPassesUpdaterAndSystemInstallerPreservesPrivateData()=runBlocking {
+    @Test fun signedFixtureApkPassesUpdaterAndSystemInstallerPreservesPrivateData()=runBlocking {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val host=instrumentation.targetContext
         val automation=instrumentation.uiAutomation
@@ -55,7 +55,7 @@ class UpdateDeliveryDeviceTest {
             }
             return digest.digest().joinToString(""){"%02x".format(it)}
         }
-        // Select the real installed public baseline for identity/certificate comparison;
+        // Select the installed emulator baseline for identity/certificate comparison;
         // retain the isolated harness cache and real PackageManager.
         val baselineContext=object: ContextWrapper(host){override fun getPackageName()=production}
         val client=GithubUpdates.newClient().newBuilder().addInterceptor { chain ->
@@ -70,7 +70,7 @@ class UpdateDeliveryDeviceTest {
                 override fun contentLength()=candidate.length()
                 override fun source()=stream
             }
-            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("public byte fixture")
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("signed APK fixture")
                 .body(body).build()
         }.build()
         val service=GithubUpdates(baselineContext,client)
