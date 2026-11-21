@@ -315,6 +315,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
 
+    val artistSubscriptionEvents = artistController.subscriptionEvents
+    fun toggleArtistSubscription() = artistController.toggleSubscription()
     val artists=artistController.state
     private val savedRepository=SavedLibrary(application,viewModelScope)
     val savedLibrary=savedRepository.rows.asStateFlow()
@@ -1012,7 +1014,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 musicCheck(first.owner == owner, MusicError.ACCOUNT_CHANGED)
                 checkRead(access)
                 read.guard()
-                if (includeArtists && api.capabilities.artists != CapabilityStatus.UNAVAILABLE) artistController.show(refresh = true)
+                if (includeArtists && artistController.state.value.selected == null && api.capabilities.artists != CapabilityStatus.UNAVAILABLE) artistController.show(refresh = true)
                 coroutineScope {
                     launch {
                         try {

@@ -317,8 +317,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
     val artistRoute = selectedArtist != null
     val artistProfile = artistRoute && artists.queue == null && artists.album == null
     val artistScroll = key(artists.selected?.id) { rememberLazyListState() }
-    val artistHeader by remember(artistScroll) { derivedStateOf { artistScroll.firstVisibleItemIndex > 0 } }
-    val headerArtist = if (artistProfile && artistHeader) artists.details?.artist ?: artists.selected else null
+    LaunchedEffect(model, context) {
+        model.artistSubscriptionEvents.collect { message ->
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     Box(Modifier.fillMaxSize()) {
     if(accessOpen)MusicAccessManagementScreen(state,session,clock,backgroundCheck,queueWorking,duplicates.progress.stage,
         onBack={accessOpen=false},onCheck=model::checkAccess,onConnect=model::authenticate,
@@ -330,12 +333,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             MusicDestination.DOWNLOADS->"Загрузки"
             MusicDestination.FRIENDS->if(friendState.playlist!=null)when(friendState.playlist?.kind){PlaylistKind.ALBUM->"Альбом";PlaylistKind.UNKNOWN->"Подборка";else->"Плейлист"} else if(friendState.user!=null)"Профиль друга" else "Друзья"
             else -> if (category == LibraryCategory.ARTISTS) {
-                artists.album?.title ?: artists.queue?.title ?: headerArtist?.name ?:
-                    if (artistProfile) "Исполнитель" else "Мои исполнители"
+                artists.album?.title ?: artists.queue?.title ?: "Мои исполнители"
             } else state.selected?.title ?: "Библиотека"
         },destination=destination,onDestination={if(model.downloadsOpen.value)model.dismissDownloads();destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         prominentTitle=artistRoute&&artists.album==null||destination==MusicDestination.FRIENDS&&friendState.user==null,
-        headerArtist=headerArtist,showHeaderActions=!artistRoute||artists.album!=null,
+        showHeader=!artistProfile,showHeaderActions=!artistRoute||artists.album!=null,
         itemSpacing=when {
             artistRoute&&artists.queue!=null -> 0.dp
             destination==MusicDestination.FRIENDS -> 8.dp
@@ -471,7 +473,11 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                     }
                 }
                 group != null && details != null -> artistQueueItems(details, group, actions)
-                else -> artistProfileItems(selectedArtist, details, actions, artists.busy, model::openArtistTracks) { model.selectArtistAlbum(it) }
+                else -> artistProfileItems(selectedArtist, details, actions, artists.busy,
+                    followed = artists.artists.any { it.id == selectedArtist.id },
+                    canFollow = remote && !artists.subscriptionPending, back = ::back,
+                    toggle = model::toggleArtistSubscription, openQueue = model::openArtistTracks,
+                    openRelease = model::selectArtistAlbum)
             }
             artistLoadingItems(artists) { if (album == null) model.selectArtist(selectedArtist) else model.selectArtistAlbum(album) }
         } else {

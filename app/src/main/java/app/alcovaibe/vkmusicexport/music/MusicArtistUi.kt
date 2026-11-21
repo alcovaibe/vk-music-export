@@ -9,7 +9,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,12 +70,13 @@ internal fun LazyListScope.artistProfileItems(
     details: MusicArtistDetails?,
     tracks: ArtistTrackActions,
     busy: Boolean,
+    followed: Boolean, canFollow: Boolean, back: () -> Unit, toggle: () -> Unit,
     openQueue: (ArtistTracks) -> Unit,
     openRelease: (NativePlaylist) -> Unit,
 ) {
     val profile = details?.artist ?: artist
     item("artist_profile") {
-        ArtistHero(profile, details, tracks)
+        ArtistHero(profile, details, tracks, followed, canFollow, back, toggle)
     }
     if (details == null) return
     item("artist_preview") {
@@ -111,36 +125,56 @@ internal fun LazyListScope.artistProfileItems(
 }
 
 @Composable
-private fun ArtistHero(artist: MusicArtist, details: MusicArtistDetails?, actions: ArtistTrackActions) {
+private fun ArtistHero(artist: MusicArtist, details: MusicArtistDetails?, actions: ArtistTrackActions,
+    followed: Boolean, canFollow: Boolean, back: () -> Unit, toggle: () -> Unit) {
     val popularIndex = details?.popular?.indexOfFirst(actions::canPlay) ?: -1
     val group = if (popularIndex >= 0) ArtistTracks.POPULAR else ArtistTracks.ALL
     val rows = details?.tracks(group).orEmpty()
     val firstPlayable = if (popularIndex >= 0) popularIndex else rows.indexOfFirst(actions::canPlay)
     Surface(color = MaterialTheme.colorScheme.surface, shape = artistCardShape, modifier = Modifier.fillMaxWidth()) {
         Column {
-            MusicThumbnail(url = artist.photo, artist = true, identity = artist.id,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1.74f).testTag("artist_hero_image"),
-                shape = RectangleShape, maxPixels = 1200)
-            Row(
-                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(artist.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.Check, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.tertiary)
-                        Text("В подписках", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            Box(Modifier.fillMaxWidth().aspectRatio(1.35f)) {
+                MusicThumbnail(url = artist.photo, artist = true, identity = artist.id,
+                    modifier = Modifier.matchParentSize().testTag("artist_hero_image"), shape = RectangleShape, maxPixels = 1200)
+                GlassButton(back, Modifier.align(Alignment.TopStart).padding(6.dp), true, "Назад") {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(20.dp))
+                }
+                val progress by animateFloatAsState(if (followed) 1f else 0f, tween(200), label = "artist subscription")
+                GlassButton(toggle, Modifier.align(Alignment.TopEnd).padding(6.dp).testTag("artist_subscription")
+                    .semantics { stateDescription = if (followed) "Подписан" else "Не подписан" }, canFollow,
+                    if (followed) "Отписаться от исполнителя" else "Подписаться на исполнителя") {
+                    Canvas(Modifier.size(22.dp)) {
+                        fun point(x: Float, y: Float) = Offset(size.width * x / 24f, size.height * y / 24f)
+                        val joint = point(12 - 2 * progress, 12 + 5 * progress)
+                        val color = Color.White
+                        val width = 2.dp.toPx()
+                        drawLine(color, point(4f, 12f), joint, width, StrokeCap.Round)
+                        drawLine(color, joint, point(20f, 12 - 7 * progress), width, StrokeCap.Round)
+                        if (progress < 1f) drawLine(color.copy(alpha = 1 - progress),
+                            point(12f, 4 + 8 * progress), point(12f, 20 - 8 * progress), width, StrokeCap.Round)
                     }
                 }
-                FilledIconButton(
-                    onClick = { rows.getOrNull(firstPlayable)?.let { actions.play(group, firstPlayable, it) } },
-                    enabled = firstPlayable >= 0,
-                    modifier = Modifier.size(52.dp).testTag("artist_play"),
-                ) {
-                    Icon(PlayerPlayIcon, "Воспроизвести музыку исполнителя", Modifier.size(26.dp))
+                GlassButton({ rows.getOrNull(firstPlayable)?.let { actions.play(group, firstPlayable, it) } },
+                    Modifier.align(Alignment.BottomEnd).padding(6.dp).testTag("artist_play"),
+                    firstPlayable >= 0, "Воспроизвести музыку исполнителя") {
+                    Icon(PlayerPlayIcon, null, Modifier.size(19.dp))
                 }
             }
+            Text(artist.name, Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun GlassButton(click: () -> Unit, modifier: Modifier, enabled: Boolean, description: String,
+    icon: @Composable () -> Unit) {
+    IconButton(onClick = click, enabled = enabled,
+        modifier = modifier.size(48.dp).semantics { contentDescription = description }) {
+        Box(Modifier.size(38.dp).background(Color.Black.copy(alpha = .46f), CircleShape)
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = .24f), Color.Transparent)), CircleShape)
+            .border(1.dp, Color.White.copy(alpha = .5f), CircleShape), contentAlignment = Alignment.Center) {
+            CompositionLocalProvider(LocalContentColor provides Color.White.copy(alpha = if (enabled) 1f else .55f)) { icon() }
         }
     }
 }
