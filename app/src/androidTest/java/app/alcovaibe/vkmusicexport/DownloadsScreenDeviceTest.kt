@@ -1,5 +1,6 @@
 package app.alcovaibe.vkmusicexport
 
+import android.app.Notification
 import android.content.Context
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -34,6 +35,14 @@ class DownloadsScreenDeviceTest {
         ui.onNodeWithTag("open_music_downloads").performClick()
         ui.waitUntil(10_000){ui.onAllNodesWithTag("downloads_screen").fetchSemanticsNodes().isNotEmpty()}
     }
+    @Test fun finishedNotificationUsesNewestTitleAndStacksOtherTracks() {
+        val snapshot = ExportSnapshot(status = "FINISHED", total = 3, done = 3,
+            savedTitles = listOf("Последний трек", "Второй", "Первый"))
+        val extras = AudioExportRuntime.notification(ui.activity, snapshot).extras
+        assertEquals("Последний трек", extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals(listOf("Второй", "Первый"), extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.map { it.toString() })
+    }
+
     @Test fun downloadsReturnToSavedAndFriendsAndNotificationOpensTheSameQueue()=fixture{model,context->
         ui.runOnUiThread{model.openMaintenanceNotification("saved_files_background")}
         ui.waitUntil(10_000){ui.onAllNodesWithTag("saved_file_recovery").fetchSemanticsNodes().isNotEmpty()}

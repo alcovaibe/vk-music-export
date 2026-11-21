@@ -52,17 +52,37 @@ class MainActivity : ComponentActivity() {
             nativeMusic.openDuplicateNotification();intent.removeExtra(app.alcovaibe.vkmusicexport.music.DuplicateCheckRuntime.OPEN_EXTRA)
         }
     }
+    private fun openSharedMusic(intent: Intent) {
+        val text = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.dataString
+            Intent.ACTION_SEND -> if (intent.type == "text/plain") intent.getCharSequenceExtra(Intent.EXTRA_TEXT) else null
+            else -> null
+        }
+        text?.let { nativeMusic.openMusicLink(it, chooseApp = intent.action == Intent.ACTION_VIEW) }
+    }
     override fun onNewIntent(intent: Intent){
         super.onNewIntent(intent)
         // Notifications are one-shot navigation events; the saved route owns restoration.
         openNotification(intent)
+        openSharedMusic(intent)
     }
     override fun onResume(){super.onResume();nativeMusic.setForeground(true)}
     override fun onPause(){nativeMusic.setForeground(false);super.onPause()}
     override fun onStop(){nativeMusic.stopInBackground();super.onStop()}
+    override fun onSaveInstanceState(outState: Bundle) {
+        val route = nativeMusic.musicLink.value
+        route.link?.url?.let { outState.putString("open_vk_music_link", it) }
+        outState.putBoolean("choose_vk_music_app", route.awaitingChoice)
+        super.onSaveInstanceState(outState)
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openNotification(intent)
+        if (savedInstanceState == null) openSharedMusic(intent)
+        else if (nativeMusic.musicLink.value.request == 0L)
+            savedInstanceState.getString("open_vk_music_link")?.let {
+                nativeMusic.openMusicLink(it, chooseApp = savedInstanceState.getBoolean("choose_vk_music_app"))
+            }
         enableEdgeToEdge()
         setContent {
             SideEffect {

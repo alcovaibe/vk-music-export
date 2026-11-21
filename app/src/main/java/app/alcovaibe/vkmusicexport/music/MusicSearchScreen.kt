@@ -6,10 +6,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,7 +35,15 @@ internal fun LazyListScope.musicSearchItems(
     onPlay: (Int) -> Unit,
     onDownload: (Int) -> Unit,
     canDownload: Boolean,
-    preview: (NativeTrack) -> String? = { null }
+    preview: (NativeTrack) -> String? = { null },
+    onAdd: ((Int) -> Unit)? = null,
+    canAdd: Boolean = false,
+    added: Set<String> = emptySet(),
+    notice: String? = null,
+    onShare: ((String) -> Unit)? = null,
+    onOpenLink: (() -> Unit)? = null,
+    savedTracks: Map<NativeTrack, PublishedAudio> = emptyMap(),
+    canPlaySaved: Boolean = false
 ) {
     item("search_input") {
         OutlinedTextField(
@@ -58,6 +68,17 @@ internal fun LazyListScope.musicSearchItems(
         )
     }
 
+    onOpenLink?.let { action ->
+        item("search_open_link") {
+            TextButton(onClick = action, modifier = Modifier.testTag("open_vk_music_link")) { Text("Открыть ссылку ВК") }
+        }
+    }
+    notice?.let { message ->
+        item("search_action_status") {
+            Text(message, modifier = Modifier.testTag("search_action_status").semantics { liveRegion = LiveRegionMode.Polite })
+        }
+    }
+
     if(state.query.trim().length>=2 || state.tracks.isNotEmpty()) {
         item("search_results_heading") {
             Column(Modifier.fillMaxWidth().padding(top=8.dp,bottom=4.dp),
@@ -80,7 +101,7 @@ internal fun LazyListScope.musicSearchItems(
         }
     }
     val status=when(state.phase) {
-        MusicSearchPhase.READY->if(state.query.length<2)"Введите не менее двух символов для поиска." else null
+        MusicSearchPhase.READY->null
         MusicSearchPhase.EMPTY->"Ничего не найдено. Попробуйте другой запрос."
         MusicSearchPhase.DENIED->"ВК не разрешил поиск при текущем подключении. Проверьте доступ к музыке."
         MusicSearchPhase.CHALLENGE->"ВК требует подтверждения или капчи. Завершите проверку и повторите поиск."
@@ -101,13 +122,19 @@ internal fun LazyListScope.musicSearchItems(
     }
 
     itemsIndexed(state.tracks,key={index,track->"search_${index}_${track.id}"}) { index,track->
-        val ready=state.audio!=CapabilityStatus.UNAVAILABLE && state.active &&
-            state.phase==MusicSearchPhase.RESULTS &&
-            track.duration>0 && !track.restricted && track.metadataError==null
+        val actionable = state.active && state.phase == MusicSearchPhase.RESULTS &&
+            !track.restricted && track.metadataError == null
+        val ready = actionable && state.audio != CapabilityStatus.UNAVAILABLE && track.duration > 0
+        val sharedUrl = VkMusicLinks.track(track.id, track.accessKey)?.url
+        val saved = savedTracks[track]
         MusicSearchTrackRow(
-            track=track,artwork=preview(track),
-            onPlay=if(ready)({onPlay(index)}) else null,
-            onDownload=if(ready && canDownload)({onDownload(index)}) else null,
+            track=track,artwork=preview(track),saved=saved,
+            onPlay=if(ready || state.active && saved != null && canPlaySaved)({onPlay(index)}) else null,
+            onDownload=if(ready && canDownload && saved == null)({onDownload(index)}) else null,
+            onAdd=onAdd?.let { add -> { add(index) } },
+            addEnabled=canAdd && actionable && track.id !in added,
+            added=track.id in added,
+            onShare=if (sharedUrl != null && onShare != null) ({ onShare(sharedUrl) }) else null,
             tag="search_track_$index"
         )
     }
@@ -133,10 +160,16 @@ internal fun LazyListScope.musicSearchItems(
 private fun MusicSearchTrackRow(
     track: NativeTrack,
     artwork: String?,
+    saved: PublishedAudio?,
     onPlay: (() -> Unit)?,
     onDownload: (() -> Unit)?,
+    onAdd: (() -> Unit)?,
+    addEnabled: Boolean,
+    added: Boolean,
+    onShare: (() -> Unit)?,
     tag: String
 ) {
+    var menu by remember { mutableStateOf(false) }
     Surface(
         shape=RoundedCornerShape(18.dp),
         color=MaterialTheme.colorScheme.surface,
@@ -152,7 +185,7 @@ private fun MusicSearchTrackRow(
             verticalAlignment=Alignment.CenterVertically,
             horizontalArrangement=Arrangement.spacedBy(12.dp)
         ) {
-            MusicThumbnail(url=artwork,identity=track.id,size=64.dp)
+            MusicThumbnail(url=artwork,uri=saved?.uri,identity=saved?.sha256?:track.id,size=64.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(track.displayTitle,style=MaterialTheme.typography.titleMedium,
                     fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis)
@@ -161,12 +194,16 @@ private fun MusicSearchTrackRow(
                 Text("${track.duration/60}:${(track.duration%60).toString().padStart(2,'0')}",
                     style=MaterialTheme.typography.bodySmall,
                     color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(track.restricted || track.metadataError!=null) {
+                if (saved == null && (track.restricted || track.metadataError != null)) {
                     Text("Недоступно для воспроизведения",
                         color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
                 }
             }
-            FilledTonalIconButton(
+            if (saved != null) {
+                Box(Modifier.size(48.dp).testTag("${tag}_saved"), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.CheckCircle, "Есть копия на устройстве", tint = MaterialTheme.colorScheme.tertiary)
+                }
+            } else FilledTonalIconButton(
                 onClick={onDownload?.invoke()},
                 enabled=onDownload!=null,
                 shape=RoundedCornerShape(12.dp),
@@ -176,6 +213,25 @@ private fun MusicSearchTrackRow(
                 )
             ) {
                 Icon(DownloadIcon,contentDescription="Скачать ${track.displayTitle}")
+            }
+            if (onAdd != null || onShare != null) Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("${tag}_menu")) {
+                    Icon(Icons.Default.MoreVert, "Действия с треком ${track.displayTitle}")
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    onAdd?.let { add ->
+                        DropdownMenuItem(
+                            text = { Text(if (added) "В «Моей музыке»" else "Добавить в «Мою музыку»") },
+                            enabled = addEnabled,
+                            modifier = Modifier.testTag("${tag}_add"),
+                            onClick = { menu = false; add() }
+                        )
+                    }
+                    onShare?.let { share ->
+                        DropdownMenuItem(text = { Text("Поделиться ссылкой") },
+                            onClick = { menu = false; share() })
+                    }
+                }
             }
         }
     }

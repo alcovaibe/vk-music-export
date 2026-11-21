@@ -210,7 +210,8 @@ internal fun MusicThumbnail(
 
 @Composable
 internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=null,saved: PublishedAudio?=null,downloading: Boolean=false,
-    enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,onPlay:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}") {
+    enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,onPlay:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}",
+    onShare: (() -> Unit)? = null) {
     var menu by remember{mutableStateOf(false)}
     val play=onPlay?:onOpen
     Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(play!=null)Modifier.clickable(onClickLabel="Воспроизвести ${track.displayTitle}",role=androidx.compose.ui.semantics.Role.Button,onClick=play)else Modifier)) {
@@ -233,10 +234,11 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
                     Icon(Icons.Default.CheckCircle,"Есть копия на устройстве",tint=MaterialTheme.colorScheme.tertiary)}
                 onDownload!=null->IconButton(enabled=enabled,onClick=onDownload){Icon(DownloadIcon,"Скачать ${track.displayTitle}, ${track.artist}")}
             }
-            if(onRemove!=null||onOpen!=null)Box {
+            if(onRemove!=null||onOpen!=null||onShare!=null)Box {
                 IconButton(onClick={menu=true},modifier=Modifier.testTag("track_menu_${position}_${track.id}")){Icon(Icons.Default.MoreVert,"Действия с треком ${track.displayTitle}, ${track.artist}")}
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                     onOpen?.let{DropdownMenuItem(text={Text("Воспроизвести файл")},onClick={menu=false;it()})}
+                    onShare?.let { share -> DropdownMenuItem(text = { Text("Поделиться ссылкой") }, onClick = { menu = false; share() }) }
                     onRemove?.let{DropdownMenuItem(enabled=enabled,text={Text("Удалить из музыки ВК…")},modifier=Modifier.testTag("remove_from_vk"),onClick={menu=false;it()})}
                 }
             }

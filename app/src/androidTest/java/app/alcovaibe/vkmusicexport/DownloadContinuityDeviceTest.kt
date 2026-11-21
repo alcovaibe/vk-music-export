@@ -89,22 +89,33 @@ class DownloadContinuityDeviceTest {
         val source=ExportSource(0,"legacy","continuity-refresh")
         val folder="CI refresh ${UUID.randomUUID()}"
         val tasks=(1..3).map{ExportLayout.task(track(it),listOf("Плейлисты",folder),it,source)}
-        var requests=0;var resolutions=0
+        val requests=mutableListOf<String>()
+        val initialResolutions=mutableListOf<String>()
+        val freshResolutions=mutableListOf<String>()
         val api=object: MusicApi by noApi {
             override suspend fun resolve(access: MusicAccess,track: NativeTrack): ResolvedAudio {
+                initialResolutions.add(track.id)
                 if(track.id=="12_2")throw MusicFailure(MusicError.ACCESS,5)
-                resolutions++;return ResolvedAudio(track,media(access,track))
+                return ResolvedAudio(track,"${media(access,track)}/expired")
+            }
+            override suspend fun resolveFresh(access: MusicAccess,track: NativeTrack): ResolvedAudio {
+                freshResolutions.add(track.id)
+                return ResolvedAudio(track,"${media(access,track)}/fresh")
             }
         }
         val directory=store.directory(tasks.first())
         try {
             store.replace(tasks);store.status("QUEUED")
             AudioExportEngine(store,shared,File(dir,"tmp"),api,
-                transfer(status={if(requests==1)403 else 200},request={requests++}),credential={access},observe={_,_->}).run{}
+                transfer(status={if(it.endsWith("/expired"))403 else 200},request={requests.add(it)}),
+                credential={access},observe={_,_->}).run{}
             val result=store.snapshot()
             assertEquals("PAUSED",result.status);assertEquals(MusicError.ACCESS,result.error)
             assertEquals(1,result.done);assertEquals(0,result.failed);assertEquals(2,result.pending)
-            assertEquals(2,requests);assertEquals(2,resolutions);assertTrue(shared.valid(store.existing(tasks[0].key)!!))
+            assertEquals(listOf("12_1/expired","12_1/fresh"),requests)
+            assertEquals(listOf("12_1","12_2"),initialResolutions)
+            assertEquals(listOf("12_1"),freshResolutions)
+            assertTrue(shared.valid(store.existing(tasks[0].key)!!))
             assertNull(store.existing(tasks[2].key))
         }finally{store.close();cleanup(directory);dir.deleteRecursively()}
     }

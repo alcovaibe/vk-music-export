@@ -84,8 +84,15 @@ internal class SharedPlaylistStore(private val context: Context,private val stor
             val files=linkedMapOf<String,PublishedAudio>()
             val shared=SharedAudioStore(context)
             for((task,state)in entries)if(state=="DONE")store.existing(task.key)?.let{if(shared.valid(it))files[task.key]=it}
-            val bytes=M3uPlaylist.render(directory,tasks,files).toByteArray(Charsets.UTF_8)
-            publish("m3u:"+identity,directory,bytes)
+            val key = "m3u:$identity"
+            val playlist = M3uPlaylist.render(directory, tasks, files)
+            if (tasks.first().source?.kind == "catalog") {
+                val previous = row(key)?.let { read(it) }?.toString(Charsets.UTF_8)
+                if (previous != null && (files.size < tasks.size ||
+                            (M3uPlaylist.selectedCount(previous) ?: 0) > tasks.size) &&
+                    M3uPlaylist.missingReferences(previous, playlist)) continue
+            }
+            publish(key, directory, playlist.toByteArray(Charsets.UTF_8))
         }
         repairLocations()
         store.clearSourceFailure(ExportSource(store.account(),"playlist_file","all"))

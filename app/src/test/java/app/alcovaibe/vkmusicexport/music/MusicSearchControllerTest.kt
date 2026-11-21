@@ -71,6 +71,21 @@ class MusicSearchControllerTest {
         assertNotEquals(entries[0].download!!.key,entries[1].download!!.key)
         reader.pause();assertTrue(reader.entries(reader.state.value).isEmpty())
     }
+    @Test fun returningFromPlayerKeepsLoadedPagesWithoutSearchingAgain() = runTest {
+        val api = Api()
+        api.search = { _, offset -> MetadataMatches(listOf(song.copy(id = "99_${offset + 7}")), 2, offset) }
+        val reader = controller(api)
+        reader.setActive(true); reader.query("test"); advanceTimeBy(350); runCurrent()
+        reader.more(); runCurrent()
+
+        reader.pause()
+        reader.setActive(true)
+        advanceTimeBy(500); runCurrent()
+
+        assertEquals(listOf("test" to 0, "test" to 1), api.calls)
+        assertEquals(listOf("99_7", "99_8"), reader.entries(reader.state.value).map { it.track.id })
+    }
+
     @Test fun errorsChallengesEmptyAndUnavailableRemainDistinct()=runTest {
         for((error,phase) in listOf(MusicError.DENIED to MusicSearchPhase.DENIED,
             MusicError.CAPTCHA to MusicSearchPhase.CHALLENGE,MusicError.VALIDATION to MusicSearchPhase.CHALLENGE,

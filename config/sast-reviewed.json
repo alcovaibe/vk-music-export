@@ -53,9 +53,9 @@
     {
       "rule": "java/android/missing-certificate-pinning",
       "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
-      "line": 289,
-      "source_sha256": "4771719d9c10ed08d58fbe98a3c8e2fa6734750ecd2e61391fb604304a8bc9ca",
-      "rationale": "Provider requests use the fixed api.vk.com HTTPS host, a method allowlist and platform certificate and hostname validation. Bounded followed-artist retries use the same read method and revalidate the current read session. An intermediate request changes only the numeric limit, which is safe to log. Catalogue URLs are form values sent to the fixed VK API host. The configured client disables redirects, cookies and automatic authentication. Provider SPKI pins would require a maintained rotation scheme."
+      "line": 299,
+      "source_sha256": "472a95930f5719f51678707f670687074fa946287e6169c18a77da7d0955b069",
+      "rationale": "The request still uses the fixed HTTPS api.vk.com host, an allowlisted method and platform certificate and hostname validation. Shared track access keys and catalogue URLs stay in POST form values, and request telemetry does not include them or the access token. The production client disables redirects, cookies and automatic authentication. Library writes check the identity of the exact token and additionally disable connection retries. Provider SPKI pinning remains a hardening limitation and would require a maintained rotation scheme."
     }
   ]
 }

@@ -24,8 +24,8 @@ internal class MusicCatalogController(
     private val report: (String,Map<String,Any?>)->Unit={_,_->}
 ) {
     val state=_state.asStateFlow()
-    fun section(section: CatalogSection) {
-        if(_state.value.busy)return
+    fun section(section: CatalogSection, allowDuringRead: Boolean = false) {
+        if(_state.value.busy && !allowDuringRead)return
         _state.update{it.copy(catalogSection=section,selected=null,
             page=if(section==CatalogSection.LIBRARY)it.probe?.library else null,localPlayback=null)}
     }

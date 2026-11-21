@@ -14,7 +14,8 @@ internal object LibraryRemovalProtocol {
         audioId(owner,track)
         musicCheck(libraryCopy(owner,track,row),MusicError.INCOMPLETE)
     }
-    fun libraryCopy(owner: Long,track: NativeTrack,row: PublishedAudio): Boolean = row.catalogueVerified&&row.track==track&&
+    fun libraryCopy(owner: Long,track: NativeTrack,row: PublishedAudio): Boolean = row.catalogueVerified&&
+        row.track.copy(accessKey=null,audioOrigin=null)==track.copy(accessKey=null,audioOrigin=null)&&
         AudioCompleteness.matchesCatalogue(row.durationMs,track.duration)&&
         (if(row.source==null)row.relativePath==ExportLayout.ROOT+"Моя музыка/"
         else row.source==ExportSource(owner,"library","my")&&row.relativePath.startsWith(ExportLayout.ROOT))

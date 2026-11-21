@@ -18,12 +18,15 @@ internal class MusicArtistsController(
     private val blocked: ()->Boolean,
     private val artistTimeoutMs: Long=45_000,
     private val report: (Exception)->Unit={},
+    private val readCached: suspend (Long, String) -> List<MusicArtist>? = { _, _ -> null },
+    private val writeCached: suspend (Long, String, List<MusicArtist>) -> Unit = { _, _, _ -> },
 ) {
     private val _artists=MutableStateFlow(MusicArtistsState())
     val state=_artists.asStateFlow()
     private var work: Job?=null
     private var generation=0
-    fun reset(){pause();_artists.value=MusicArtistsState()}
+    private var fetchedSession: String? = null
+    fun reset(){pause();fetchedSession=null;_artists.value=MusicArtistsState()}
     fun pause(){generation++;work?.cancel();work=null;_artists.update{it.copy(busy=false,stage="",progress=null)}}
     private suspend fun active(g: Int){currentCoroutineContext().ensureActive();if(g!=generation)throw CancellationException()}
     private fun run(stage: String,body: suspend(Int)->Unit){
@@ -34,28 +37,75 @@ internal class MusicArtistsController(
             try{body(g)}finally{if(g==generation){work=null;_artists.update{it.copy(busy=false,stage="",progress=null)}}}
         }
     }
-    fun show(refresh: Boolean=false) {
-        val owner=owner()?:return
-        if(blocked())return
-        if(!refresh&&_artists.value.owner==owner&&_artists.value.loaded) {select(null);return}
-        _artists.value=MusicArtistsState(owner=owner)
-        run("artists") {g->
+    fun preload() {
+        val snapshot = _artists.value
+        if (api.capabilities.artists != CapabilityStatus.UNAVAILABLE && snapshot.selected == null &&
+            !snapshot.busy && (snapshot.owner != owner() || fetchedSession == null)) show()
+    }
+
+    fun show(refresh: Boolean = false) {
+        val owner = owner() ?: return
+        if (blocked()) return
+        val before = _artists.value
+        if (!refresh && before.owner == owner) {
+            if (before.busy && before.stage == "artists") return
+            if (before.loaded && fetchedSession == before.readSessionId) {
+                if (before.selected != null) select(null)
+                return
+            }
+        }
+        _artists.value = if (before.owner == owner && before.loaded)
+            MusicArtistsState(owner = owner, loaded = true, artists = before.artists, readSessionId = before.readSessionId)
+        else MusicArtistsState(owner = owner)
+
+        run("artists") { g ->
             try {
-                val a=access()
-                musicCheck(a.accountId==null||a.accountId==owner,MusicError.ACCOUNT_CHANGED)
-                checked(a);active(g)
-                _artists.update{it.copy(readSessionId=a.readSessionId)}
-                val rows=withTimeout(artistTimeoutMs){api.followedArtists(a,owner){partial,requests->
-                    if(g==generation) {
-                        _artists.update{it.copy(artists=partial.distinctBy{artist->artist.id},requests=requests)}
-                        _artists.update{it.copy(progress="Подписки: ${partial.size} · запросов: $requests")}
+                val a = access()
+                musicCheck(a.accountId == null || a.accountId == owner, MusicError.ACCOUNT_CHANGED)
+                checked(a)
+                active(g)
+                val cached = if (before.owner == owner && before.loaded && before.readSessionId == a.readSessionId)
+                    before.artists
+                else try { readCached(owner, a.readSessionId) }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { null }
+                checked(a)
+                active(g)
+                _artists.update { it.copy(readSessionId = a.readSessionId, loaded = cached != null, artists = cached.orEmpty()) }
+                val rows = withTimeout(artistTimeoutMs) {
+                    api.followedArtists(a, owner) { partial, requests ->
+                        if (g == generation)
+                            _artists.update {
+                                it.copy(artists = if (it.loaded) it.artists else partial.distinctBy(MusicArtist::id),
+                                    requests = requests, progress = "Подписки: ${partial.size} · запросов: $requests")
+                            }
                     }
-                }};active(g)
-                checked(a);active(g)
-                _artists.value=MusicArtistsState(owner,true,rows.distinctBy{it.id},busy=true,stage="artists",readSessionId=a.readSessionId)
-            }catch(_: TimeoutCancellationException){active(g);_artists.update{it.copy(error=MusicError.TIMEOUT,errorDetails=null,message="ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.")}}
-            catch(e: CancellationException){if(g==generation)_artists.update{it.copy(message="Загрузка подписок приостановлена. Уже полученные исполнители доступны.")};throw e}
-            catch(e: Exception){active(g);report(e);_artists.update{it.copy(error=(e as? MusicFailure)?.code?:MusicError.RESPONSE,errorDetails=ArtistFailureText.describe(e))}}
+                }.distinctBy(MusicArtist::id)
+                checked(a)
+                active(g)
+                fetchedSession = a.readSessionId
+                _artists.value = MusicArtistsState(owner, true, rows, busy = true, stage = "artists", readSessionId = a.readSessionId)
+                try { writeCached(owner, a.readSessionId, rows) }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { /* The verified list is already available in memory. */ }
+            } catch (_: TimeoutCancellationException) {
+                active(g)
+                _artists.update { it.copy(error = MusicError.TIMEOUT, errorDetails = null,
+                    message = if (it.loaded) "ВК не ответил вовремя. Показаны сохранённые подписки."
+                    else "ВК не завершил загрузку подписок за отведённое время. Уже полученные исполнители доступны; обнови список для повтора.") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                active(g)
+                report(e)
+                val code = (e as? MusicFailure)?.code ?: MusicError.RESPONSE
+                _artists.update {
+                    val retain = code !in setOf(MusicError.ACCESS, MusicError.ACCOUNT_CHANGED, MusicError.INVALID_ACCESS)
+                    if (!retain) fetchedSession = null
+                    it.copy(artists = if (retain) it.artists else emptyList(), loaded = retain && it.loaded,
+                        error = code, errorDetails = ArtistFailureText.describe(e))
+                }
+            }
         }
     }
     fun select(artist: MusicArtist?) {

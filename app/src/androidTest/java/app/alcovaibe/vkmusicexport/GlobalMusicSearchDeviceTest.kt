@@ -1,5 +1,7 @@
 package app.alcovaibe.vkmusicexport
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -29,6 +31,21 @@ class GlobalMusicSearchDeviceTest {
         ui.onNodeWithTag("native_music_screen").assertExists()
         ui.onNodeWithTag("music_nav_LIBRARY").assertIsSelected()
     }
+    @Test fun webLinkShowsAppChoiceAndSearchProvidesSettings() {
+        ui.onNodeWithTag("music_nav_SEARCH").performClick()
+        ui.onNodeWithText("Введите не менее двух символов для поиска.").assertDoesNotExist()
+        ui.onNodeWithTag("open_vk_music_link").performClick()
+        ui.onNodeWithTag("vk_link_settings").assertExists()
+        ui.onNodeWithText("Отмена").performClick()
+
+        ui.activityRule.scenario.onActivity { activity ->
+            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://vk.ru/audio12_34"), activity,
+                MainActivity::class.java))
+        }
+        ui.onNodeWithTag("vk_link_open_here").assertExists()
+        ui.onNodeWithTag("vk_link_open_official").assertExists()
+    }
+
     @Test fun searchIsOnlyInBottomNavigationAndKeepsMiniPlayerSpace() {
         ui.onNodeWithTag("music_nav_SEARCH").assertExists().performClick()
         ui.onNodeWithTag("music_search_screen").assertExists()

@@ -38,7 +38,7 @@ internal object QueueReadSchema {
 internal class QueueReadIndex(private val db: SQLiteDatabase,private val onQuery: ((String)->Unit)?=null) {
     private val json=Json{encodeDefaults=true}
     private fun read(sql: String,args: Array<String>?=null): android.database.Cursor {onQuery?.invoke(sql);return db.rawQuery(sql,args)}
-    private fun metadata()=read("SELECT name,value FROM meta WHERE name IN ('status','error','recent_files','source_issues','queue_account','covered_count','queue_revision','queue_identity','source_failure_count')").use{c->buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}}
+    private fun metadata()=read("SELECT name,value FROM meta WHERE name IN ('status','error','recent_files','source_issues','queue_account','covered_count','queue_revision','queue_identity','source_failure_count','queue_saved_titles')").use{c->buildMap{while(c.moveToNext())put(c.getString(0),c.getString(1))}}
     private fun error(raw: String?)=runCatching{MusicError.valueOf(raw.orEmpty())}.getOrNull()
     fun snapshot(): ExportSnapshot {
         val meta=metadata()
@@ -46,11 +46,21 @@ internal class QueueReadIndex(private val db: SQLiteDatabase,private val onQuery
         val recent=meta["recent_files"]?.let{json.decodeFromString<List<PublishedAudio>>(it)}?:read("SELECT payload FROM files ORDER BY rowid DESC LIMIT 5").use{c->buildList{while(c.moveToNext())add(json.decodeFromString<PublishedAudio>(c.getString(0)))}}
         val current=read("SELECT payload FROM tasks WHERE state='RUNNING' ORDER BY ordinal LIMIT 1").use{if(it.moveToFirst())json.decodeFromString<AudioExportTask>(it.getString(0))else null}
         val done=counts["DONE"]?:0
+        val newest = meta["queue_saved_titles"]
+            ?.let { json.decodeFromString<List<Pair<String, String>>>(it) }.orEmpty()
+        val titles = if (newest.size >= minOf(done, 5)) newest.take(done).map { it.second }
+        else read("SELECT t.task_key, t.payload FROM tasks t WHERE t.state='DONE' ORDER BY t.ordinal DESC LIMIT 5").use { cursor ->
+            val fallback = buildList {
+                while (cursor.moveToNext())
+                    add(cursor.getString(0) to json.decodeFromString<AudioExportTask>(cursor.getString(1)).track.displayTitle)
+            }
+            (newest + fallback).distinctBy { it.first }.take(minOf(done, 5)).map { it.second }
+        }
         return ExportSnapshot(status=meta["status"]?:"EMPTY",total=counts.values.sum(),done=done,
             pending=(counts["PENDING"]?:0)+(counts["RUNNING"]?:0),failed=counts["FAILED"]?:0,
             sourceIssues=(meta["source_issues"]?.toIntOrNull()?:0)+(meta["source_failure_count"]?.toIntOrNull()?:0),
             error=error(meta["error"]),recent=recent,covered=(meta["covered_count"]?.toIntOrNull()?:0).coerceIn(0,done),currentTask=current,
-            account=meta["queue_account"]?.toLongOrNull()?:0,queueId=meta["queue_identity"].orEmpty(),revision=meta["queue_revision"]?.toLongOrNull()?:0)
+            account=meta["queue_account"]?.toLongOrNull()?:0,queueId=meta["queue_identity"].orEmpty(),revision=meta["queue_revision"]?.toLongOrNull()?:0,savedTitles=titles)
     }
     private fun joined(includeFile: Boolean)=
         "SELECT t.ordinal,t.payload,t.state,t.error,m.value,"+(if(includeFile)"f.payload" else "NULL")+

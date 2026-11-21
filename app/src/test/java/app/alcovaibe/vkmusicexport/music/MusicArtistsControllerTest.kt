@@ -33,6 +33,37 @@ class MusicArtistsControllerTest {
         second.complete(Unit);runCurrent()
         assertTrue(controller.state.value.loaded);assertFalse(controller.state.value.busy)
     }
+    @Test fun preloadShowsCachedSubscriptionsWhileVkWaitsAndOpeningTabKeepsTheRequest() = runTest {
+        val network = CompletableDeferred<Unit>()
+        val cached = MusicArtist("saved", "Из кэша")
+        val backend = Api()
+        var requests = 0
+        backend.load = { requests++; network.await(); listOf(artist) }
+        val api = object : MusicApi by backend {
+            override val capabilities = ApiCapabilities(artists = CapabilityStatus.SUPPORTED)
+        }
+        val controller = MusicArtistsController(backgroundScope, api, { 12 }, { access }, { it }, { false },
+            readCached = { owner, session ->
+                assertEquals(12L, owner)
+                assertEquals(access.readSessionId, session)
+                listOf(cached)
+            })
+
+        controller.preload()
+        runCurrent()
+        assertEquals(listOf(cached), controller.state.value.artists)
+        assertTrue(controller.state.value.loaded)
+        assertTrue(controller.state.value.busy)
+        controller.show()
+        runCurrent()
+        assertEquals(1, requests)
+
+        network.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(artist), controller.state.value.artists)
+        assertFalse(controller.state.value.busy)
+    }
+
     @Test fun anotherSubsystemCanFinishWhileArtistReadIsStalledAndCancellationIsLocal()=runTest {
         val api=Api();api.load={awaitCancellation()}
         val first=MusicArtistsController(backgroundScope,api,{12},{access},{it},{false})

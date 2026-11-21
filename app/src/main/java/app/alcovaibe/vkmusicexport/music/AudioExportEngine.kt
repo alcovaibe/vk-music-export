@@ -80,7 +80,9 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                         for(attempt in 0..2) {
                             try {
                                 // Read the current encrypted access for every track/retry; never persist a signed media URL.
-                                val resolved=api.resolve(credential(),task.track);resolvedTrack=resolved.track
+                                val access=credential()
+                                val resolved=if(attempt==0)api.resolve(access,task.track)else api.resolveFresh(access,task.track)
+                                resolvedTrack=resolved.track
                                 val downloaded=transfer.download(resolved.url,resolved.track,temporary){progress->
                                     val now=System.nanoTime()
                                     if(now-lastProgress>=300_000_000||progress.stage=="verifying") {
@@ -93,8 +95,11 @@ internal class AudioExportEngine(private val store: AudioExportStore,private val
                                 break
                             }catch(e: MusicFailure) {
                                 val retry=e.code in setOf(MusicError.NETWORK,MusicError.RATE_LIMIT,MusicError.HTTP)||
-                                    e is MediaHttpFailure&&e.code==MusicError.UNAVAILABLE
+                                    e is MediaHttpFailure&&e.code==MusicError.UNAVAILABLE ||
+                                    attempt==0 && task.track.audioOrigin!=null && e.code==MusicError.INCOMPLETE
                                 if(attempt==2||!retry)throw e
+                                result?.file?.delete()
+                                result=null
                                 observe("audio_queue_retry",mapOf("attempt" to attempt+1,"code" to e.code.name))
                                 delay(if(e.code==MusicError.RATE_LIMIT)5000L*(attempt+1) else 1500L*(attempt+1))
                             }
