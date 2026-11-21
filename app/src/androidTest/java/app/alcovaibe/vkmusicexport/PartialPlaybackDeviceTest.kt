@@ -68,7 +68,7 @@ class PartialPlaybackDeviceTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync{model.checkAccess()}
         withTimeout(20_000){api.initialEntered.await()}
         val during=model.state.value
-        assertTrue(during.busy);assertTrue(during.libraryStale);assertEquals(before.readSessionId,during.readSessionId)
+        assertFalse(during.busy);assertTrue(during.libraryRefreshing);assertTrue(during.libraryStale);assertEquals(before.readSessionId,during.readSessionId)
         val selected=PlaybackLists.select(PlaybackLists.library(during,MusicLibrarySort.DEFAULT),2)!!
         assertEquals(3,selected.entries[2].download!!.position);assertFalse(api.initialRelease.isCompleted)
         assertEquals(before.page!!.tracks[2],selected.entries[2].track)

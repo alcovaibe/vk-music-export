@@ -24,6 +24,25 @@ class ExportReadCacheTest {
         now=110;assertNull(cache.library(lease));assertNull(cache.catalog(lease,null))
         cache.rememberLibrary(lease,NativePage(listOf(song),1));now=109;assertNull(cache.library(lease))
     }
+    @Test fun refreshReusesDisplayedMembershipWithoutRenewingExpiredPages() {
+        var now = 0L
+        val cache = ExportReadCache({ now })
+        val lease = cache.begin(12, "first")
+        val selected = list()
+        val other = list(2)
+        val page = NativePage(listOf(song), 1)
+        cache.rememberLibrary(lease, page)
+        cache.rememberPlaylist(lease, selected, page)
+        cache.rememberPlaylist(lease, other, page)
+        now = 90_000
+        val window = cache.startRefresh(lease, selected)
+        assertEquals(page, cache.library(lease))
+        assertEquals(page, cache.playlist(lease, selected))
+        assertNull(cache.playlist(lease, other))
+        cache.finishRefresh(window)
+        assertNull(cache.library(lease))
+        assertNull(cache.playlist(lease, selected))
+    }
     @Test fun accountLoginAndAnalysisEpochFenceDelayedWriters() {
         val cache=ExportReadCache({0});val old=cache.begin(12,"first")
         val fresh=cache.begin(12,"first") // Explicit new analysis, even of the same session.

@@ -814,6 +814,16 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     private val generation: Int get()=operationCoordinator.generation
     init {
         viewModelScope.launch {
+            authForeground.collectLatest { foreground ->
+                if (foreground) while (isActive) {
+                    delay(5 * 60_000L)
+                    if (!_state.value.busy && removalRefresh?.isActive != true &&
+                        !_removal.value.visible && !_searchAdding.value && !MaintenanceRuntime.busy &&
+                        android.os.SystemClock.elapsedRealtime() - lastLibraryRefreshMs >= 5 * 60_000L) refreshOnline()
+                }
+            }
+        }
+        viewModelScope.launch {
             combine(_state, _searchAdding, authForeground, libraryRefresh, MaintenanceRuntime.status) { state, adding, foreground, request, maintenance ->
                 request?.takeIf { foreground && state.configured && !state.busy && !adding && !maintenance.busy }
             }.collect { request ->
@@ -871,6 +881,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private fun resetAuth(): Unit=authCoordinator.reset()
     private fun prepareOperation(stage: String): MusicOperationCleanup {
+        if (stage in accessChangeStages || stage in setOf("remove_confirm", "duplicates_delete", "catalog_refresh", "library_refresh_after_add"))
+            cancelOnlineRefresh()
         // Cancel background verification before any foreground operation. Await its
         // completion before touching the download database: cancellation alone does
         // not guarantee that an in-flight SQLite/file read has released its handles.
@@ -947,16 +959,120 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         openMusic()
     }
     fun openMusic(){if(_state.value.initialized&&_state.value.configured&&!_state.value.busy)checkAccess()}
-    fun checkAccess(){Diagnostics.button("native_music_probe");run("probe"){g ->
-        removalRefresh?.cancel(); removalRefresh = null
-        probe(g)
-    }}
-    fun refreshOnResume() {
-        if(removalRefresh?.isActive == true || _state.value.probe==null||_state.value.busy)return
-        val now=android.os.SystemClock.elapsedRealtime()
-        if(now-lastLibraryRefreshMs<20_000L)return
-        run("resume_refresh"){probe(it)}
+    private var onlineRefresh: Job? = null
+    @Volatile private var refreshGeneration = 0L
+
+    private fun cancelOnlineRefresh() {
+        refreshGeneration++
+        onlineRefresh?.cancel()
+        onlineRefresh = null
+        _state.update { it.copy(libraryRefreshing = false, catalogRefreshing = false) }
     }
+
+    fun checkAccess() {
+        Diagnostics.button("native_music_probe")
+        if (_state.value.busy) return
+        removalRefresh?.cancel()
+        removalRefresh = null
+        if (_state.value.probe == null) run("probe") { probe(it) }
+        else refreshOnline(includeArtists = true)
+    }
+
+    fun refreshOnResume() {
+        if (removalRefresh?.isActive == true || _state.value.probe == null || _state.value.busy) return
+        if (android.os.SystemClock.elapsedRealtime() - lastLibraryRefreshMs >= 20_000L) refreshOnline()
+    }
+
+    private fun refreshOnline(includeArtists: Boolean = false, catalogOnly: Boolean = false, forceCatalog: Boolean = true) {
+        val snapshot = _state.value
+        val owner = snapshot.probe?.owner ?: return
+        val session = snapshot.readSessionId ?: return
+        if (onlineRefresh?.isActive == true) return
+        val epoch = ++refreshGeneration
+        val revision = libraryRevision
+        val read = CatalogRead(true) {
+            epoch == refreshGeneration && _state.value.probe?.owner == owner && _state.value.readSessionId == session
+        }
+        val existingLease = exportReads.acquire(owner, session) ?: return
+        val lease = if (catalogOnly && forceCatalog) exportReads.restartCatalog(existingLease) ?: return else existingLease
+        val window = exportReads.startRefresh(lease, snapshot.selected)
+        onlineRefresh = viewModelScope.launch {
+            _state.update { it.copy(libraryRefreshing = !catalogOnly, catalogRefreshing = true, libraryStale = !catalogOnly || it.libraryStale,
+                catalogStale = it.catalog != null, error = null) }
+            try {
+                val access = sessions?.current() ?: access()
+                musicCheck(access.readSessionId == session && (access.accountId == null || access.accountId == owner),
+                    MusicError.ACCOUNT_CHANGED)
+                if (catalogOnly) {
+                    loadCatalog(read, access, owner, force = forceCatalog)
+                    return@launch
+                }
+                val first = MusicPagination.retryTransientPage { api.library(access) }
+                read.guard()
+                musicCheck(first.owner == owner, MusicError.ACCOUNT_CHANGED)
+                checkRead(access)
+                read.guard()
+                if (includeArtists && api.capabilities.artists != CapabilityStatus.UNAVAILABLE) artistController.show(refresh = true)
+                coroutineScope {
+                    launch {
+                        try {
+                            loadCatalog(read, access, owner)
+                            val selected = _state.value.selected
+                            if (selected != null && selected.key == snapshot.selected?.key &&
+                                snapshot.page != null && _state.value.page === snapshot.page &&
+                                selected.key !in _state.value.localCatalogKeys && _state.value.catalogError == null) {
+                                val fresh = MusicPagination.tracks({ offset ->
+                                    read.guard()
+                                    api.playlistPage(access, selected, offset)
+                                })
+                                checkRead(access)
+                                read.guard()
+                                val observed = exportReads.observePlaylist(lease, selected, fresh)
+                                _state.update { old ->
+                                    if (old.selected?.key != selected.key || old.page !== snapshot.page) old
+                                    else old.copy(page = fresh, selected = observed, catalog = old.catalog?.let { catalog ->
+                                        catalog.copy(lists = catalog.lists.map { if (it.key == observed.key) observed else it })
+                                    })
+                                }
+                            }
+                        }
+                        catch (e: CancellationException) { throw e }
+                        catch (e: Exception) {
+                            read.guard()
+                            _state.update { it.copy(catalogStale = true, catalogError = (e as? MusicFailure)?.code ?: MusicError.RESPONSE) }
+                        }
+                    }
+                    try {
+                        val page = MusicPagination.tracks({ offset ->
+                            read.guard()
+                            if (offset == 0) first.library else api.libraryPage(access, owner, offset)
+                        })
+                        checkRead(access)
+                        read.guard()
+                        if (revision == libraryRevision) {
+                            exportReads.rememberLibrary(lease, page)
+                            _state.update { old -> old.copy(probe = NativeProbe(owner, page), libraryStale = false,
+                                page = if (old.selected == null && old.catalogSection == CatalogSection.LIBRARY) page else old.page) }
+                            lastLibraryRefreshMs = android.os.SystemClock.elapsedRealtime()
+                        }
+                    } catch (e: CancellationException) { throw e }
+                      catch (e: Exception) {
+                        read.guard()
+                        _state.update { it.copy(error = (e as? MusicFailure)?.code ?: MusicError.RESPONSE) }
+                    }
+                }
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) {
+                read.guard()
+                val error = (e as? MusicFailure)?.code ?: MusicError.RESPONSE
+                _state.update { if (catalogOnly) it.copy(catalogError = error) else it.copy(error = error) }
+            } finally {
+                exportReads.finishRefresh(window)
+                if (read.current()) _state.update { it.copy(libraryRefreshing = false, catalogRefreshing = false) }
+            }
+        }
+    }
+
     private suspend fun probe(g: Int) {
         val revision = libraryRevision
         exportReads.clear()
@@ -1006,7 +1122,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         // does not prevent the other source from being displayed.
         supervisorScope {
             val catalogue=async {
-                try{loadCatalog(g,access,probe.owner)}
+                try{loadCatalog(foregroundCatalog(g),access,probe.owner)}
                 catch(e: CancellationException){throw e}
                 catch(e: Exception){active(g);_state.update{it.copy(catalogError=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}}
             }
@@ -1057,26 +1173,34 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             "expected_count" to page.count,"complete" to true))
         return proof.copy(library=page)
     }
-    private suspend fun downloadedCatalog(g: Int,access: MusicAccess,owner: Long,catalog: NativeCatalog): Set<String> = withContext(Dispatchers.IO) {
+    private class CatalogRead(val background: Boolean, val current: () -> Boolean) {
+        suspend fun guard() {
+            currentCoroutineContext().ensureActive()
+            if (!current()) throw CancellationException()
+        }
+    }
+    private fun foregroundCatalog(g: Int) = CatalogRead(false) { g == generation }
+
+    private suspend fun downloadedCatalog(read: CatalogRead,access: MusicAccess,owner: Long,catalog: NativeCatalog): Set<String> = withContext(Dispatchers.IO) {
         AudioExportStore(getApplication()).use{store->
         val shared=SharedAudioStore(getApplication())
         val playlists=SharedPlaylistStore(getApplication(),store)
         CatalogDownloads.completed(catalog,owner,emptyList(),fetch={list->
-            active(g)
-            MusicSourceReader(api,exportReads).playlist(access,owner,list,guard={active(g)},progress={n,total->
-                _state.update{it.copy(preparing="Проверяем скачанную подборку: $n/$total")}
+            read.guard()
+            MusicSourceReader(api,exportReads).playlist(access,owner,list,guard={read.guard()},progress={n,total->
+                if (!read.background) _state.update{it.copy(preparing="Проверяем скачанную подборку: $n/$total")}
             }).page
-        },valid={row->active(g);shared.inspect(row).reason==SavedFileReason.OK},
-            sourceReady={source,tasks,files->active(g);playlists.matches(source,tasks,files)},
+        },valid={row->read.guard();shared.inspect(row).reason==SavedFileReason.OK},
+            sourceReady={source,tasks,files->read.guard();playlists.matches(source,tasks,files)},
             sourceRows={list->store.sourceFiles(ExportSource(owner,"catalog",list.key))})
         }
     }
-    private suspend fun currentCatalog(g: Int,access: MusicAccess,owner: Long,
+    private suspend fun currentCatalog(read: CatalogRead,access: MusicAccess,owner: Long,
         publishPartial: Boolean=false,force: Boolean=true): NativeCatalog {
         val result=MusicSourceReader(api,exportReads).catalog(
-        access,owner,force=force,guard={active(g)},
+        access,owner,force=force,guard={read.guard()},
         partial={part->
-            if(publishPartial&&g==generation)_state.update{old->
+            if(publishPartial&&read.current())_state.update{old->
                 val keys=part.lists.mapTo(hashSetOf()){it.key}
                 val retained=old.catalog?.lists.orEmpty().filter{it.key in old.localCatalogKeys&&it.key !in keys}
                 old.copy(catalog=part.copy(lists=part.lists+retained,count=part.count+retained.size),
@@ -1091,14 +1215,14 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 "expected_count" to part.count,"retries" to scan?.retries,
                 "stop_reason" to scan?.reason?.name,"complete" to part.complete))
         },
-        progress={n,total->_state.update{it.copy(preparing="Получено подборок: $n/$total")}}
+        progress={n,total->if (!read.background) _state.update{it.copy(preparing="Получено подборок: $n/$total")}}
         )
-        active(g)
+        read.guard()
         withContext(Dispatchers.IO){AudioExportStore(getApplication()).use{store->
             val snapshots=LocalCatalogSnapshots(store)
-            result.lists.forEach{list->active(g);snapshots.remember(owner,list)}
+            result.lists.forEach{list->read.guard();snapshots.remember(owner,list)}
         }}
-        active(g)
+        read.guard()
         return result
     }
     /** Verify only planned sources, using their already-read membership, never a second VK pass. */
@@ -1116,15 +1240,17 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 sourceRows={list->store.sourceFiles(ExportSource(owner,"catalog",list.key))})
         }
     }
-    private suspend fun loadCatalog(g: Int,access: MusicAccess,owner: Long,force: Boolean=true) {
+    private suspend fun loadCatalog(read: CatalogRead,access: MusicAccess,owner: Long,force: Boolean=true) {
         val previousCatalog=_state.value.catalog
         val previousHidden=_state.value.hiddenCatalog
         _state.update{it.copy(catalogRefreshing=true,catalogStale=it.catalog!=null,catalogError=null)}
         try {
-            val remote=currentCatalog(g,access,owner,publishPartial=true,force=force)
-            active(g)
+            val remote=currentCatalog(read,access,owner,publishPartial=!read.background,force=force)
+            if (read.background && previousCatalog?.complete == true)
+                musicCheck(remote.complete, MusicError.INCOMPLETE)
+            read.guard()
             val local=withContext(Dispatchers.IO){AudioExportStore(getApplication()).use{LocalCatalogSnapshots(it).available(owner,remote,presence={files->SharedAudioStore(getApplication()).presence(files)})}}
-            active(g)
+            read.guard()
             val catalog=local.catalog
             _state.update{old->
                 val selected=old.selected?.let{prior->catalog.lists.firstOrNull{it.key==prior.key}}
@@ -1145,8 +1271,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 try {
                     while(isActive&&_state.value.busy)delay(100L)
                     currentCoroutineContext().ensureActive()
-                    val hidden=downloadedCatalog(g,access,owner,remote)
-                    if(g==generation&&_state.value.probe?.owner==owner&&_state.value.catalog===catalog)
+                    val hidden=downloadedCatalog(read,access,owner,remote)
+                    if(read.current()&&_state.value.probe?.owner==owner&&_state.value.catalog===catalog)
                         _state.update{it.copy(hiddenCatalog=hidden)}
                 }catch(e: CancellationException){throw e}
                  catch(e: Exception){
@@ -1158,12 +1284,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             }
         }catch(e: CancellationException){throw e}
          catch(e: Exception){
-            if(g==generation)_state.update{it.copy(catalog=previousCatalog?:it.catalog,
+            if(read.current())_state.update{it.copy(catalog=previousCatalog?:it.catalog,
                 hiddenCatalog=if(previousCatalog!=null)previousHidden else emptySet(),
                 catalogStale=true,catalogError=(e as? MusicFailure)?.code?:MusicError.RESPONSE)}
             throw e
         }finally {
-            if(g==generation)_state.update{it.copy(catalogRefreshing=false)}
+            if(read.current())_state.update{it.copy(catalogRefreshing=false)}
         }
     }
     fun refreshCatalog(force: Boolean=true) {
@@ -1171,18 +1297,9 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             checkAccess()
             return
         }
-        val owner=_state.value.probe?.owner?:run {
-            if(_state.value.localCatalogAccount!=null)checkAccess()
-            return
-        }
-        run("catalog_refresh"){g->
-            try {
-                val a=access()
-                if(force)exportReads.restartCatalog(exportReads.lease(owner,a.readSessionId))
-                loadCatalog(g,a,owner,force)
-            }catch(e: CancellationException){throw e}
-            catch(e: Exception){active(g);_state.update{it.copy(catalogError=(e as? MusicFailure)?.code?:MusicError.STORAGE)}}
-        }
+        if (_state.value.busy) return
+        if (_state.value.probe != null) refreshOnline(catalogOnly = true, forceCatalog = force)
+        else if (_state.value.localCatalogAccount != null) checkAccess()
     }
     fun section(section: CatalogSection) = catalogController.section(section, allowDuringRead = canBrowseLibrary(_state.value))
     fun select(list: NativePlaylist?) {
@@ -1203,7 +1320,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 musicCheck(api.accountOwner(a)==owner,MusicError.ACCOUNT_CHANGED);active(g)
                 val prepared=ExportPreparation(api,exportReads,guard={active(g)},
                     progress={text->_state.update{it.copy(preparing=text)}}).plan(a,owner,s.selected,catalogKind,libraryAlbums,
-                    loadCatalog={currentCatalog(g,a,owner)})
+                    loadCatalog={currentCatalog(foregroundCatalog(g),a,owner)})
                 val completed=if(catalogKind!=null)completedPrepared(g,owner,prepared)else emptySet()
                 if(sessions!=null)sessions.continueRead(a)
                 else musicCheck(vault.read()?.readSessionId==a.readSessionId,MusicError.ACCESS)
@@ -1319,7 +1436,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
             val a=sessions?.current()?:access()
             val proof=api.library(a);active(g)
             musicCheck(proof.owner==issue.source.account,MusicError.ACCOUNT_CHANGED)
-            val catalog=currentCatalog(g,a,proof.owner)
+            val catalog=currentCatalog(foregroundCatalog(g),a,proof.owner)
             if(issue.source.kind=="catalog_page")musicCheck(catalog.completeFor(issue.category),MusicError.INCOMPLETE)
             val lists=if(issue.source.kind=="catalog_page")catalog.lists.filter{it.kind==issue.category}
                 else listOf(catalog.lists.singleOrNull{it.key==issue.source.id}?:throw MusicFailure(MusicError.UNAVAILABLE))
@@ -1376,6 +1493,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         stop("activity_onStop")
     }
     private fun stop(detector: String) {
+        cancelOnlineRefresh()
         if(!_state.value.busy||_state.value.stopping)return
         if(detector=="native_stop_button")Diagnostics.button("native_music_cancel")
         Diagnostics.event("native_music_cancel",mapOf("detector" to detector))
@@ -1395,6 +1513,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     override fun onCleared(){
+        cancelOnlineRefresh()
         val pending=work
         if(_state.value.stage !in MaintenanceRuntime.stages)pending?.cancel()
         if(pending==null) {
