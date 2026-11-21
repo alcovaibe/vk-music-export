@@ -8,7 +8,12 @@ pluginManagement {
             }
         }
         mavenCentral()
-        gradlePluginPortal()
+        gradlePluginPortal {
+            content {
+                // The verified Compose marker POM is the Maven Central publication.
+                excludeModule("org.jetbrains.kotlin.plugin.compose", "org.jetbrains.kotlin.plugin.compose.gradle.plugin")
+            }
+        }
     }
 }
 plugins {
