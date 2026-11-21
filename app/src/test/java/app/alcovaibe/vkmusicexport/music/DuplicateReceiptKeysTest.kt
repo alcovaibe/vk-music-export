@@ -15,6 +15,13 @@ class DuplicateReceiptKeysTest {
         assertEquals(oldHash(Json.encodeToString(listOf(track))),DuplicateReceiptKeys.snapshot(listOf(track)))
         assertNotEquals(DuplicateReceiptKeys.legacy(track),DuplicateReceiptKeys.key(track))
     }
+    @Test fun snapshotMatchesThePreviousJsonArrayForEmptyAndEscapedLists() {
+        val escaped = track.copy(id = "12_2", title = "\"Цитата\", \\\n🎵")
+        for (tracks in listOf(emptyList(), listOf(track, escaped))) {
+            assertEquals(oldHash(Json.encodeToString(tracks)), DuplicateReceiptKeys.snapshot(tracks))
+        }
+    }
+
     @Test fun albumChangesKeepEvidenceButAudioMetadataChangesAndOrderAffectTheRightKeys() {
         val key=DuplicateReceiptKeys.key(track)
         assertEquals(key,DuplicateReceiptKeys.key(track.copy(album=MusicAlbum("new","New"))))
