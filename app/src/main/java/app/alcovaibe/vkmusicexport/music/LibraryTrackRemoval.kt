@@ -10,10 +10,6 @@ internal object LibraryRemovalProtocol {
         musicCheck(owner>0&&ids.groupValues[1].toLongOrNull()==owner,MusicError.ACCESS)
         return ids.groupValues[2].toLongOrNull()?.takeIf{it>0}?:throw MusicFailure(MusicError.ACCESS)
     }
-    fun record(owner: Long,track: NativeTrack,row: PublishedAudio) {
-        audioId(owner,track)
-        musicCheck(libraryCopy(owner,track,row),MusicError.INCOMPLETE)
-    }
     fun libraryCopy(owner: Long,track: NativeTrack,row: PublishedAudio): Boolean = row.catalogueVerified&&
         row.track.copy(accessKey=null,audioOrigin=null)==track.copy(accessKey=null,audioOrigin=null)&&
         AudioCompleteness.matchesCatalogue(row.durationMs,track.duration)&&
@@ -25,16 +21,6 @@ internal object LibraryRemovalProtocol {
     }
 }
 
-/** This service has no local deletion operation. Recheck the preserved copy before the single mutation. */
-internal class LibraryTrackRemoval(private val api: MusicApi,private val valid: suspend(PublishedAudio)->Boolean) {
-    suspend fun remove(access: MusicAccess,owner: Long,track: NativeTrack,row: PublishedAudio,beforeSend: suspend()->Unit={}) {
-        LibraryRemovalProtocol.record(owner,track,row)
-        musicCheck(valid(row),MusicError.INCOMPLETE)
-        beforeSend()
-        api.removeLibraryTrack(access,owner,track)
-    }
-}
-
-internal enum class LibraryRemovalPhase { IDLE,CHECKING,CONFIRM,SENDING,DONE,ERROR }
+internal enum class LibraryRemovalPhase { IDLE,CONFIRM,SENDING,DONE,ERROR }
 internal data class LibraryRemovalState(val visible: Boolean=false,val phase: LibraryRemovalPhase=LibraryRemovalPhase.IDLE,
-    val owner: Long=0,val track: NativeTrack?=null,val file: PublishedAudio?=null,val message: String?=null)
+    val owner: Long=0,val track: NativeTrack?=null,val message: String?=null)

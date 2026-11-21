@@ -725,7 +725,6 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun confirmForgetFile()=savedFilesCoordinator.confirmForgetFile()
     private val _removal=MutableStateFlow(LibraryRemovalState());val removal=_removal.asStateFlow()
     fun dismissRemoval() {
-        if(_removal.value.phase==LibraryRemovalPhase.CHECKING)cancel()
         _removal.update{if(it.phase==LibraryRemovalPhase.SENDING)it.copy(visible=false)else LibraryRemovalState()}
     }
     private fun isLibraryTrack(track: NativeTrack,owner: Long): Boolean {
@@ -735,68 +734,64 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun inspectRemoval(track: NativeTrack) {
         val s=_state.value;val owner=s.probe?.owner?:return
         if(!s.initialized||s.busy||!isLibraryTrack(track,owner))return
-        _removal.value=LibraryRemovalState(true,LibraryRemovalPhase.CHECKING,owner,track)
-        run("remove_inspect"){g->
-            try {
-                LibraryRemovalProtocol.audioId(owner,track)
-                val row=withContext(Dispatchers.IO) {
-                    val shared=SharedAudioStore(getApplication())
-                    val rows=AudioExportStore(getApplication()).use{it.savedLibraryCopies(track,owner)}
-                    rows.firstOrNull{shared.valid(it)}
-                        ?:throw MusicFailure(MusicError.INCOMPLETE)
-                }
-                active(g);musicCheck(isLibraryTrack(track,owner),MusicError.ACCESS)
-                _removal.update{it.copy(phase=LibraryRemovalPhase.CONFIRM,file=row)}
-            }catch(e: CancellationException){_removal.update{it.copy(phase=LibraryRemovalPhase.ERROR,message="Проверка файла прервана. Запрос удаления не отправлен.")};throw e}
-             catch(_: Exception){_removal.update{it.copy(phase=LibraryRemovalPhase.ERROR,
-                message="Не удалось подтвердить скачанную копию этого трека из «Моей музыки». Сначала скачай и проверь файл. Запрос удаления не отправлен.")}}
+        _removal.value = try {
+            LibraryRemovalProtocol.audioId(owner, track)
+            LibraryRemovalState(true, LibraryRemovalPhase.CONFIRM, owner, track)
+        } catch (_: MusicFailure) {
+            LibraryRemovalState(true, LibraryRemovalPhase.ERROR, owner, track, "Эту запись нельзя удалить из своего профиля.")
         }
     }
+
+    private var removalRefresh: Job? = null
+
+    private fun scheduleRemovalRefresh(owner: Long) {
+        if (removalRefresh?.isActive == true) return
+        val session = _state.value.readSessionId
+        removalRefresh = viewModelScope.launch {
+            delay(5 * 60_000L)
+            combine(_state, authForeground, _searchAdding, MaintenanceRuntime.status, _removal) { state, foreground, adding, maintenance, removal ->
+                foreground && !state.busy && !adding && !maintenance.busy && !removal.visible
+            }.first { it }
+            if (_state.value.probe?.owner == owner && _state.value.readSessionId == session) checkAccess()
+        }
+    }
+
     fun confirmRemoval() {
-        val ticket=_removal.value
-        val track=ticket.track?:return;val row=ticket.file?:return
-        if(!ticket.visible||ticket.phase!=LibraryRemovalPhase.CONFIRM||!isLibraryTrack(track,ticket.owner))return
-        run("remove_confirm"){g->
-            var attempted=false;var confirmed=false
+        val ticket = _removal.value
+        val track = ticket.track ?: return
+        if (!ticket.visible || ticket.phase != LibraryRemovalPhase.CONFIRM || !isLibraryTrack(track, ticket.owner)) return
+        run("remove_confirm") { g ->
+            _removal.update { it.copy(phase = LibraryRemovalPhase.SENDING) }
             try {
-                _removal.update{it.copy(phase=LibraryRemovalPhase.SENDING)}
-                val a=sessions?.current()?:access();active(g)
-                musicCheck(isLibraryTrack(track,ticket.owner),MusicError.ACCESS)
-                LibraryTrackRemoval(api){file->withContext(Dispatchers.IO){SharedAudioStore(getApplication()).valid(file)}}
-                    .remove(a,ticket.owner,track,row){active(g);musicCheck(isLibraryTrack(track,ticket.owner),MusicError.ACCESS);attempted=true}
-                confirmed=true;active(g)
+                val access = sessions?.current() ?: access()
+                active(g)
+                musicCheck(isLibraryTrack(track, ticket.owner), MusicError.ACCESS)
+                api.removeLibraryTrack(access, ticket.owner, track)
+                active(g)
+                libraryRevision++
+                _state.update { state ->
+                    val proof = state.probe ?: return@update state
+                    if (proof.owner != ticket.owner) return@update state
+                    val library = proof.library
+                    val remaining = library.copy(tracks = library.tracks.filterNot { it.id == track.id },
+                        count = (library.count - 1).coerceAtLeast(0))
+                    state.copy(probe = proof.copy(library = remaining),
+                        page = if (state.selected == null && state.catalogSection == CatalogSection.LIBRARY) remaining else state.page,
+                        message = "Трек удалён из «Моей музыки».")
+                }
+                _removal.value = ticket.copy(visible = false, phase = LibraryRemovalPhase.DONE)
+                scheduleRemovalRefresh(ticket.owner)
                 _addedTracks.update { tracks -> tracks.filterValues { it != track.id } }
                 try { libraryAddReceipts.removed(ticket.owner, track.id) }
                 catch (e: CancellationException) { throw e }
                 catch (_: Exception) { /* The next add checks the current VK library. */ }
-                // The library changed: reload the full snapshot, never patch counts optimistically.
-                _state.update{it.copy(probe=null,page=null)}
-                var refreshed=false
-                try {
-                    val proof=api.library(a);active(g);musicCheck(proof.owner==ticket.owner,MusicError.ACCESS)
-                    val fresh=fullLibrary(g,a,proof)
-                    _state.update{it.copy(probe=fresh,page=fresh.library)};refreshed=true
-                }catch(e: CancellationException){throw e}catch(_: Exception){/* Deletion success remains known. */}
-                val message="ВК подтвердил удаление из «Моей музыки». Скачанный файл сохранён."+
-                    if(refreshed)"" else " Не удалось обновить список; нажми «Проверить музыку»."
-                _removal.update{it.copy(phase=LibraryRemovalPhase.DONE,message=message)}
-                _state.update{it.copy(message=message)}
-            }catch(e: CancellationException) {
-                if(attempted)_state.update{it.copy(probe=null,page=null)}
-                _removal.update{it.copy(phase=if(confirmed)LibraryRemovalPhase.DONE else LibraryRemovalPhase.ERROR,
-                    message=if(confirmed)"ВК подтвердил удаление. Скачанный файл сохранён; список нужно обновить."
-                        else if(attempted)"Операция прервана; результат удаления не подтверждён. Проверь список в ВК. Автоматического повтора нет. Локальный файл сохранён."
-                        else "Запрос удаления не отправлен. Скачанный файл сохранён.")}
+            } catch (e: CancellationException) {
+                if (_removal.value.phase == LibraryRemovalPhase.SENDING)
+                    _removal.update { it.copy(phase = LibraryRemovalPhase.ERROR, message = "Удаление прервано. Обнови библиотеку, чтобы проверить результат.") }
                 throw e
-            }catch(e: Exception) {
-                if(attempted)_state.update{it.copy(probe=null,page=null)}
-                val failure=e as? MusicFailure
-                val definite=failure?.code in setOf(MusicError.ACCESS,MusicError.DENIED,MusicError.METHOD,MusicError.CAPTCHA,MusicError.VALIDATION,MusicError.RATE_LIMIT)
-                _removal.update{it.copy(phase=LibraryRemovalPhase.ERROR,message=when {
-                    !attempted->"Не удалось повторно проверить доступ или сохранённый файл. Запрос удаления не отправлен."
-                    definite->"ВК отклонил удаление (${failure?.code?.name}). Скачанный файл сохранён. Обнови список через «Проверить музыку»."
-                    else->"Результат удаления не подтверждён. Проверь список в ВК или нажми «Проверить музыку». Автоматического повтора нет. Скачанный файл сохранён."
-                })}
+            } catch (e: Exception) {
+                _removal.update { it.copy(phase = LibraryRemovalPhase.ERROR,
+                    message = "ВК не подтвердил удаление. Обнови библиотеку, чтобы проверить результат.") }
             }
         }
     }
@@ -884,6 +879,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         cancelledVerification?.cancel()
         _state.update{if(it.catalogVerifying)it.copy(catalogVerifying=false)else it}
         if (stage in accessChangeStages) {
+            removalRefresh?.cancel(); removalRefresh = null
             exportReads.clear();_duplicates.value=DuplicatesState();friends.reset();artistController.reset();availabilityController.reset();searchController.reset()
             linkWork?.cancel()
             _musicLink.update { it.copy(music = null, loading = false, error = if (it.link == null) it.error else null) }
@@ -905,7 +901,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         if(!stage.startsWith("metadata_lookup_"))_metadataLookup.value=MetadataLookupState()
         if(!stage.startsWith("cover_lookup_"))_artworkLookup.value=ArtworkLookupState()
         if(!stage.startsWith("duplicates_"))_duplicates.update{it.copy(visible=false,consent=null)}
-        if(stage !in setOf("remove_inspect","remove_confirm"))_removal.value=LibraryRemovalState()
+        if(stage != "remove_confirm")_removal.value=LibraryRemovalState()
         val lookupRunId=_artworkLookup.value.id.takeIf{stage.startsWith("cover_lookup_")}
         val metadataRunId=_metadataLookup.value.id.takeIf{stage.startsWith("metadata_lookup_")}
         val duplicateRunId=_duplicates.value.scanId.takeIf{stage=="duplicates_delete"}
@@ -951,9 +947,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         openMusic()
     }
     fun openMusic(){if(_state.value.initialized&&_state.value.configured&&!_state.value.busy)checkAccess()}
-    fun checkAccess(){Diagnostics.button("native_music_probe");run("probe"){probe(it)}}
+    fun checkAccess(){Diagnostics.button("native_music_probe");run("probe"){g ->
+        removalRefresh?.cancel(); removalRefresh = null
+        probe(g)
+    }}
     fun refreshOnResume() {
-        if(_state.value.probe==null||_state.value.busy)return
+        if(removalRefresh?.isActive == true || _state.value.probe==null||_state.value.busy)return
         val now=android.os.SystemClock.elapsedRealtime()
         if(now-lastLibraryRefreshMs<20_000L)return
         run("resume_refresh"){probe(it)}
@@ -1000,7 +999,8 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
                 libraryRefreshing=true,libraryStale=revision != libraryRevision,catalogRefreshing=true,catalogStale=false,
                 catalogVerifying=false)
         }
-        if (_state.value.stage !in accessChangeStages) artistController.preload()
+        if (_state.value.stage == "probe" && api.capabilities.artists != CapabilityStatus.UNAVAILABLE) artistController.show(refresh = true)
+        else if (_state.value.stage !in accessChangeStages) artistController.preload()
         // Independent fetches: the catalogue can appear before the last track page, and
         // track positions appear as each verified page is returned. One failing source
         // does not prevent the other source from being displayed.
@@ -1167,6 +1167,10 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
         }
     }
     fun refreshCatalog(force: Boolean=true) {
+        if (force && removalRefresh?.isActive == true) {
+            checkAccess()
+            return
+        }
         val owner=_state.value.probe?.owner?:run {
             if(_state.value.localCatalogAccount!=null)checkAccess()
             return

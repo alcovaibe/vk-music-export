@@ -113,7 +113,7 @@ def main(promote):
     info = json.loads(Path('release-output/build-info.json').read_text())
     assert info['commit'] == os.environ['GITHUB_SHA']
     assert info['buildRun'] == os.environ['GITHUB_RUN_ID']
-    assert info['versionCode'] == 1000 + int(os.environ['GITHUB_RUN_NUMBER'])
+    assert f"versionCode={info['versionCode']}" in Path('version.properties').read_text().splitlines()
     assert Path('release-output/upgrade-check.txt').read_text().startswith('PASS:')
     apk = Path('release-output') / info['apk']
     # build-release.sh checked this certificate already; independently check the exact file being promoted.
