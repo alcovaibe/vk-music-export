@@ -62,12 +62,11 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
     menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,
-    headerArtist: MusicArtist?=null,showHeaderActions: Boolean=true,itemSpacing: Dp=if(destination==MusicDestination.FRIENDS)8.dp else 12.dp,content: LazyListScope.()->Unit) {
+    showHeader: Boolean=true,showHeaderActions: Boolean=true,itemSpacing: Dp=if(destination==MusicDestination.FRIENDS)8.dp else 12.dp,content: LazyListScope.()->Unit) {
     if(!LocalInspectionMode.current) BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
-        topBar={TopAppBar(title={
+        topBar={if(showHeader)TopAppBar(title={
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                headerArtist?.let{MusicThumbnail(url=it.photo,artist=true,size=32.dp)}
                 Text(title,style=if(prominentTitle)MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
                     fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
             }

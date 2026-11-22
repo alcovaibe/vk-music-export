@@ -11,6 +11,15 @@ internal class ExportReadCache(private val clock:()->Long,
     private data class Catalog(val value: NativeCatalog,val at: Long,val owner: Long)
     private var epoch=0L
     private var scope: Lease?=null
+    class RefreshWindow(val lease: Lease, val selectedKey: String?)
+    private var refreshing: RefreshWindow? = null
+    @Synchronized fun startRefresh(lease: Lease, selected: NativePlaylist?): RefreshWindow =
+        RefreshWindow(lease, selected?.key).also { if (current(lease)) refreshing = it }
+    @Synchronized fun finishRefresh(window: RefreshWindow?) {
+        if (refreshing === window) refreshing = null
+    }
+    private fun usable(at: Long, cachedForRefresh: Boolean): Boolean =
+        fresh(at) || cachedForRefresh && clock() - at in 0L..600_000L
     private var catalog: Catalog?=null
     private var positions=0
     private val pages=java.util.LinkedHashMap<String,Page>(16,.75f,true)
@@ -19,7 +28,7 @@ internal class ExportReadCache(private val clock:()->Long,
         list.originalOwner,list.originalId,list.accessKey,list.following,list.deleted,list.typeConflict)
     private fun current(lease: Lease?)=lease!=null&&lease==scope
     private fun fresh(at: Long): Boolean {val age=clock()-at;return age>=0&&age<ttlMs}
-    @Synchronized fun clear(){epoch++;scope=null;catalog=null;pages.clear();positions=0}
+    @Synchronized fun clear(){epoch++;refreshing=null;scope=null;catalog=null;pages.clear();positions=0}
     @Synchronized fun begin(owner: Long,session: String): Lease {
         require(owner>0&&session.isNotEmpty());clear()
         return Lease(owner,session,epoch).also{scope=it}
@@ -57,7 +66,7 @@ internal class ExportReadCache(private val clock:()->Long,
     }
     @Synchronized fun catalog(lease: Lease?,kind: PlaylistKind?,owner: Long=lease?.owner?:0): NativeCatalog? {
         if(!current(lease))return null
-        return catalog?.takeIf{it.owner==owner&&fresh(it.at)&&it.value.completeFor(kind)}?.value
+        return catalog?.takeIf{it.owner==owner&&usable(it.at, refreshing?.lease == lease && lease?.owner == owner)&&it.value.completeFor(kind)}?.value
     }
     @Synchronized fun invalidateLibrary(lease: Lease?, owner: Long) {
         if (current(lease)) remove("library:$owner")
@@ -97,7 +106,10 @@ internal class ExportReadCache(private val clock:()->Long,
     private fun read(lease: Lease?,key: String,stamp: Stamp?): NativePage? {
         if(!current(lease))return null
         val entry=pages[key]?:return null
-        if(entry.stamp!=stamp||!fresh(entry.at)){remove(key);return null}
+        val window = refreshing
+        val displayed = window != null && window.lease == lease &&
+            (key == "library:${window.lease.owner}" || key == window.selectedKey)
+        if(entry.stamp!=stamp||!usable(entry.at, displayed)){remove(key);return null}
         return entry.value
     }
 }

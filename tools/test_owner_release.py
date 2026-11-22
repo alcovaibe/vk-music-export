@@ -173,7 +173,7 @@ class OwnerChannelDeliveryTest(unittest.TestCase):
             (out / 'build-info.json').write_text(json.dumps(info))
             (out / 'upgrade-check.txt').write_text('PASS: synthetic fixture, not device evidence')
             (out / 'SHA256SUMS.txt').write_text(digest + '  ' + apk_name)
-            (root / 'version.properties').write_text('versionName=0.12.1\n')
+            (root / 'version.properties').write_text('versionName=0.12.1\nversionCode=1433\n')
             request = dict(authorization='owner_requested_latest', manual_acceptance='pending',
                            repository='alcovaibe/vk-music-export', branch='main', pull_request=64,
                            version_name='0.12.1', expires_at='9999-01-01T00:00:00Z', build_inputs={'app': 'b' * 40})

@@ -28,12 +28,13 @@ class SingleTrackDownloadDeviceTest {
         }
         override suspend fun resolve(access: MusicAccess,track: NativeTrack)=ResolvedAudio(track,"https://audio.userapi.com/synthetic.mp3")
         var allowLists=true;var owner=12L;var liveTracks=snapshot.tracks
+        var libraryBarrier: CompletableDeferred<Unit>? = null
         var beforeProofReturns: (suspend()->Unit)?=null
         private fun read(){reads.incrementAndGet();check(allowLists){"No list reads after analysis"}}
         override suspend fun accountOwner(access: MusicAccess): Long {
             proofs.incrementAndGet();beforeProofReturns?.invoke();return owner
         }
-        override suspend fun library(access: MusicAccess): NativeProbe {read();return NativeProbe(12,NativePage(liveTracks,liveTracks.size))}
+        override suspend fun library(access: MusicAccess): NativeProbe {libraryBarrier?.await();read();return NativeProbe(12,NativePage(liveTracks,liveTracks.size))}
         override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog {read();return NativeCatalog(listOf(list),1)}
         override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage {read();return NativePage(liveTracks,liveTracks.size)}
         override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("Queue admission must not download audio")
@@ -87,6 +88,23 @@ class SingleTrackDownloadDeviceTest {
         click(model,api)
         assertEquals(ExportLayout.playlist(api.snapshot,api.list,account=12).last(),queued(model))
         assertEquals(1,starts.get());assertEquals(1,api.proofs.get());assertEquals(reads,api.reads.get())
+    }
+    @Test fun cachedPlaylistStartsPlaybackAndDownloadWhileLibraryCheckIsWaiting()=fixture {model,api,_,starts->
+        val main = InstrumentationRegistry.getInstrumentation()
+        main.runOnMainSync { model.select(api.list) }
+        until { !model.state.value.busy && model.state.value.selected?.key == api.list.key }
+        val barrier = CompletableDeferred<Unit>()
+        api.libraryBarrier = barrier
+        try {
+            main.runOnMainSync { model.checkAccess() }
+            until { model.state.value.libraryRefreshing }
+            val entries = PlaybackLists.library(model.state.value, MusicLibrarySort.DEFAULT)
+            assertEquals(api.song, PlaybackLists.select(entries, 2)!!.entries[2].track)
+            click(model, api)
+            assertEquals(api.song, queued(model).track)
+            assertEquals(1, starts.get())
+            assertTrue(model.state.value.libraryRefreshing)
+        } finally { barrier.complete(Unit) }
     }
     @Test fun foreignAccountProofCannotReplaceQueue()=fixture {model,api,_,starts->
         api.allowLists=false;api.owner=99

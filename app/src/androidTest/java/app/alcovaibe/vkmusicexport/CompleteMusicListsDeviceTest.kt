@@ -128,10 +128,10 @@ class CompleteMusicListsDeviceTest {
             assertFalse(model.state.value.libraryStale)
             holdRefresh=true
             ui.runOnUiThread{model.checkAccess()}
-            ui.waitUntil(10000){model.state.value.busy&&model.state.value.libraryStale}
+            ui.waitUntil(10000){!model.state.value.busy&&model.state.value.libraryRefreshing&&model.state.value.libraryStale}
             assertEquals(listOf(first,second),model.state.value.page?.tracks)
             nextRefresh.complete(Unit)
-            ui.waitUntil(15000){!model.state.value.busy}
+            ui.waitUntil(15000){!model.state.value.libraryRefreshing}
             assertEquals(listOf(first,second),model.state.value.page?.tracks)
             assertFalse(model.state.value.libraryStale)
         }finally {

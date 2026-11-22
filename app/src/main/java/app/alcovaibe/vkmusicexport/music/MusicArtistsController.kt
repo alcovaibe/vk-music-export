@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.*
 internal data class MusicArtistsState(val owner: Long=0,val loaded: Boolean=false,val artists: List<MusicArtist> = emptyList(),
     val selected: MusicArtist?=null,val details: MusicArtistDetails?=null,val error: MusicError?=null,
     val album: NativePlaylist?=null,val albumTracks: NativePage?=null,val requests: Int=0,val message: String?=null,val errorDetails: String?=null,val busy: Boolean=false,val stage: String="",val progress: String?=null,
-    val readSessionId: String?=null,val queue: ArtistTracks?=null)
+    val readSessionId: String?=null,val queue: ArtistTracks?=null,val subscriptionPending: Boolean=false)
 
 /** Screen-owned artist reads never acquire the file/maintenance gate. */
 internal class MusicArtistsController(
@@ -26,7 +26,46 @@ internal class MusicArtistsController(
     private var work: Job?=null
     private var generation=0
     private var fetchedSession: String? = null
-    fun reset(){pause();fetchedSession=null;_artists.value=MusicArtistsState()}
+    private var subscriptionJob: Job? = null
+    private val _subscriptionEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val subscriptionEvents = _subscriptionEvents.asSharedFlow()
+
+    fun toggleSubscription() {
+        val snapshot = _artists.value
+        val artist = snapshot.selected ?: return
+        val session = snapshot.readSessionId ?: return
+        if (blocked() || owner() != snapshot.owner || snapshot.subscriptionPending) return
+        val follow = snapshot.artists.none { it.id == artist.id }
+        _artists.update { it.copy(subscriptionPending = true) }
+        subscriptionJob = scope.launch {
+            try {
+                val credential = access()
+                musicCheck(credential.readSessionId == session && (credential.accountId == null || credential.accountId == snapshot.owner),
+                    MusicError.ACCOUNT_CHANGED)
+                api.setArtistFollowed(checked(credential), snapshot.owner, artist.id, follow)
+                checked(credential)
+                ensureActive()
+                if (_artists.value.readSessionId != session || owner() != snapshot.owner) return@launch
+                _artists.update { current ->
+                    val others = current.artists.filterNot { it.id == artist.id }
+                    current.copy(artists = if (follow) listOf(artist) + others else others)
+                }
+                _subscriptionEvents.tryEmit(if (follow) "Вы подписались на исполнителя" else "Вы отписались от исполнителя")
+                val updated = _artists.value
+                if (updated.loaded) try { writeCached(snapshot.owner, session, updated.artists) }
+                catch (e: CancellationException) { throw e }
+                catch (_: Exception) { fetchedSession = null }
+            } catch (e: CancellationException) { throw e }
+              catch (e: Exception) {
+                fetchedSession = null
+                _subscriptionEvents.tryEmit("ВК не подтвердил изменение подписки")
+            } finally {
+                if (isActive) _artists.update { it.copy(subscriptionPending = false) }
+            }
+        }
+    }
+
+    fun reset(){subscriptionJob?.cancel();pause();fetchedSession=null;_artists.value=MusicArtistsState()}
     fun pause(){generation++;work?.cancel();work=null;_artists.update{it.copy(busy=false,stage="",progress=null)}}
     private suspend fun active(g: Int){currentCoroutineContext().ensureActive();if(g!=generation)throw CancellationException()}
     private fun run(stage: String,body: suspend(Int)->Unit){
@@ -45,7 +84,7 @@ internal class MusicArtistsController(
 
     fun show(refresh: Boolean = false) {
         val owner = owner() ?: return
-        if (blocked()) return
+        if (blocked() || _artists.value.subscriptionPending) return
         val before = _artists.value
         if (!refresh && before.owner == owner) {
             if (before.busy && before.stage == "artists") return

@@ -22,11 +22,10 @@ class LibraryRemovalUiDeviceTest {
     @get:Rule val ui=createComposeRule()
     @Test fun basketExistsOnlyInLibraryAndConfirmationRequiresAnExplicitClick() {
         val track=NativeTrack("12_99553","CI","Artist",1)
-        val row=PublishedAudio("key",track,"content://media/external_primary/audio/media/1","CI.mp3",ExportLayout.ROOT+"Моя музыка/","mp3","audio/mpeg",1000,10,"a".repeat(64))
         var library by mutableStateOf(false);var state by mutableStateOf(LibraryRemovalState())
         var deletes=0
         ui.setContent{MusicTheme {
-            LibraryRemoveButton(library,true){state=LibraryRemovalState(true,LibraryRemovalPhase.CONFIRM,12,track,row)}
+            LibraryRemoveButton(library,true){state=LibraryRemovalState(true,LibraryRemovalPhase.CONFIRM,12,track)}
             LibraryRemovalSheet(state,onConfirm={deletes++;state=state.copy(phase=LibraryRemovalPhase.DONE,message="Файл сохранён")},onDismiss={state=LibraryRemovalState()})
         }}
         ui.onNodeWithTag("remove_from_vk").assertDoesNotExist()
@@ -56,13 +55,16 @@ class LibraryRemovalIntegrationDeviceTest {
     @Test fun cancelledAndAlbumRequestsCannotDeleteAndConfirmedLibraryRemovalRetainsActualMp3()=runBlocking<Unit> {
         val app=ui.activity.application;val t=NativeTrack("12_99553","CI preserved MP3","CI",1)
         val playlist=NativePlaylist(12,998,"CI album",1,null,null,null,null,PlaylistKind.ALBUM)
-        var removed=false;var deletes=0
+        val other = t.copy(id = "12_99555", title = "CI without a download")
+        val remaining = mutableListOf(t, other)
+        var reads = 0
+        var deletes=0
         val api=object: MusicApi {
-            override suspend fun library(access: MusicAccess)=NativeProbe(12,NativePage(if(removed)emptyList()else listOf(t),if(removed)0 else 1))
+            override suspend fun library(access: MusicAccess) : NativeProbe { reads++; return NativeProbe(12,NativePage(remaining.toList(),remaining.size)) }
             override suspend fun catalog(access: MusicAccess,owner: Long)=NativeCatalog(listOf(playlist),1)
             override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=NativePage(listOf(t),1)
             override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No real music network")
-            override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack){assertEquals(12L,owner);assertEquals(t,track);deletes++;removed=true}
+            override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack){assertEquals(12L,owner);assertTrue(remaining.remove(track));deletes++}
         }
         lateinit var model: NativeMusicViewModel
         var row: PublishedAudio?=null
@@ -97,38 +99,19 @@ class LibraryRemovalIntegrationDeviceTest {
             ui.onNodeWithTag("track_menu_1_${t.id}").performClick()
             ui.onNodeWithTag("remove_from_vk").performClick()
             ui.waitUntil(10000){model.removal.value.phase==LibraryRemovalPhase.CONFIRM&&!model.state.value.busy}
+            val initialReads = reads
             ui.onNodeWithTag("confirm_remove_from_vk").performClick()
             ui.waitUntil(10000){model.removal.value.phase==LibraryRemovalPhase.DONE&&!model.state.value.busy}
-            assertEquals(1,deletes);assertEquals(0,model.state.value.probe!!.library.count)
+            assertEquals(1,deletes);assertEquals(1,model.state.value.probe!!.library.count)
+            ui.runOnUiThread { model.inspectRemoval(other); model.confirmRemoval() }
+            ui.waitUntil(10000){deletes == 2 && !model.state.value.busy}
+            assertEquals(0, model.state.value.probe!!.library.count)
+            assertEquals(initialReads, reads)
+            ui.runOnUiThread { model.checkAccess() }
+            ui.waitUntil(10000){reads > initialReads && !model.state.value.busy}
             withContext(Dispatchers.IO){assertTrue(SharedAudioStore(app).valid(row!!));AudioExportStore(app).use{assertEquals(row,it.existing(task.key))}}
         }finally {
             withContext(Dispatchers.IO){row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};AudioExportRuntime.clear(app);AudioExportRuntime.clearRecentFiles(app);MusicAccessStore(app).delete()}
         }
-    }
-}
-
-@RunWith(AndroidJUnit4::class)
-class LibraryRemovalCopyDeviceTest {
-    @Test fun aModifiedPublishedFileBlocksMutationEvenAfterAnEarlierSuccessfulVerification()=runBlocking<Unit> {
-        val app=InstrumentationRegistry.getInstrumentation().targetContext
-        val track=NativeTrack("12_99554","CI modified","CI",1);val task=ExportLayout.task(track,listOf("Моя музыка"),1,ExportSource(12,"library","my"))
-        val input=File(app.cacheDir,"removal-modified.mp3").apply{writeBytes(ByteArray(4096){7})}
-        var row: PublishedAudio?=null;var deletes=0
-        val api=object: MusicApi {
-            override suspend fun library(access: MusicAccess): NativeProbe=error("not needed")
-            override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("not needed")
-            override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("not needed")
-            override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("not needed")
-            override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack){deletes++}
-        }
-        try {withContext(Dispatchers.IO) {
-            val shared=SharedAudioStore(app)
-            val saved=shared.publish(task,TransferResult(input,ProcessedAudio("mp3","audio/mpeg",1000))){};row=saved
-            assertTrue(shared.valid(saved))
-            app.contentResolver.openOutputStream(Uri.parse(saved.uri),"wt")!!.use{it.write(byteArrayOf(1,2,3))}
-            try{LibraryTrackRemoval(api){shared.valid(it)}.remove(MusicAccess("vk1.a."+"SYNTHETIC".repeat(12),"CI/1"),12,track,saved);fail("modified copy")}
-            catch(e: MusicFailure){assertEquals(MusicError.INCOMPLETE,e.code)}
-            assertEquals(0,deletes)
-        }}finally{row?.let{app.contentResolver.delete(Uri.parse(it.uri),null,null)};input.delete()}
     }
 }

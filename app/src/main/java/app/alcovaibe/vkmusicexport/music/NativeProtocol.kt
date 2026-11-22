@@ -100,7 +100,7 @@ internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
     const val FOLLOWED_ARTISTS = "audio.getFollowedArtists"
-    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.add", "audio.search",
+    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.add", "audio.followArtist", "audio.unfollowArtist", "audio.search",
         "catalog.getAudio","catalog.getAudioArtist","catalog.getSection","catalog.getBlockItems","audio.getAudiosByArtist",FOLLOWED_ARTISTS)
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&

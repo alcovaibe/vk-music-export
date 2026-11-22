@@ -22,6 +22,27 @@ class MusicArtistsControllerTest {
         override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("Not a playlist read")
         override suspend fun media(access: MusicAccess,track: NativeTrack)=error("Not a media transfer")
     }
+    @Test fun failedOrRepeatedTapDoesNotChangeMembershipOrWriteTwice() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var writes = 0
+        val api = object : MusicApi by Api() {
+            override suspend fun setArtistFollowed(access: MusicAccess, owner: Long, artistId: String, followed: Boolean) {
+                assertFalse(followed)
+                writes++
+                gate.await()
+                throw MusicFailure(MusicError.DENIED)
+            }
+        }
+        val controller = MusicArtistsController(backgroundScope, api, { 12 }, { access }, { it }, { false })
+        controller.show(); runCurrent()
+        controller.select(artist); runCurrent()
+        controller.toggleSubscription(); controller.toggleSubscription(); runCurrent()
+        assertTrue(controller.state.value.subscriptionPending)
+        gate.complete(Unit); runCurrent()
+        assertEquals(1, writes)
+        assertEquals(listOf(artist), controller.state.value.artists)
+        assertFalse(controller.state.value.subscriptionPending)
+    }
     @Test fun pauseFencesLateReaderAndItsFinallyCannotClearNewBusyState()=runTest {
         val api=Api();val first=CompletableDeferred<Unit>();val second=CompletableDeferred<Unit>();var calls=0
         api.load={if(++calls==1)withContext(NonCancellable){first.await()}else second.await();listOf(artist)}

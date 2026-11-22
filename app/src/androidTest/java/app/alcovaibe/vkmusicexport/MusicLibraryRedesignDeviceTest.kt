@@ -44,7 +44,15 @@ class MusicLibraryRedesignDeviceTest {
             override suspend fun catalog(access: MusicAccess,owner: Long)=NativeCatalog(listOf(album),1)
             override suspend fun playlist(access: MusicAccess,list: NativePlaylist)=NativePage(tracks,3)
             override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("No audio request")
-            override suspend fun followedArtists(access: MusicAccess,owner: Long)=listOf(MusicArtist("creed","Егор Крид"),MusicArtist("north","Север"))
+            private var followsCreed = true
+            override suspend fun followedArtists(access: MusicAccess,owner: Long) =
+                listOfNotNull(MusicArtist("creed","Егор Крид").takeIf { followsCreed }, MusicArtist("north","Север"))
+            override suspend fun setArtistFollowed(access: MusicAccess, owner: Long, artistId: String, followed: Boolean) {
+                assertEquals(12L, owner)
+                assertEquals("creed", artistId)
+                assertTrue(followed != followsCreed)
+                followsCreed = followed
+            }
             override suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails {
                 val release=MusicArtistRelease(album,"Альбом",LocalDate.of(2026,11,6))
                 val artistTracks=tracks.map{it.copy(album=release.trackAlbum)}
@@ -153,6 +161,12 @@ class MusicLibraryRedesignDeviceTest {
         ui.waitUntil(10_000){model.artists.value.details!=null&&!model.artists.value.busy}
         val list=ui.onNodeWithTag("native_music_screen_list")
         ui.onNodeWithTag("artist_play").assertIsEnabled()
+        ui.onNodeWithText("Исполнитель").assertDoesNotExist()
+        ui.onNodeWithText("В подписках").assertDoesNotExist()
+        ui.onNodeWithContentDescription("Отписаться от исполнителя").performClick()
+        ui.waitUntil(10_000){model.artists.value.artists.none { it.id == "creed" } && !model.artists.value.subscriptionPending}
+        ui.onNodeWithContentDescription("Подписаться на исполнителя").performClick()
+        ui.waitUntil(10_000){model.artists.value.artists.any { it.id == "creed" } && !model.artists.value.subscriptionPending}
         screenshot("redesign-artist-details")
         list.performScrollToNode(hasTestTag("artist_open_POPULAR"))
         ui.onNodeWithTag("artist_open_POPULAR").performClick()
@@ -183,6 +197,7 @@ class MusicLibraryRedesignDeviceTest {
         ui.onNodeWithContentDescription("Скачать Ночной рейс (Remix), MAREVO",useUnmergedTree=true).assertExists()
         ui.onNodeWithContentDescription("Назад").performClick()
         ui.runOnIdle{assertNull(model.artists.value.album);assertNotNull(model.artists.value.selected)}
+        list.performScrollToIndex(0)
         ui.onNodeWithContentDescription("Назад").performClick()
         ui.runOnIdle{assertNull(model.artists.value.selected)}
     }

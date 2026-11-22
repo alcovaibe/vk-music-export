@@ -164,9 +164,9 @@ class SourceReadDeviceTest {
     }
     @Test fun passiveRefreshReusesMetadataExplicitRefreshFetchesAndKeepsOwnLibraryCache()=fixture{f->
         val count=f.api.catalogs.get();f.api.allowCatalog=false
-        main{f.model.refreshCatalog(force=false)};until{!f.model.state.value.busy&&!f.model.state.value.catalogVerifying}
+        main{f.model.refreshCatalog(force=false)};until{!f.model.state.value.catalogRefreshing&&!f.model.state.value.busy&&!f.model.state.value.catalogVerifying}
         assertNull(f.model.state.value.catalogError);assertEquals(count,f.api.catalogs.get())
-        f.api.allowCatalog=true;main{f.model.refreshCatalog()};until{!f.model.state.value.busy&&!f.model.state.value.catalogVerifying}
+        f.api.allowCatalog=true;main{f.model.refreshCatalog()};until{!f.model.state.value.catalogRefreshing&&!f.model.state.value.busy&&!f.model.state.value.catalogVerifying}
         assertEquals(count+1,f.api.catalogs.get())
         main{f.model.prepare()};assertEquals(3,queued(f,1).size);assertEquals(0,f.api.libraries.get())
     }

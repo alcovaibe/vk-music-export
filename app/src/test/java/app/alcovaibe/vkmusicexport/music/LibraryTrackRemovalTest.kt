@@ -16,7 +16,6 @@ class LibraryTrackRemovalTest {
     @Test fun userSelectedReplacementNeverAuthorizesVkRemovalAfterSharingOrMoving() {
         val replacement=record().copy(source=ExportSource(12,"library","my"),catalogueVerified=false)
         assertFalse(LibraryRemovalProtocol.libraryCopy(12,track,replacement))
-        assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.record(12,track,replacement)}
         val moved=replacement.copy(relativePath=ExportLayout.ROOT+"Альбомы/CI/",recoveredLocation=true)
         assertFalse(LibraryRemovalProtocol.libraryCopy(12,track,moved))
         assertFalse(Json.decodeFromString<PublishedAudio>(Json.encodeToString(moved)).catalogueVerified)
@@ -25,22 +24,9 @@ class LibraryTrackRemovalTest {
         assertFalse(legacy.contains("catalogueVerified"))
         assertFalse(Json.decodeFromString<PublishedAudio>(legacy).catalogueVerified)
     }
-    @Test fun wrongAccountForeignFoldersAndMissingCopyNeverReachMutation()=runBlocking<Unit> {
+    @Test fun foreignAccountAndUnsupportedTrackIdsAreRejected()=runBlocking<Unit> {
         assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.audioId(13,track)}
         assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.audioId(12,track.copy(id="-12_34"))}
-        assertThrows(MusicFailure::class.java){LibraryRemovalProtocol.record(12,track,record(ExportLayout.ROOT+"Альбомы/Release/"))}
-        var calls=0
-        val api=object: MusicApi {
-            override suspend fun library(access: MusicAccess): NativeProbe=error("not needed")
-            override suspend fun catalog(access: MusicAccess,owner: Long): NativeCatalog=error("not needed")
-            override suspend fun playlist(access: MusicAccess,list: NativePlaylist): NativePage=error("not needed")
-            override suspend fun media(access: MusicAccess,track: NativeTrack): String=error("not needed")
-            override suspend fun removeLibraryTrack(access: MusicAccess,owner: Long,track: NativeTrack){calls++}
-        }
-        try{LibraryTrackRemoval(api){false}.remove(access,12,track,record());fail("missing file must block")}
-        catch(e: MusicFailure){assertEquals(MusicError.INCOMPLETE,e.code)}
-        assertEquals(0,calls)
-        LibraryTrackRemoval(api){true}.remove(access,12,track,record());assertEquals(1,calls)
     }
     @Test fun clientBindsExactAccountAndSendsOnePostWithoutPlaylistOrTokenInUrl()=runBlocking<Unit> {
         val requests=mutableListOf<Request>()

@@ -35,6 +35,8 @@ internal interface MusicApi {
     suspend fun probeFriendAudio(access: MusicAccess,owner: Long) {
         libraryPage(access,owner,0)
     }
+    suspend fun setArtistFollowed(access: MusicAccess, owner: Long, artistId: String, followed: Boolean): Unit =
+        throw MusicFailure(MusicError.METHOD)
     suspend fun followedArtists(access: MusicAccess,owner: Long): List<MusicArtist> = throw MusicFailure(MusicError.METHOD)
     suspend fun followedArtists(access: MusicAccess,owner: Long,progress:(List<MusicArtist>,Int)->Unit): List<MusicArtist> = followedArtists(access,owner).also{progress(it,1)}
     suspend fun artistDetails(access: MusicAccess,artist: MusicArtist): MusicArtistDetails = throw MusicFailure(MusicError.METHOD)
@@ -144,6 +146,13 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
                 synchronized(previews){previews[id]=url}
             }
         }
+    }
+    override suspend fun setArtistFollowed(access: MusicAccess, owner: Long, artistId: String, followed: Boolean) {
+        musicCheck(artistId.isNotBlank() && artistId.length <= 500, MusicError.RESPONSE)
+        musicCheck(NativeProtocol.owner(requestRaw(access, "users.get", emptyMap())) == owner, MusicError.ACCOUNT_CHANGED)
+        val method = if (followed) "audio.followArtist" else "audio.unfollowArtist"
+        val result = requestRaw(access, method, mapOf("artist_id" to artistId, "ref" to "audio_player"))
+        musicCheck(result is JsonPrimitive && !result.isString && result.intOrNull == 1, MusicError.RESPONSE)
     }
     override suspend fun followedArtists(access: MusicAccess,owner: Long)=followedArtists(access,owner){_,_->}
     override suspend fun followedArtists(
@@ -304,6 +313,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
             method == "audio.get" -> "tracks"
             method in setOf("audio.getPlaylists", "audio.getPlaylistById") -> "catalog"
             method == "audio.delete" -> "library_remove"
+            method in setOf("audio.followArtist", "audio.unfollowArtist") -> "artists"
             method == "audio.add" -> "library_add"
             method == "audio.search" -> "cover_search"
             else -> "resolve_media"
@@ -315,7 +325,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         observe("native_music_request", startFields)
         return try {
             MusicApiPacer.awaitSlot()
-            val response = (if(method in setOf("audio.add", "audio.delete"))mutationClient else client).newCall(req).readBounded(1_048_576)
+            val response = (if(method in setOf("audio.add", "audio.delete", "audio.followArtist", "audio.unfollowArtist"))mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
             // A private friend's section or a denied search is not proof that the account token expired.
