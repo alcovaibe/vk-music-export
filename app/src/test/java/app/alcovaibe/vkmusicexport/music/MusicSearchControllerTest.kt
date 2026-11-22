@@ -71,6 +71,24 @@ class MusicSearchControllerTest {
         assertNotEquals(entries[0].download!!.key,entries[1].download!!.key)
         reader.pause();assertTrue(reader.entries(reader.state.value).isEmpty())
     }
+    @Test fun artistResultsAcrossPagesKeepActionsAndGroupReleases() = runTest {
+        val release = MusicAlbum("99_1", "Album")
+        val artist = MusicArtist("abc", "Artist")
+        val solo = song.copy(album = release)
+        val duet = song.copy(id = "99_8", artist = "Artist & Guest", creditedArtists = listOf(artist), album = release)
+        val unrelated = song.copy(id = "99_9", title = "Artist", artist = "Guest")
+        val api = Api()
+        api.search = { _, offset -> MetadataMatches(if (offset == 0) listOf(unrelated, solo) else listOf(duet), 3, offset) }
+        val reader = controller(api)
+        reader.setActive(true); reader.query(" aRtIsT "); advanceTimeBy(350); runCurrent()
+        reader.more(); runCurrent()
+        val results = reader.state.value
+        assertEquals(2, results.artistTrackCount)
+        assertEquals(artist, results.creditedArtist)
+        assertEquals(listOf(release), results.albums)
+        assertEquals(listOf(solo, duet, unrelated), reader.entries(results).map { it.track })
+    }
+
     @Test fun returningFromPlayerKeepsLoadedPagesWithoutSearchingAgain() = runTest {
         val api = Api()
         api.search = { _, offset -> MetadataMatches(listOf(song.copy(id = "99_${offset + 7}")), 2, offset) }

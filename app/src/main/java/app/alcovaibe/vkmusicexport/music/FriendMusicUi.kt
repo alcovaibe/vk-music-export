@@ -100,7 +100,7 @@ private fun FriendProblemCard(problem: FriendMusicProblem,onRetry:()->Unit) {
 /** Rendering is driven by actual server/queue state; percentages are only used for known totals. */
 internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: FriendMusicController,configured: Boolean,enabled: Boolean,
     queue: ExportSnapshot,queueItems: Map<String,String>,tasks: List<PlaybackExport>,saved: Map<String,PublishedAudio>,preview:(NativeTrack)->String?,
-    onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={},onShare:((String)->Unit)?=null) {
+    onPause:()->Unit,onDownloads:()->Unit,onOpenVk:(MusicFriend)->Unit,onConnect:()->Unit,onPlay:(Int)->Unit={},showCollectionSearch: Boolean=false) {
     if(!configured) {
         item("friends_connect") {
             Box(
@@ -199,24 +199,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     val problem=if(state.playlist!=null)state.playlistProblem else state.problems[state.tab]
     val available=if(state.playlist!=null)state.playlistTracks!=null else when(state.tab){FriendMusicTab.TRACKS->state.tracks!=null;else->state.catalog!=null}
     if(state.playlist==null)item("friend_header"){FriendProfileHeader(user,available,problem){onOpenVk(user)}}
-    else item("friend_playlist_owner"){TextButton(onClick=controller::back){Icon(Icons.Default.Person,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(user.name)}}
     if(state.playlist==null)item("friend_tabs"){FriendTabs(state,controller::tab)}
-    else item("friend_playlist_header") {
-        val list=state.playlist
-        Surface(shape=RoundedCornerShape(22.dp),color=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,modifier=Modifier.fillMaxWidth().testTag("friend_playlist_header")) {
-            Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-                MusicThumbnail(url=list.photo,identity=list.key,size=80.dp)
-                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Text(list.title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                    Text(user.name,style=MaterialTheme.typography.bodySmall)
-                    Text("Треков: ${state.playlistTracks?.count?:list.count}",style=MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-    }
-    if (onShare != null) state.playlist?.let(VkMusicLinks::collectionUrl)?.let { url ->
-        item("friend_collection_share") { TextButton(onClick = { onShare(url) }) { Text("Поделиться ссылкой") } }
-    }
     if(state.tab!=FriendMusicTab.TRACKS&&state.playlist==null) {
         if(state.busy&&state.catalog==null)item("friend_catalog_loading"){LinearProgressIndicator(Modifier.fillMaxWidth());Text("Получаем плейлисты и альбомы…")}
         problem?.let{item("friend_catalog_problem"){FriendProblemCard(it,controller::refresh)}}
@@ -240,7 +223,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
         item("friend_tracks_problem"){FriendProblemCard(problem,{state.playlist?.let(controller::playlist)?:controller.refresh()})}
         return
     }
-    item("friend_music_search"){FriendSearch(state.musicQuery,if(state.playlist==null)"Поиск по музыке" else "Поиск по трекам плейлиста","friend_music_search",controller::musicQuery)}
+    if(state.playlist==null || showCollectionSearch || state.musicQuery.isNotEmpty())item("friend_music_search"){FriendSearch(state.musicQuery,if(state.playlist==null)"Поиск по музыке" else "Поиск по трекам плейлиста","friend_music_search",controller::musicQuery)}
     val page=state.page
     val matching=PlaybackLists.friendPositions(state)
     val ready=enabled&&!state.busy&&state.complete&&page?.tracks?.isNotEmpty()==true
@@ -256,7 +239,7 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
                 Button(onClick={controller.download(state.selection)},shape=RoundedCornerShape(14.dp),enabled=ready&&state.selection.isNotEmpty(),modifier=Modifier.fillMaxWidth().testTag("friend_download_selected")) {
                     Icon(DownloadIcon,null);Spacer(Modifier.width(8.dp));Text("Скачать выбранное")
                 }
-            }else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            }else if(state.playlist==null) Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 Button(onClick={controller.download()},shape=RoundedCornerShape(14.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=12.dp),enabled=ready,modifier=Modifier.weight(1f).fillMaxHeight().testTag("friend_download_all")) {
                     Icon(DownloadIcon,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(state.playlist==null)"Скачать всё" else when(state.playlist.kind){PlaylistKind.ALBUM->"Скачать альбом";PlaylistKind.UNKNOWN->"Скачать подборку";else->"Скачать плейлист"},maxLines=2,overflow=TextOverflow.Ellipsis)
                 }
@@ -289,29 +272,30 @@ internal fun LazyListScope.friendMusicItems(state: FriendMusicState,controller: 
     if(state.complete&&matching.isEmpty())item("friend_tracks_empty"){Text(if(state.musicQuery.isBlank())"Нет доступных треков" else "Треки по этому запросу не найдены")}
     itemsIndexed(matching,key={_,row->"friend_track_${row.index+1}_${row.value.id}"}){displayIndex,entry->
         val position=entry.index+1;val track=entry.value;val task=tasks.getOrNull(entry.index)?.task(track)
-        FriendTrackRow(track,position,state.selecting,position in state.selection,{controller.toggle(position)},preview(track),saved[track.id],
-            enabled&&!state.preparing,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(displayIndex)},playable=track.metadataError==null&&!track.restricted&&track.duration>0)
+        FriendTrackRow(track,position,state.selecting,position in state.selection,{controller.toggle(position)},preview(track) ?: state.playlist?.photo,saved[track.id],
+            enabled&&!state.preparing,{controller.download(setOf(position))},queue,task?.key,queueItems[task?.key],onPause,onPlay={onPlay(displayIndex)},compact=state.playlist!=null,playable=track.metadataError==null&&!track.restricted&&track.duration>0)
     }
 }
 @Composable
 internal fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,selected: Boolean,onToggle:()->Unit,photo: String?,saved: PublishedAudio?,
-    enabled: Boolean,onDownload:()->Unit,queue: ExportSnapshot,taskKey: String?,taskState: String?,onPause:()->Unit,onPlay:()->Unit,playable: Boolean) {
+    enabled: Boolean,onDownload:()->Unit,queue: ExportSnapshot,taskKey: String?,taskState: String?,onPause:()->Unit,onPlay:()->Unit,playable: Boolean, compact: Boolean = false) {
     val current=taskKey!=null&&queue.currentTask?.key==taskKey&&queue.status=="RUNNING"
     Surface(
-        shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
+        shape=RoundedCornerShape(18.dp),color=if(selected)MaterialTheme.colorScheme.secondaryContainer else if(compact)MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface,
         modifier=Modifier.fillMaxWidth().testTag("friend_track_$position").semantics {
             stateDescription=if(selecting)if(selected)"Трек выбран" else "Трек не выбран" else ""
             customActions=listOf(CustomAccessibilityAction(if(selected)"Убрать из выбранного" else "Выбрать ${track.displayTitle}"){onToggle();true})
         }.combinedClickable(enabled=selecting||playable,onClickLabel=if(selecting)"Изменить выбор трека" else "Воспроизвести ${track.displayTitle}",onClick={if(selecting)onToggle()else onPlay()},onLongClickLabel="Выбрать трек",onLongClick=onToggle)) {
-        Row(Modifier.padding(start=if(selecting)0.dp else 10.dp,end=4.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.padding(start=if(selecting)0.dp else 10.dp,end=4.dp,top=if(compact)2.dp else 8.dp,bottom=if(compact)2.dp else 8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             if(selecting)Checkbox(selected,{onToggle()},modifier=Modifier.testTag("friend_select_$position").semantics{contentDescription="Выбрать ${track.displayTitle}, ${track.artist}"})
             MusicThumbnail(url=photo,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id,size=44.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(track.displayTitle,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=TextOverflow.Ellipsis)
-                Text("${track.artist} · ${track.duration/60}:${(track.duration%60).toString().padStart(2,'0')}",style=MaterialTheme.typography.bodySmall,
+                Text(if(compact) track.artist else "${track.artist} · ${track.duration/60}:${(track.duration%60).toString().padStart(2,'0')}",style=MaterialTheme.typography.bodySmall,
                     color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2,overflow=TextOverflow.Ellipsis)
             }
-            if(!selecting)IconButton(onClick=onToggle,modifier=Modifier.testTag("friend_select_action_$position")) {
+            if(compact) Text(playbackTime(track.duration.toLong() * 1000), style=MaterialTheme.typography.labelSmall)
+            if(!compact && !selecting)IconButton(onClick=onToggle,modifier=Modifier.testTag("friend_select_action_$position")) {
                 Icon(FriendQueueIcon,"Выбрать ${track.displayTitle}, ${track.artist}")
             }
             when {
@@ -321,12 +305,22 @@ internal fun FriendTrackRow(track: NativeTrack,position: Int,selecting: Boolean,
                     else CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp)
                     IconButton(onClick=onPause){Icon(FriendPauseIcon,"Приостановить очередь")}
                 }
+                compact && saved!=null->Icon(Icons.Default.Check,"Скачано",Modifier.size(24.dp))
                 saved!=null->FriendRowStatus(Icons.Default.CheckCircle,"Скачано",MaterialTheme.colorScheme.tertiary)
                 track.metadataError!=null->FriendRowStatus(FriendErrorIcon,"Ошибка данных",MaterialTheme.colorScheme.error)
                 track.restricted||track.duration==0->FriendRowStatus(FriendErrorIcon,"Недоступно",MaterialTheme.colorScheme.error)
                 taskState=="FAILED"->FriendRowStatus(FriendErrorIcon,"Не скачано",MaterialTheme.colorScheme.error)
                 taskState in setOf("PENDING","RUNNING")->FriendRowStatus(FriendQueueIcon,if(queue.status=="PAUSED")"На паузе" else "В очереди",MaterialTheme.colorScheme.primary)
                 else->IconButton(onClick=onDownload,enabled=enabled,modifier=Modifier.testTag("friend_download_$position")){Icon(DownloadIcon,"Скачать ${track.displayTitle}, ${track.artist}")}
+            }
+            if(compact && !selecting) {
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick={menu=true}) { Icon(Icons.Default.MoreVert,"Действия с треком ${track.displayTitle}") }
+                    DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                        DropdownMenuItem(text={Text("Выбрать трек")},onClick={menu=false;onToggle()})
+                    }
+                }
             }
         }
     }

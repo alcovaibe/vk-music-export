@@ -17,6 +17,12 @@ internal data class MusicSearchState(val query: String="",val phase: MusicSearch
     val account: Long=0,val readSessionId: String?=null,val active: Boolean=false,
     val error: MusicError?=null,val capability: CapabilityStatus=CapabilityStatus.UNAVAILABLE,
     val audio: CapabilityStatus=CapabilityStatus.UNAVAILABLE) {
+    fun matchesArtist(track: NativeTrack) = track.artist.trim().equals(query.trim(), true) ||
+        track.creditedArtists.any { it.name.equals(query.trim(), true) }
+    val artistTrackCount by lazy { tracks.takeWhile(::matchesArtist).size }
+    val creditedArtist by lazy { tracks.asSequence().take(artistTrackCount).flatMap { it.creditedArtists.asSequence() }
+        .firstOrNull { it.name.equals(query.trim(), true) } }
+    val albums by lazy { tracks.take(artistTrackCount).mapNotNull { it.album }.distinctBy { it.id } }
     val canLoadMore get()=phase==MusicSearchPhase.RESULTS&&nextOffset<total&&nextOffset<MusicSearchQuery.MAX_RESULTS
 }
 /** User search owns its own cancellation/generation; it never takes the file mutation gate. */
@@ -75,9 +81,10 @@ internal class MusicSearchController(private val scope: CoroutineScope,private v
                     result.count>=offset+result.tracks.size&&
                     (result.tracks.isNotEmpty()||result.count<=offset),MusicError.INCOMPLETE)
                 val tracks=if(append)before.tracks+result.tracks else result.tracks
+                val (matching, others) = tracks.partition(before::matchesArtist)
                 mutable.value=MusicSearchState(before.query,
                     if(tracks.isEmpty())MusicSearchPhase.EMPTY else MusicSearchPhase.RESULTS,
-                    tracks,result.count,offset+result.tracks.size,owner,initial.readSessionId,true,
+                    matching + others,result.count,offset+result.tracks.size,owner,initial.readSessionId,true,
                     capability=api.capabilities.search,audio=api.capabilities.directAudioStream)
             }catch(e: CancellationException){throw e}
              catch(e: Exception) {

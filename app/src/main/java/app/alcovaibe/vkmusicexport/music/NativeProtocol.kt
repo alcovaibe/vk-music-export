@@ -47,7 +47,7 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
     override fun toString() = "MusicAccess([redacted])"
 }
 
-@Serializable internal data class MusicAlbum(val id: String, val title: String)
+@Serializable internal data class MusicAlbum(val id: String, val title: String, @kotlinx.serialization.Transient val accessKey: String? = null)
 @Serializable
 internal sealed interface AudioOrigin {
     @Serializable data class Search(val query: String, val offset: Int) : AudioOrigin
@@ -57,7 +57,8 @@ internal sealed interface AudioOrigin {
 }
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
     val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null,
-    val releaseYear: Int?=null, val accessKey: String?=null, val audioOrigin: AudioOrigin?=null) {
+    val releaseYear: Int?=null, val accessKey: String?=null, val audioOrigin: AudioOrigin?=null,
+    @kotlinx.serialization.Transient val creditedArtists: List<MusicArtist> = emptyList()) {
     override fun toString() = "NativeTrack([metadata omitted])"
     val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
         if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
@@ -65,14 +66,15 @@ internal sealed interface AudioOrigin {
 }
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
-    val kind: PlaylistKind=when(nativeType){0->PlaylistKind.PLAYLIST;1->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN},val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null,val typeConflict: Boolean=false) {
-    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo,typeConflict)
-    fun withCount(value: Int)=if(value==count)this else NativePlaylist(owner,id,title,value,accessKey,originalOwner,originalId,nativeType,kind,following,deleted,photo,typeConflict)
+    val kind: PlaylistKind=when(nativeType){0->PlaylistKind.PLAYLIST;1->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN},val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null,val typeConflict: Boolean=false,
+    val performer: String? = null, val year: Int? = null) {
+    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo,typeConflict,performer,year)
+    fun withCount(value: Int)=if(value==count)this else NativePlaylist(owner,id,title,value,accessKey,originalOwner,originalId,nativeType,kind,following,deleted,photo,typeConflict,performer,year)
     fun reconciled(other: NativePlaylist): NativePlaylist {
         val conflict=typeConflict||other.typeConflict||(kind!=PlaylistKind.UNKNOWN&&other.kind!=PlaylistKind.UNKNOWN&&kind!=other.kind)
         val resolved=if(conflict)PlaylistKind.UNKNOWN else if(kind==PlaylistKind.UNKNOWN)other.kind else kind
         return NativePlaylist(owner,id,title,maxOf(count,other.count),accessKey?:other.accessKey,originalOwner?:other.originalOwner,originalId?:other.originalId,
-            nativeType,resolved,following?:other.following,deleted||other.deleted,photo?:other.photo,conflict)
+            nativeType,resolved,following?:other.following,deleted||other.deleted,photo?:other.photo,conflict,performer?:other.performer,year?:other.year)
     }
     val key get() = "playlist:$owner:$id"
     override fun toString() = "NativePlaylist([metadata omitted])"
@@ -100,7 +102,8 @@ internal object NativeProtocol {
     const val DEFAULT_AGENT = "VK-Music-Export/0.8 (Android; personal audio access probe)"
     const val LIMIT = 100
     const val FOLLOWED_ARTISTS = "audio.getFollowedArtists"
-    val methods = setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.add", "audio.followArtist", "audio.unfollowArtist", "audio.search",
+    val collectionWrites = setOf("audio.addToPlaylist", "audio.removeFromPlaylist", "execute.savePlaylist", "audio.deletePlaylist")
+    val methods = collectionWrites + setOf("friends.get", "users.get", "audio.get", "audio.getPlaylists", "audio.getPlaylistById", "audio.getById", "audio.delete", "audio.add", "audio.followArtist", "audio.unfollowArtist", "audio.search",
         "catalog.getAudio","catalog.getAudioArtist","catalog.getSection","catalog.getBlockItems","audio.getAudiosByArtist",FOLLOWED_ARTISTS)
     fun validAccess(token: String, agent: String) = token.length in 32..4096 &&
         listOf("github_pat_","ghp_","gho_","ghu_","ghs_","ghr_").none{token.startsWith(it)} &&
@@ -167,7 +170,8 @@ internal object NativeProtocol {
                 val a=raw as? JsonObject?:throw NativeDataFailure("album")
                 val albumId=long(a,"id");if(albumId<=0)throw NativeDataFailure("album.id")
                 val albumOwner=(a["owner_id"] as? JsonPrimitive)?.longOrNull?.takeIf{it!=0L}
-                MusicAlbum(if(albumOwner==null)"album:$albumId" else "${albumOwner}_$albumId",text(a,"title"))
+                MusicAlbum(if(albumOwner==null)"album:$albumId" else "${albumOwner}_$albumId",text(a,"title"),
+                    VkMusicLinks.accessKey((a["access_key"] as? JsonPrimitive)?.contentOrNull))
             }catch(_: MusicFailure){warning("album");null}
         }
         // URL availability is a separate fact; never filter the position out of the library.
@@ -237,7 +241,11 @@ internal object NativeProtocol {
             NativePlaylist(owner,id,text(p,"title"),count(p),accessKey,
                 originalOwner.takeIf{originalId!=null}, originalId.takeIf{originalOwner!=null},
                 (p["type"] as? JsonPrimitive)?.intOrNull,kind,
-                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"]))
+                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"], large = true),
+                performer = (p["main_artists"] as? JsonArray)?.mapNotNull { row ->
+                    ((row as? JsonObject)?.get("name") as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() && it.length <= 500 }
+                }?.joinToString(", ")?.ifBlank { null },
+                year = (p["year"] as? JsonPrimitive)?.intOrNull?.takeIf { it in 1800..2100 })
         }
         val cursorValue=o["next_from"]
         if(cursorValue!=null&&cursorValue !is JsonNull&&(cursorValue !is JsonPrimitive||!cursorValue.isString))throw NativeDataFailure("next_from")

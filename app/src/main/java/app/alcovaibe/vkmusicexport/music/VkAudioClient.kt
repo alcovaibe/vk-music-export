@@ -54,6 +54,8 @@ internal interface MusicApi {
         musicCheck(startFrom==null,MusicError.INCOMPLETE);return albumCatalogPage(access,owner,offset)
     }
     suspend fun playlist(access: MusicAccess, list: NativePlaylist): NativePage
+    suspend fun changeCollection(access: MusicAccess, list: NativePlaylist, change: CollectionChange): Unit =
+        throw MusicFailure(MusicError.METHOD)
     suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack, beforeSend: suspend () -> Unit = {}): Long =
         throw MusicFailure(MusicError.METHOD)
     suspend fun linkedTrack(access: MusicAccess, link: VkMusicLink.Track): NativeTrack? =
@@ -104,8 +106,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         musicCheck(offset>=0&&offset<MusicSearchQuery.MAX_RESULTS,MusicError.RESPONSE)
         val response = searchResponse(access, text, offset)
         val page = NativeProtocol.page(response)
-        val tracks = page.tracks.map { it.copy(audioOrigin = AudioOrigin.Search(text, offset)) }
-        rememberStreams(access, (response as JsonObject)["items"] as JsonArray, tracks)
+        val items = (response as JsonObject)["items"] as JsonArray
+        val tracks = page.tracks.mapIndexed { index, track ->
+            track.copy(audioOrigin = AudioOrigin.Search(text, offset),
+                creditedArtists = (items[index] as? JsonObject)?.let(MusicArtists::creditedArtists).orEmpty())
+        }
+        rememberStreams(access, items, tracks)
         return MetadataMatches(tracks, page.count, offset)
     }
     private suspend fun searchResponse(access: MusicAccess, text: String, offset: Int) =
@@ -325,7 +331,7 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         observe("native_music_request", startFields)
         return try {
             MusicApiPacer.awaitSlot()
-            val response = (if(method in setOf("audio.add", "audio.delete", "audio.followArtist", "audio.unfollowArtist"))mutationClient else client).newCall(req).readBounded(1_048_576)
+            val response = (if(method in NativeProtocol.collectionWrites || method in setOf("audio.add", "audio.delete", "audio.followArtist", "audio.unfollowArtist"))mutationClient else client).newCall(req).readBounded(1_048_576)
             observe("native_music_request",mapOf("stage" to step,"method" to method,"phase" to "response","http_status" to response.status,"bytes" to response.bytes.size))
             if(response.status==429)throw MusicFailure(MusicError.RATE_LIMIT,httpStatus=response.status)
             // A private friend's section or a denied search is not proof that the account token expired.
@@ -417,6 +423,36 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         if (extended) params["extended"] = "1"
         return request(access,"audio.get",params)
     }
+    override suspend fun changeCollection(access: MusicAccess, list: NativePlaylist, change: CollectionChange) {
+        musicCheck(list.owner > 0 && list.id > 0 &&
+            NativeProtocol.owner(requestRaw(access, "users.get", emptyMap())) == list.owner, MusicError.ACCOUNT_CHANGED)
+        val fields = mutableMapOf("owner_id" to list.owner.toString(), "playlist_id" to list.id.toString())
+        val method = when (change) {
+            is CollectionChange.Add, is CollectionChange.Remove -> {
+                val tracks = if (change is CollectionChange.Add) change.tracks else (change as CollectionChange.Remove).tracks
+                musicCheck(tracks.isNotEmpty(), MusicError.RESPONSE)
+                fields["audio_ids"] = tracks.joinToString(",") { track ->
+                    val link = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
+                    if (change is CollectionChange.Add) link.audioReference else link.trackId
+                }
+                if (change is CollectionChange.Add) "audio.addToPlaylist" else "audio.removeFromPlaylist"
+            }
+            is CollectionChange.Move -> {
+                val raw = requestRaw(access, "audio.getPlaylistById", fields) as? JsonObject ?: throw MusicFailure(MusicError.RESPONSE)
+                musicCheck(NativeProtocol.playlistDetails(raw).key == list.key, MusicError.RESPONSE)
+                val track = VkMusicLinks.track(change.track.id) ?: throw MusicFailure(MusicError.RESPONSE)
+                fields["title"] = raw.getValue("title").jsonPrimitive.content
+                fields["description"] = raw["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                fields["reorder_actions"] = "[[${track.owner},${track.id},${change.position}]]"
+                "execute.savePlaylist"
+            }
+            CollectionChange.Delete -> "audio.deletePlaylist"
+        }
+        val response = requestRaw(access, method, fields)
+        if (change == CollectionChange.Delete) LibraryRemovalProtocol.success(response)
+        else musicCheck(response !is JsonNull && (response !is JsonPrimitive || response.content !in setOf("0","false")), MusicError.RESPONSE)
+    }
+
     override suspend fun addLibraryTrack(access: MusicAccess, owner: Long, track: NativeTrack, beforeSend: suspend () -> Unit): Long {
         val source = VkMusicLinks.track(track.id, track.accessKey) ?: throw MusicFailure(MusicError.RESPONSE)
         musicCheck(owner > 0 && (access.accountId == null || access.accountId == owner), MusicError.ACCOUNT_CHANGED)

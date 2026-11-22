@@ -13,7 +13,7 @@ internal object PlaybackRuntime {
     const val OPEN_EXTRA="open_music_player"
     const val START="app.alcovaibe.vkmusicexport.PLAY_QUEUE"
     internal data class Request(val id: String,val selection: PlaybackSelection,val session: String?,val position: Long,
-        val restored: PlaybackCheckpoint?=null)
+        val restored: PlaybackCheckpoint?=null, val collectionShuffle: Boolean?=null)
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private val mutable=MutableStateFlow(PlaybackState());val state=mutable.asStateFlow()
     private val initialized=MutableStateFlow(false);val restorationComplete=initialized.asStateFlow()
@@ -57,25 +57,26 @@ internal object PlaybackRuntime {
     }
     internal suspend fun restoreHistory(): PlaybackCheckpoint?=verifiedRestore()
     internal suspend fun flushHistory(){history?.flush()}
-    fun prepare(context: Context,start: Int=-1,build: ()->List<PlaybackEntry>) {
+    fun prepare(context: Context,start: Int=-1,collectionShuffle: Boolean?=null,build: ()->List<PlaybackEntry>) {
         initialize(context);val application=context.applicationContext;val g=++generation
-        expanded.value=true
         scope.launch {
             try {
                 val entries=withContext(Dispatchers.Default){build()}
-                if(g==generation)play(application,entries,start)
+                if(g==generation)play(application,entries,start,collectionShuffle=collectionShuffle)
             }catch(e: CancellationException){throw e}catch(_: Exception) {
                 if(g==generation)mutable.update{it.copy(error="Не удалось подготовить очередь. Повтори выбор трека.")}
             }
         }
     }
-    fun play(context: Context,entries: List<PlaybackEntry>,start: Int=-1,position: Long=0) {
+    fun play(context: Context,entries: List<PlaybackEntry>,start: Int=-1,position: Long=0, collectionShuffle: Boolean?=null) {
         initialize(context)
         val selected=PlaybackLists.select(entries,if(start==-1)PlaybackLists.firstPlayable(entries)else start)?:return
-        enqueue(context,selected,position,null)
+        val queue = if (collectionShuffle == true) selected.copy(start = selected.entries.indices.random()) else selected
+        enqueue(context,queue,position,null,collectionShuffle)
     }
-    private fun enqueue(context: Context,selected: PlaybackSelection,position: Long,record: PlaybackCheckpoint?) {
-        val application=context.applicationContext;val g=++generation;expanded.value=true
+    private fun enqueue(context: Context,selected: PlaybackSelection,position: Long,record: PlaybackCheckpoint?, collectionShuffle: Boolean?=null) {
+        val application=context.applicationContext;val g=++generation
+        if (mutable.value.current == null) expanded.value = true
         scope.launch {
             try {
                 val session=if(selected.entries.any{!it.offline})withContext(Dispatchers.IO) {
@@ -86,7 +87,7 @@ internal object PlaybackRuntime {
                     stored.readSessionId
                 }else null
                 if(g!=generation)return@launch
-                val request=Request(UUID.randomUUID().toString(),selected,session,position.coerceAtLeast(0),record);pending=request
+                val request=Request(UUID.randomUUID().toString(),selected,session,position.coerceAtLeast(0),record,collectionShuffle);pending=request
                 ContextCompat.startForegroundService(application,Intent(application,MusicPlaybackService::class.java).setAction(START).putExtra("request",request.id))
             }catch(e: CancellationException){throw e}catch(_: Exception) {
                 if(g==generation){pending=null;mutable.update{it.copy(error="Не удалось начать воспроизведение. Проверь доступ и повтори.")}}
@@ -113,6 +114,17 @@ internal object PlaybackRuntime {
     fun seek(position: Long) {
         if(service?.hasQueue==true)service?.seek(position)
         else restored?.let{updatePaused(it.copy(cursor=it.cursor.copy(positionMs=position.coerceIn(0,state.value.durationMs.coerceAtLeast(0)))))}
+    }
+    fun cycleMode() {
+        val active = service
+        if (active?.hasQueue == true) {
+            active.cycleMode()
+            return
+        }
+        val record = restored ?: return
+        val mode = QueueMode.from(record.cursor.shuffle, record.cursor.repeat).next()
+        val order = if (mode.shuffle) record.entries.indices.shuffled() else record.order
+        updatePaused(record.copy(cursor = record.cursor.copy(shuffle = mode.shuffle, repeat = mode.repeat), order = order))
     }
     fun shuffle() {
         if(service?.hasQueue==true)service?.shuffle()

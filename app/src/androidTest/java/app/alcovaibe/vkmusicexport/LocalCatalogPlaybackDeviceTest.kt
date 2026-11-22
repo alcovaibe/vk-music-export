@@ -84,7 +84,7 @@ class LocalCatalogPlaybackDeviceTest {
             ui.waitUntil(10000){!model.state.value.busy&&model.state.value.localPlayback?.rows?.size==2}
             assertEquals(0,playlistCalls.get())
             ui.onNodeWithTag("local_collection_notice").performScrollTo().assertIsDisplayed()
-            ui.onNodeWithText("Скачать альбом").assertIsNotEnabled()
+            ui.onNodeWithTag("collection_download").assertIsNotEnabled()
             ui.onNodeWithTag("library_play").performScrollTo().performClick()
             ui.waitUntil(15000){PlaybackRuntime.state.value.playing&&PlaybackRuntime.state.value.entries.size==2}
             val entries=PlaybackRuntime.state.value.entries

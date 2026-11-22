@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.ScrollState
@@ -181,7 +183,8 @@ private fun Modifier.swipeDownToCollapse(scroll: ScrollState,onDismiss:()->Unit)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: (PlaybackEntry)->Unit,canDownload: Boolean,
-    downloadNotice: String? = null) {
+    downloadNotice: String? = null, inLibrary: Boolean = false, canAdd: Boolean = false,
+    onAdd: (PlaybackEntry) -> Unit = {}) {
     BackHandler(onBack=onDismiss)
     val context=LocalContext.current
     var queue by remember{mutableStateOf(false)}
@@ -230,9 +233,11 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                     }
                 }
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                    IconToggleButton(checked=state.shuffle,onCheckedChange={PlaybackRuntime.shuffle()},modifier=Modifier.background(if(state.shuffle)MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,CircleShape).testTag("player_shuffle")) {
-                        Icon(PlayerShuffleIcon,if(state.shuffle)"Случайный порядок включён" else "Включить случайный порядок",
-                            tint=if(state.shuffle)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = { current?.let(onAdd) }, enabled = canAdd && !inLibrary,
+                        modifier = Modifier.testTag("player_add")) {
+                        Icon(if (inLibrary) Icons.Default.Check else Icons.Default.Add,
+                            if (inLibrary) "В «Моей музыке»" else "Добавить в «Мою музыку»",
+                            tint = if (inLibrary) MaterialTheme.colorScheme.primary else LocalContentColor.current)
                     }
                     IconButton(onClick=PlaybackRuntime::previous,enabled=state.previous,modifier=Modifier.testTag("player_previous")){Icon(PlayerPreviousIcon,"Предыдущий трек",Modifier.size(30.dp))}
                     FilledIconButton(onClick={PlaybackRuntime.toggle(context)},enabled=current!=null,shape=CircleShape,modifier=Modifier.size(72.dp).testTag("player_toggle").semantics{contentDescription=if(state.playWhenReady&&state.error==null)"Пауза" else "Воспроизвести"}) {
@@ -240,11 +245,15 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                         else Icon(if(state.playWhenReady&&state.error==null)FriendPauseIcon else PlayerPlayIcon,null,Modifier.size(35.dp))
                     }
                     IconButton(onClick=PlaybackRuntime::next,enabled=state.next,modifier=Modifier.testTag("player_next")){Icon(PlayerNextIcon,"Следующий трек",Modifier.size(30.dp))}
-                    IconButton(onClick=PlaybackRuntime::repeat,modifier=Modifier.background(if(state.repeat!=0)MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,CircleShape).testTag("player_repeat")) {
-                        Box(contentAlignment=Alignment.Center) {
-                            Icon(PlayerRepeatIcon,when(state.repeat){1->"Повторять трек";2->"Повторять очередь";else->"Повтор выключен"},
-                                tint=if(state.repeat!=0)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                            if(state.repeat==1)Text("1",fontSize=9.sp,fontWeight=FontWeight.Bold)
+                    val mode = QueueMode.from(state.shuffle, state.repeat)
+                    val active = mode != QueueMode.ORDERED
+                    IconButton(onClick = PlaybackRuntime::cycleMode, enabled = current != null,
+                        modifier = Modifier.background(if (active) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent, CircleShape)
+                            .testTag("player_repeat").semantics { stateDescription = mode.label }) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(if (mode == QueueMode.SHUFFLE) PlayerShuffleIcon else PlayerRepeatIcon,
+                                "Включить: ${mode.next().label}", tint = if (active) MaterialTheme.colorScheme.primary else LocalContentColor.current)
+                            if (mode == QueueMode.REPEAT_ONE) Text("1", fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -274,7 +283,7 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
     if(queue)ModalBottomSheet(onDismissRequest={queue=false}) {
         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp)) {
             Text("Очередь воспроизведения",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-            Text(if(state.shuffle)"Случайный порядок" else "По порядку",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(QueueMode.from(state.shuffle, state.repeat).label,color=MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=440.dp).testTag("playback_queue_list"),contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(state.order.ifEmpty{state.entries.indices.toList()},key={_,index->index}) {_,index->
                     val entry=state.entries[index]

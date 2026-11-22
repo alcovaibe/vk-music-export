@@ -51,6 +51,25 @@ class LibraryTrackRemovalTest {
         catch(e: MusicFailure){assertEquals(MusicError.ACCESS,e.code)}
         assertEquals(1,requests.size)
     }
+    @Test fun removingPlaylistMembersOnlyTargetsTheirCollection() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val client = NetworkClients.api().newBuilder().addInterceptor { chain ->
+            val req = chain.request()
+            requests.add(req)
+            val result = if (req.url.encodedPath.endsWith("users.get")) """[{"id":12}]""" else "1"
+            Response.Builder().request(req).protocol(Protocol.HTTP_1_1).code(200).message("Fixture")
+                .body("""{"response":$result}""".toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val list = NativePlaylist(12, 7, "Music", 2, null, null, null, 0)
+        val api = VkAudioClient(client) { _, _ -> }
+        api.changeCollection(access, list, CollectionChange.Remove(listOf(track, track.copy(id="99_42"))))
+        assertEquals(listOf("users.get","audio.removeFromPlaylist"),requests.map { it.url.encodedPath.substringAfterLast('/') })
+        val form = requests.last().body as FormBody
+        val fields = (0 until form.size).associate { form.name(it) to form.value(it) }
+        assertEquals("7", fields["playlist_id"])
+        assertEquals("12_34,99_42", fields["audio_ids"])
+    }
+
     @Test fun accessFailureIsNotRetriedAndOnlyIntegerOneMeansConfirmedSuccess()=runBlocking<Unit> {
         val methods=mutableListOf<String>()
         val client=NetworkClients.api().newBuilder().addInterceptor{chain->

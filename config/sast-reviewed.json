@@ -53,9 +53,9 @@
     {
       "rule": "java/android/missing-certificate-pinning",
       "path": "app/src/main/java/app/alcovaibe/vkmusicexport/music/VkAudioClient.kt",
-      "line": 308,
-      "source_sha256": "28b8fe7b3f2d1196fec47742401d2a22f1cc0a70584bd165d031baef4f68481d",
-      "rationale": "The request still uses the fixed HTTPS api.vk.com host, an allowlisted method and platform certificate and hostname validation. Shared track access keys and catalogue URLs stay in POST form values, and request telemetry does not include them or the access token. The production client disables redirects, cookies and automatic authentication. Library writes check the identity of the exact token and additionally disable connection retries. Provider SPKI pinning remains a hardening limitation and would require a maintained rotation scheme. The two artist subscription methods use this same fixed endpoint and non-retrying mutation client. Artist ID and ref are encoded in the form body."
+      "line": 314,
+      "source_sha256": "43c5ff291b74f6eccf5fc4974045500ef01e23ccf369b6731b1367d35747db20",
+      "rationale": "The request still uses the fixed HTTPS api.vk.com host, an allowlisted method and platform certificate and hostname validation. Shared track access keys and catalogue URLs stay in POST form values, and request telemetry does not include them or the access token. The production client disables redirects, cookies and automatic authentication. Library writes check the identity of the exact token and additionally disable connection retries. Provider SPKI pinning remains a hardening limitation and would require a maintained rotation scheme. The two artist subscription methods use this same fixed endpoint and non-retrying mutation client. Artist ID and ref are encoded in the form body. Artist credits are parsed from the existing audio.search response. This change adds no API endpoint or credential transport. Collection writes verify the owner on the sending credential and use the same fixed host and non-retrying client."
     }
   ]
 }
