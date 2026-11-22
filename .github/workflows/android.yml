@@ -3,7 +3,7 @@ on:
   push:
     # Feature/fix branches are checked by pull_request; do not launch a second
     # full 20+ job emulator matrix for the same commit during PR review.
-    branches: [main, codex/music-library-redesign, codex/music-followups]
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -517,12 +517,7 @@ jobs:
           fi
 
   release:
-    # Normal pushes/PRs run checks only. An owner-requested release requires its marker and pinned build inputs.
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-library-redesign' && contains(github.event.head_commit.message, '[publish-pr-48]')) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/codex/music-followups' && contains(github.event.head_commit.message, '[publish-pr-50]')) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(github.event.head_commit.message, '[publish-main-0.12.0]') || contains(github.event.head_commit.message, '[publish-main-0.12.1]') || contains(github.event.head_commit.message, '[publish-main-0.13.1]')))
+    if: github.event_name == 'workflow_dispatch' && inputs.channel == 'rc' && startsWith(github.ref, 'refs/heads/')
     needs: [build, interface]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -549,9 +544,6 @@ jobs:
         run: echo "APP_VERSION_CODE=$(sed -n 's/^versionCode=//p' version.properties)" >> "$GITHUB_ENV"
       - name: Require committed dependency verification before signing
         run: test -s gradle/verification-metadata.xml && test -s app/gradle.lockfile
-      - name: Check exact owner request and pinned build inputs
-        if: github.event_name == 'push'
-        run: python3 tools/promote-owner-release.py --check
       - name: Resolve Gradle configuration before compilation
         timeout-minutes: 5
         run: python3 tools/gradle_preflight.py
@@ -624,11 +616,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_CHANNEL: rc
         run: python3 tools/publish-release.py
-      - name: Publish this owner-requested build as Latest
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 tools/promote-owner-release.py --promote
       - name: Upload release and upgrade evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
