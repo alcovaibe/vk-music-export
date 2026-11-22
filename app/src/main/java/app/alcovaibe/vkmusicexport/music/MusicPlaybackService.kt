@@ -275,6 +275,15 @@ class MusicPlaybackService : MediaSessionService() {
             player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(record.order.toIntArray(),0L))
             player.shuffleModeEnabled=record.cursor.shuffle;player.repeatMode=record.cursor.repeat
         }
+        request.collectionShuffle?.let { shuffle ->
+            if (shuffle) {
+                val first = request.selection.start
+                val order = listOf(first) + entries.indices.filter { it != first }.shuffled()
+                player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order.toIntArray(), 0L))
+            }
+            player.shuffleModeEnabled = shuffle
+            player.repeatMode = Player.REPEAT_MODE_OFF
+        }
         suppressCheckpoint=false
         player.prepare();player.play();loadCover();publish(refreshOrder=true,forceCheckpoint=true)
     }

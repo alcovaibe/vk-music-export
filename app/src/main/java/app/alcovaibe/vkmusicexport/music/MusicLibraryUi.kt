@@ -62,7 +62,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
     menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,
-    collectionDownload: (() -> Unit)? = null, collectionDownloadEnabled: Boolean = false, collectionDownloadLabel: String = "",
+    collectionOpen: Boolean = false,
     showHeader: Boolean=true,showHeaderActions: Boolean=true,itemSpacing: Dp=if(destination==MusicDestination.FRIENDS)8.dp else 12.dp,content: LazyListScope.()->Unit) {
     if(!LocalInspectionMode.current) BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
@@ -79,9 +79,7 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
                 if(showHeaderActions) {
-                    if (collectionDownload != null) IconButton(onClick = collectionDownload, enabled = collectionDownloadEnabled, modifier = Modifier.testTag("collection_download")) {
-                        Icon(DownloadIcon, collectionDownloadLabel)
-                    } else if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
+                    if(!collectionOpen && destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
                         BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
                     }
                     LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
@@ -212,7 +210,8 @@ internal fun MusicThumbnail(
 
 @Composable
 internal fun CollectionHeader(list: NativePlaylist, byline: String?, year: Int?, count: Int,
-    cover: String?, localCover: String?, canPlay: Boolean, onPlay: () -> Unit) {
+    cover: String?, localCover: String?, canPlay: Boolean, canEdit: Boolean, canDownload: Boolean,
+    onEdit: () -> Unit, onDownload: () -> Unit, onDelete: () -> Unit, onPlay: (Boolean) -> Unit) {
     val noun = when {
         count % 100 in 11..14 -> "треков"
         count % 10 == 1 -> "трек"
@@ -229,11 +228,16 @@ internal fun CollectionHeader(list: NativePlaylist, byline: String?, year: Int?,
         Text(listOfNotNull(byline, year?.toString(), "$count $noun").joinToString(" · "),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Button(onClick = onPlay, enabled = canPlay, shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).heightIn(min = 48.dp).testTag("library_play")) {
-            Icon(PlayerPlayIcon, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Слушать")
+        Row(Modifier.fillMaxWidth().padding(vertical=6.dp), horizontalArrangement=Arrangement.SpaceEvenly) {
+            FilledIconButton(onClick={onPlay(false)}, enabled=canPlay, modifier=Modifier.testTag("library_play")) {
+                Icon(PlayerPlayIcon, "Воспроизвести")
+            }
+            IconButton(onClick={onPlay(true)}, enabled=canPlay) { Icon(PlayerShuffleIcon, "Перемешать") }
+            IconButton(onClick=onEdit, enabled=canEdit) { Icon(Icons.Default.Edit, "Редактировать") }
+            IconButton(onClick=onDownload, enabled=canDownload, modifier=Modifier.testTag("collection_download")) {
+                Icon(DownloadIcon, if(list.kind == PlaylistKind.ALBUM) "Скачать альбом" else "Скачать подборку")
+            }
+            IconButton(onClick=onDelete, enabled=canEdit) { Icon(Icons.Default.Delete, "Удалить подборку") }
         }
     }
 }

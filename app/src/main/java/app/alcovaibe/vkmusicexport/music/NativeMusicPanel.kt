@@ -338,6 +338,12 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         artistRoute -> artists.albumTracks
         else -> state.page
     }
+    var editingCollection by rememberSaveable(collection?.key, state.readSessionId) { mutableStateOf(false) }
+    var deletingCollection by rememberSaveable(collection?.key, state.readSessionId) { mutableStateOf(false) }
+    val editableCollection = collection != null && collection.owner == state.probe?.owner &&
+        state.readSessionId != null && collectionPage != null && collectionPage.tracks.size == collectionPage.count &&
+        (linked != null && linked.readSessionId == state.readSessionId ||
+            destination == MusicDestination.LIBRARY && !artistRoute && state.localPlayback == null)
     val collectionScroll = key(destination, collection?.key) { rememberLazyListState() }
     val searchScroll = rememberLazyListState()
     val catalogScroll = key(category) { rememberLazyListState() }
@@ -381,13 +387,7 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
         },destination=destination,onDestination={if(model.downloadsOpen.value)model.dismissDownloads();destination=it},queue=queue,onDownloads=model::showDownloads,onAbout={aboutOpen=true},
         prominentTitle=artistRoute&&artists.album==null||destination==MusicDestination.FRIENDS&&friendState.user==null,
         showHeader=!artistProfile,showHeaderActions=!artistRoute||artists.album!=null,
-        collectionDownload = collection?.let { downloadCollection },
-        collectionDownloadEnabled = downloadEnabled,
-        collectionDownloadLabel = when (collection?.kind) {
-            PlaylistKind.ALBUM -> "Скачать альбом"
-            PlaylistKind.PLAYLIST -> "Скачать плейлист"
-            else -> "Скачать подборку"
-        },
+        collectionOpen = collection != null,
         itemSpacing=when {
             collection != null -> 4.dp
             artistRoute&&artists.queue!=null -> 0.dp
@@ -445,12 +445,14 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
                 Column(Modifier.testTag(if (destination == MusicDestination.FRIENDS) "friend_playlist_header" else "collection_header")) {
                     CollectionHeader(collection, byline, collection.year ?: release?.date?.year ?: release?.year,
                         collectionPage?.count ?: collection.count, cover, local?.rows?.firstOrNull()?.uri,
-                        if (local != null) canPlayLibrary else playableCollection) {
+                        if (local != null) canPlayLibrary else playableCollection,
+                        editableCollection && !state.busy, downloadEnabled,
+                        onEdit={editingCollection=true}, onDownload=downloadCollection, onDelete={deletingCollection=true}) { shuffle ->
                         when {
-                            linked != null -> model.playLinkedMusic(linked)
-                            destination == MusicDestination.FRIENDS -> PlaybackRuntime.prepare(context) { PlaybackLists.friends(friendPlaybackSnapshot) }
-                            artistRoute -> model.playArtistTrack(artists, -1)
-                            else -> playLibrary()
+                            linked != null -> model.playLinkedCollection(linked, shuffle)
+                            destination == MusicDestination.FRIENDS -> PlaybackRuntime.prepare(context,collectionShuffle=shuffle) { PlaybackLists.friends(friendPlaybackSnapshot) }
+                            artistRoute -> model.playArtistAlbum(artists, shuffle)
+                            else -> PlaybackRuntime.prepare(context,collectionShuffle=shuffle) { PlaybackLists.library(playbackSnapshot,playbackSort) }
                         }
                     }
                 }
@@ -733,6 +735,18 @@ internal fun NativeMusicPanel(model: NativeMusicViewModel,visible: Boolean,onDis
             }
             if(!state.configured)item("empty_library") {Text("Сохранённые файлы доступны без входа.",style=MaterialTheme.typography.bodyMedium)}
         }
+    }
+    if (collection != null && collectionPage != null && editableCollection) {
+        if (editingCollection) CollectionEditor(collection, collectionPage, state.probe?.library?.tracks.orEmpty(),
+            busy=state.busy, error=state.error?.label, onDismiss={editingCollection=false},
+            onChange={ change ->
+                if (change is CollectionChange.Move) selectedSort = MusicLibrarySort.DEFAULT
+                model.changeCollection(collection,collectionPage,change)
+            })
+        if (deletingCollection) AlertDialog(onDismissRequest={deletingCollection=false},
+            title={Text("Удалить «${collection.title}»?")}, text={Text("Подборка будет удалена из ВК.")},
+            confirmButton={TextButton(onClick={deletingCollection=false;model.changeCollection(collection,collectionPage,CollectionChange.Delete)}) { Text("Удалить") }},
+            dismissButton={TextButton(onClick={deletingCollection=false}) { Text("Отмена") }})
     }
     if(duplicates.visible)DuplicatesSheet(duplicates,model::findDuplicates,model::requestDuplicateRemoval,model::confirmDuplicateRemoval,
         model::cancelDuplicateRemoval,model::skipDuplicate,model::pauseDuplicateCheck,model::dismissDuplicates)

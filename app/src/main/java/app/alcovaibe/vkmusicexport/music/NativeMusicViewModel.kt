@@ -359,6 +359,73 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun playArtistTrack(snapshot: MusicArtistsState,index: Int,group: ArtistTracks = snapshot.queue ?: ArtistTracks.ALL) {
         PlaybackRuntime.play(getApplication(),artistEntries(snapshot, group),index)
     }
+    fun playLinkedCollection(snapshot: LinkedMusic, shuffle: Boolean) =
+        PlaybackRuntime.play(getApplication(), linkedEntries(snapshot), collectionShuffle = shuffle)
+
+    fun playArtistAlbum(snapshot: MusicArtistsState, shuffle: Boolean) =
+        PlaybackRuntime.play(getApplication(), artistEntries(snapshot, ArtistTracks.ALL), collectionShuffle = shuffle)
+
+    fun changeCollection(list: NativePlaylist, before: NativePage, change: CollectionChange) {
+        val own = _state.value
+        val session = own.readSessionId ?: return
+        val linked = _musicLink.value.music?.takeIf { it.list?.key == list.key && it.readSessionId == session }
+        if (own.probe?.owner != list.owner || own.busy || before.tracks.size != before.count ||
+            !(own.selected?.key == list.key && own.localPlayback == null || linked != null)) return
+        run("collection_edit") { generation ->
+            val access = sessions?.current() ?: access()
+            musicCheck(access.readSessionId == session, MusicError.ACCOUNT_CHANGED)
+            suspend fun readPage() = MusicPagination.tracks({ offset -> api.playlistPage(checkRead(access), list, offset) })
+            fun display(page: NativePage?) {
+                val updated = list.withCount(page?.count ?: 0)
+                _state.update { state ->
+                    val selected = state.selected?.key == list.key
+                    val catalog = state.catalog?.let { catalog ->
+                        val lists = catalog.lists.mapNotNull { if (it.key != list.key) it else updated.takeIf { page != null } }
+                        catalog.copy(lists = lists, count = catalog.count - (catalog.lists.size - lists.size))
+                    }
+                    state.copy(catalog = catalog, selected = if (selected) updated.takeIf { page != null } else state.selected,
+                        page = if (selected) page else state.page)
+                }
+                if (linked != null && _musicLink.value.music?.list?.key == list.key) {
+                    if (page == null) dismissMusicLink()
+                    else _musicLink.update { it.copy(music = linked.copy(page = page, list = updated)) }
+                }
+            }
+            val actual = readPage()
+            active(generation)
+            if (actual.tracks.map { it.id } != before.tracks.map { it.id }) {
+                display(actual)
+                throw MusicFailure(MusicError.LIBRARY_CHANGED)
+            }
+            val occurrences = actual.tracks.groupingBy { it.id }.eachCount()
+            when (change) {
+                is CollectionChange.Add -> {
+                    val libraryIds = own.probe?.library?.tracks.orEmpty().mapTo(hashSetOf()) { it.id }
+                    musicCheck(change.tracks.all { it.id in libraryIds && it.id !in occurrences })
+                }
+                is CollectionChange.Remove -> musicCheck(change.tracks.all { occurrences[it.id] == 1 })
+                is CollectionChange.Move -> musicCheck(change.position in actual.tracks.indices && actual.tracks.count { it.id == change.track.id } == 1)
+                CollectionChange.Delete -> Unit
+            }
+            exportReads.invalidateCatalog(exportReads.lease(list.owner, session))
+            api.changeCollection(checkRead(access), list, change)
+            checkRead(access); active(generation)
+            if (change == CollectionChange.Delete) display(null)
+            else {
+                val updated = readPage()
+                active(generation)
+                display(updated)
+                val ids = updated.tracks.map { it.id }
+                musicCheck(when(change) {
+                    is CollectionChange.Add -> change.tracks.all { it.id in ids }
+                    is CollectionChange.Remove -> change.tracks.none { it.id in ids }
+                    is CollectionChange.Move -> ids.getOrNull(change.position) == change.track.id
+                    CollectionChange.Delete -> true
+                }, MusicError.INCOMPLETE)
+            }
+        }
+    }
+
     fun downloadArtistAlbum(snapshot: MusicArtistsState) {
         if (snapshot.album == null) return
         val entries = artistEntries(snapshot, ArtistTracks.ALL)
@@ -908,7 +975,7 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     }
     private fun resetAuth(): Unit=authCoordinator.reset()
     private fun prepareOperation(stage: String): MusicOperationCleanup {
-        if (stage in accessChangeStages || stage in setOf("remove_confirm", "duplicates_delete", "catalog_refresh", "library_refresh_after_add"))
+        if (stage in accessChangeStages || stage in setOf("remove_confirm", "duplicates_delete", "catalog_refresh", "library_refresh_after_add", "collection_edit"))
             cancelOnlineRefresh()
         // Cancel background verification before any foreground operation. Await its
         // completion before touching the download database: cancellation alone does
