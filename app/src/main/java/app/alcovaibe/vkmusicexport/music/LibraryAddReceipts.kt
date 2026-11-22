@@ -46,4 +46,4 @@ internal class LibraryAddReceipts(private val context: Context) {
     }
 }
 
-internal data class SearchAdditionRetry(val search: MusicSearchState, val index: Int)
+internal data class LibraryAddition(val track: NativeTrack, val account: Long, val session: String)

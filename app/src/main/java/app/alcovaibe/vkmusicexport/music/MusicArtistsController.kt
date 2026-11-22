@@ -147,11 +147,23 @@ internal class MusicArtistsController(
             }
         }
     }
+    fun selectSearchArtist(artist: MusicArtist, account: Long, session: String) {
+        if (blocked() || owner() != account) return
+        val current = _artists.value
+        if (current.owner != account || current.readSessionId != session)
+            _artists.value = MusicArtistsState(owner = account, readSessionId = session)
+        openArtist(artist)
+    }
+
     fun select(artist: MusicArtist?) {
         if(artist==null){pause();_artists.update{it.copy(selected=null,details=null,error=null,message=null,album=null,albumTracks=null,queue=null)};return}
         if(blocked())return
         val s=_artists.value
-        if(s.owner!=owner()||s.artists.none{it.id==artist.id})return
+        if(s.owner!=owner()||(s.selected?.id != artist.id && s.artists.none{it.id==artist.id}))return
+        openArtist(artist)
+    }
+    private fun openArtist(artist: MusicArtist) {
+        val s = _artists.value
         _artists.update{it.copy(selected=artist,details=null,error=null,message=null,album=null,albumTracks=null,queue=null)}
         run("artist_details") {g->
             try {

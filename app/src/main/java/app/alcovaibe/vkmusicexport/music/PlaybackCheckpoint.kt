@@ -2,6 +2,24 @@ package app.alcovaibe.vkmusicexport.music
 
 import kotlinx.serialization.Serializable
 
+internal enum class QueueMode(val shuffle: Boolean, val repeat: Int, val label: String) {
+    ORDERED(false, 0, "По порядку"),
+    SHUFFLE(true, 0, "Случайный порядок"),
+    REPEAT_ALL(false, 2, "Повтор плейлиста"),
+    REPEAT_ONE(false, 1, "Повтор трека");
+
+    fun next() = entries[(ordinal + 1) % entries.size]
+
+    companion object {
+        fun from(shuffle: Boolean, repeat: Int) = when {
+            repeat == 1 -> REPEAT_ONE
+            repeat == 2 -> REPEAT_ALL
+            shuffle -> SHUFFLE
+            else -> ORDERED
+        }
+    }
+}
+
 @Serializable internal data class PlaybackCursor(val index: Int,val positionMs: Long=0,val shuffle: Boolean=false,val repeat: Int=0)
 internal data class PlaybackCheckpoint(val id: String,val entries: List<PlaybackEntry>,val session: String?,
     val cursor: PlaybackCursor,val order: List<Int>) {

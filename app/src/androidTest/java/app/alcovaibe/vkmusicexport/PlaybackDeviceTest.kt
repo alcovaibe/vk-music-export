@@ -225,6 +225,10 @@ class PlaybackDeviceTest {
         val navigation=ui.onNodeWithTag("music_nav_SAVED").fetchSemanticsNode().boundsInRoot
         assertTrue("Mini player belongs above the bottom navigation",mini.bottom<=navigation.top)
         shot("player-mini")
+        ui.runOnUiThread { PlaybackRuntime.prepare(app, 1) { rows } }
+        ui.waitUntil(20000) { PlaybackRuntime.state.value.index == 1 && PlaybackRuntime.state.value.seekable }
+        ui.onNodeWithTag("music_player").assertDoesNotExist()
+        ui.onNodeWithTag("music_mini_player").assertIsDisplayed()
         ui.onNodeWithTag("music_mini_player").performClick()
         ui.onNodeWithTag("player_queue").performClick()
         ui.onNodeWithTag("playback_queue_2").performClick()

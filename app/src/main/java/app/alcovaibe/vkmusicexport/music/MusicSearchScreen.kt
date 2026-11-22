@@ -43,7 +43,9 @@ internal fun LazyListScope.musicSearchItems(
     onShare: ((String) -> Unit)? = null,
     onOpenLink: (() -> Unit)? = null,
     savedTracks: Map<NativeTrack, PublishedAudio> = emptyMap(),
-    canPlaySaved: Boolean = false
+    canPlaySaved: Boolean = false,
+    onArtist: ((MusicArtist) -> Unit)? = null,
+    onAlbum: ((String) -> Unit)? = null
 ) {
     item("search_input") {
         OutlinedTextField(
@@ -121,23 +123,49 @@ internal fun LazyListScope.musicSearchItems(
         }
     }
 
-    itemsIndexed(state.tracks,key={index,track->"search_${index}_${track.id}"}) { index,track->
-        val actionable = state.active && state.phase == MusicSearchPhase.RESULTS &&
-            !track.restricted && track.metadataError == null
-        val ready = actionable && state.audio != CapabilityStatus.UNAVAILABLE && track.duration > 0
-        val sharedUrl = VkMusicLinks.track(track.id, track.accessKey)?.url
-        val saved = savedTracks[track]
-        MusicSearchTrackRow(
-            track=track,artwork=preview(track),saved=saved,
-            onPlay=if(ready || state.active && saved != null && canPlaySaved)({onPlay(index)}) else null,
-            onDownload=if(ready && canDownload && saved == null)({onDownload(index)}) else null,
-            onAdd=onAdd?.let { add -> { add(index) } },
-            addEnabled=canAdd && actionable && track.id !in added,
-            added=track.id in added,
-            onShare=if (sharedUrl != null && onShare != null) ({ onShare(sharedUrl) }) else null,
-            tag="search_track_$index"
-        )
+    val matching = state.artistTrackCount
+    if (matching > 0) {
+        val artist = state.creditedArtist
+        item("search_artist") {
+            MusicCollectionRow(artist?.name ?: state.tracks.first().artist, "Исполнитель",
+                enabled = artist != null && onArtist != null, artist = true, photo = artist?.photo,
+                tag = "search_artist_card") { artist?.let { onArtist?.invoke(it) } }
+        }
+        item("search_artist_tracks") { Text("Треки", style = MaterialTheme.typography.titleMedium) }
     }
+    fun trackRows(start: Int, end: Int) {
+        items(end - start, key = { "search_${start + it}_${state.tracks[start + it].id}" }) { position ->
+            val index = start + position
+            val track = state.tracks[index]
+            val actionable = state.active && state.phase == MusicSearchPhase.RESULTS &&
+                !track.restricted && track.metadataError == null
+            val ready = actionable && state.audio != CapabilityStatus.UNAVAILABLE && track.duration > 0
+            val sharedUrl = VkMusicLinks.track(track.id, track.accessKey)?.url
+            val saved = savedTracks[track]
+            MusicSearchTrackRow(
+                track=track,artwork=preview(track),saved=saved,
+                onPlay=if(ready || state.active && saved != null && canPlaySaved)({onPlay(index)}) else null,
+                onDownload=if(ready && canDownload && saved == null)({onDownload(index)}) else null,
+                onAdd=onAdd?.let { add -> { add(index) } },
+                addEnabled=canAdd && actionable && track.id !in added,
+                added=track.id in added,
+                onShare=if (sharedUrl != null && onShare != null) ({ onShare(sharedUrl) }) else null,
+                tag="search_track_$index"
+            )
+        }
+    }
+    trackRows(0, matching)
+    if (state.albums.isNotEmpty()) {
+        item("search_albums") { Text("Альбомы", style = MaterialTheme.typography.titleMedium) }
+        itemsIndexed(state.albums, key = { _, album -> "search_album_${album.id}" }) { _, album ->
+            val link = VkMusicLinks.track(album.id, album.accessKey)?.let { VkMusicLink.Collection(it.owner, it.id, it.accessKey) }
+            MusicCollectionRow(album.title, "Альбом", enabled = link != null && onAlbum != null,
+                tag = "search_album_${album.id}") { link?.let { onAlbum?.invoke(it.url) } }
+        }
+    }
+    if (matching in 1 until state.tracks.size)
+        item("search_other_heading") { Text("Другие результаты", style = MaterialTheme.typography.titleMedium) }
+    trackRows(matching, state.tracks.size)
     if(state.nextOffset>=MusicSearchQuery.MAX_RESULTS && state.nextOffset<state.total) {
         item("search_limit") {
             Text("Достигнут предел просмотра: ${MusicSearchQuery.MAX_RESULTS} результатов.",

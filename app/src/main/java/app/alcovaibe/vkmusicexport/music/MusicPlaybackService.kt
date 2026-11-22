@@ -417,6 +417,12 @@ class MusicPlaybackService : MediaSessionService() {
     internal fun next(){if(player.hasNextMediaItem()){failure=null;player.seekToNextMediaItem();player.prepare();player.play();publish(forceCheckpoint=true)}}
     internal fun previous(){failure=null;player.seekToPrevious();player.prepare();player.play();publish(forceCheckpoint=true)}
     internal fun seek(position: Long){if(player.isCurrentMediaItemSeekable){player.seekTo(position.coerceIn(0,player.duration.coerceAtLeast(0)));publish(forceCheckpoint=true)}}
+    internal fun cycleMode() {
+        val mode = QueueMode.from(player.shuffleModeEnabled, player.repeatMode).next()
+        player.shuffleModeEnabled = mode.shuffle
+        player.repeatMode = mode.repeat
+        publish(refreshOrder = true, forceCheckpoint = true)
+    }
     internal fun shuffle(){player.shuffleModeEnabled=!player.shuffleModeEnabled;publish(refreshOrder=true,forceCheckpoint=true)}
     internal fun repeat(){player.repeatMode=when(player.repeatMode){Player.REPEAT_MODE_OFF->Player.REPEAT_MODE_ALL;Player.REPEAT_MODE_ALL->Player.REPEAT_MODE_ONE;else->Player.REPEAT_MODE_OFF};publish()}
     internal fun stopPlayback(){serial++;queueId=null;pendingOrder=null;entries=emptyList();artWork?.cancel();player.stop();player.clearMediaItems();stopSelf()}

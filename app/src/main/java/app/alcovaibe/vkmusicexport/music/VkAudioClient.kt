@@ -104,8 +104,12 @@ internal class VkAudioClient(private val client: OkHttpClient = NetworkClients.a
         musicCheck(offset>=0&&offset<MusicSearchQuery.MAX_RESULTS,MusicError.RESPONSE)
         val response = searchResponse(access, text, offset)
         val page = NativeProtocol.page(response)
-        val tracks = page.tracks.map { it.copy(audioOrigin = AudioOrigin.Search(text, offset)) }
-        rememberStreams(access, (response as JsonObject)["items"] as JsonArray, tracks)
+        val items = (response as JsonObject)["items"] as JsonArray
+        val tracks = page.tracks.mapIndexed { index, track ->
+            track.copy(audioOrigin = AudioOrigin.Search(text, offset),
+                creditedArtists = (items[index] as? JsonObject)?.let(MusicArtists::creditedArtists).orEmpty())
+        }
+        rememberStreams(access, items, tracks)
         return MetadataMatches(tracks, page.count, offset)
     }
     private suspend fun searchResponse(access: MusicAccess, text: String, offset: Int) =

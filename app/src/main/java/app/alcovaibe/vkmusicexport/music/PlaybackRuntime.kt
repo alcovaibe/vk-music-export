@@ -59,7 +59,6 @@ internal object PlaybackRuntime {
     internal suspend fun flushHistory(){history?.flush()}
     fun prepare(context: Context,start: Int=-1,build: ()->List<PlaybackEntry>) {
         initialize(context);val application=context.applicationContext;val g=++generation
-        expanded.value=true
         scope.launch {
             try {
                 val entries=withContext(Dispatchers.Default){build()}
@@ -75,7 +74,8 @@ internal object PlaybackRuntime {
         enqueue(context,selected,position,null)
     }
     private fun enqueue(context: Context,selected: PlaybackSelection,position: Long,record: PlaybackCheckpoint?) {
-        val application=context.applicationContext;val g=++generation;expanded.value=true
+        val application=context.applicationContext;val g=++generation
+        if (mutable.value.current == null) expanded.value = true
         scope.launch {
             try {
                 val session=if(selected.entries.any{!it.offline})withContext(Dispatchers.IO) {
@@ -113,6 +113,17 @@ internal object PlaybackRuntime {
     fun seek(position: Long) {
         if(service?.hasQueue==true)service?.seek(position)
         else restored?.let{updatePaused(it.copy(cursor=it.cursor.copy(positionMs=position.coerceIn(0,state.value.durationMs.coerceAtLeast(0)))))}
+    }
+    fun cycleMode() {
+        val active = service
+        if (active?.hasQueue == true) {
+            active.cycleMode()
+            return
+        }
+        val record = restored ?: return
+        val mode = QueueMode.from(record.cursor.shuffle, record.cursor.repeat).next()
+        val order = if (mode.shuffle) record.entries.indices.shuffled() else record.order
+        updatePaused(record.copy(cursor = record.cursor.copy(shuffle = mode.shuffle, repeat = mode.repeat), order = order))
     }
     fun shuffle() {
         if(service?.hasQueue==true)service?.shuffle()

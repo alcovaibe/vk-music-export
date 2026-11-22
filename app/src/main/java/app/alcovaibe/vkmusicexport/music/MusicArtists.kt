@@ -68,6 +68,13 @@ internal object MusicArtists {
     }
     private fun artist(o: JsonObject)=MusicArtist(text(o,"id"),text(o,"name"),photo(o["photo"]?:o["photos"]?:o["thumb"]?:o["images"]?:o["cover"]?:o))
 
+    fun creditedArtists(track: JsonObject): List<MusicArtist> =
+        listOf("main_artists", "featured_artists").flatMap { field ->
+            artistRows(track[field]).mapNotNull { row ->
+                try { artist(row) } catch (_: MusicFailure) { null }
+            }
+        }.distinctBy { it.id }
+
     fun isFollowedServerFailure(failure: MusicFailure): Boolean =
         failure.remoteCode == 10 || MusicPagination.isTransientHttpFailure(failure)
 

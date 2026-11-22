@@ -47,7 +47,7 @@ internal class MusicAccess(val token: String,val agent: String,val expiresAtMs: 
     override fun toString() = "MusicAccess([redacted])"
 }
 
-@Serializable internal data class MusicAlbum(val id: String, val title: String)
+@Serializable internal data class MusicAlbum(val id: String, val title: String, @kotlinx.serialization.Transient val accessKey: String? = null)
 @Serializable
 internal sealed interface AudioOrigin {
     @Serializable data class Search(val query: String, val offset: Int) : AudioOrigin
@@ -57,7 +57,8 @@ internal sealed interface AudioOrigin {
 }
 @Serializable internal data class NativeTrack(val id: String, val title: String, val artist: String,
     val duration: Int, val restricted: Boolean = false, val album: MusicAlbum? = null,val subtitle: String?=null,val metadataError: String?=null,
-    val releaseYear: Int?=null, val accessKey: String?=null, val audioOrigin: AudioOrigin?=null) {
+    val releaseYear: Int?=null, val accessKey: String?=null, val audioOrigin: AudioOrigin?=null,
+    @kotlinx.serialization.Transient val creditedArtists: List<MusicArtist> = emptyList()) {
     override fun toString() = "NativeTrack([metadata omitted])"
     val displayTitle get()=subtitle?.trim()?.takeIf{it.isNotEmpty()}?.let {
         if(title.endsWith(" ($it)")||title.endsWith(" $it")||title==it)title else "$title ($it)"
@@ -167,7 +168,8 @@ internal object NativeProtocol {
                 val a=raw as? JsonObject?:throw NativeDataFailure("album")
                 val albumId=long(a,"id");if(albumId<=0)throw NativeDataFailure("album.id")
                 val albumOwner=(a["owner_id"] as? JsonPrimitive)?.longOrNull?.takeIf{it!=0L}
-                MusicAlbum(if(albumOwner==null)"album:$albumId" else "${albumOwner}_$albumId",text(a,"title"))
+                MusicAlbum(if(albumOwner==null)"album:$albumId" else "${albumOwner}_$albumId",text(a,"title"),
+                    VkMusicLinks.accessKey((a["access_key"] as? JsonPrimitive)?.contentOrNull))
             }catch(_: MusicFailure){warning("album");null}
         }
         // URL availability is a separate fact; never filter the position out of the library.
