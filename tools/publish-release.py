@@ -22,6 +22,10 @@ apk = Path('release-output') / info['apk']
 if channel == 'stable':
     verify_stable(info, apk)
 tag = info['tag'] + ('-rc' if channel == 'rc' else '')
+draft = os.environ.get('GITHUB_REF_NAME') == 'build/draft-pr110-79b40b6'
+if draft:
+    assert channel == 'rc'
+    tag = info['tag'] + '-pr110-79b40b6'
 changes = notes_for(info['versionName'])
 existing = subprocess.run(['gh', 'release', 'view', tag, '--json', 'targetCommitish,assets,prerelease'], capture_output=True, text=True)
 if existing.returncode == 0:
@@ -63,6 +67,8 @@ else:
         '--notes-file', str(notes), '--latest=' + str(make_latest).lower()]
     if channel == 'rc':
         command.append('--prerelease')
+    if draft:
+        command.append('--draft')
     subprocess.run(command, check=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
     summary.write(f"Release channel: **{channel}**\n\nhttps://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/tag/{tag}\n")
