@@ -359,6 +359,12 @@ internal class NativeMusicViewModel @JvmOverloads constructor(application: Appli
     fun playArtistTrack(snapshot: MusicArtistsState,index: Int,group: ArtistTracks = snapshot.queue ?: ArtistTracks.ALL) {
         PlaybackRuntime.play(getApplication(),artistEntries(snapshot, group),index)
     }
+    fun downloadArtistAlbum(snapshot: MusicArtistsState) {
+        if (snapshot.album == null) return
+        val entries = artistEntries(snapshot, ArtistTracks.ALL)
+        val first = entries.firstOrNull { it.export != null && !it.track.restricted && it.track.metadataError == null && it.track.duration > 0 } ?: return
+        enqueuePlayback(first) { entries.mapNotNull { it.download } }
+    }
     fun downloadArtistTrack(snapshot: MusicArtistsState,index: Int,group: ArtistTracks = snapshot.queue ?: ArtistTracks.ALL) {
         artistEntries(snapshot, group).getOrNull(index)?.let(::downloadPlayback)
     }

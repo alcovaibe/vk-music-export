@@ -44,7 +44,7 @@ internal suspend fun readLinkedMusic(api: MusicApi, access: MusicAccess, link: V
             musicCheck(detail.key == reference.key && !detail.deleted, MusicError.UNAVAILABLE)
             val list = NativePlaylist(detail.owner, detail.id, detail.title, detail.count,
                 link.accessKey ?: detail.accessKey, detail.originalOwner, detail.originalId, detail.nativeType,
-                detail.kind, detail.following, photo = detail.photo, typeConflict = detail.typeConflict)
+                detail.kind, detail.following, photo = detail.photo, typeConflict = detail.typeConflict, performer = detail.performer, year = detail.year)
             val page = MusicPagination.tracks({ offset ->
                 val page = api.playlistPage(access, list, offset)
                 musicCheck(page.count <= 20_000, MusicError.TOO_LARGE)

@@ -66,14 +66,15 @@ internal sealed interface AudioOrigin {
 }
 internal class NativePlaylist(val owner: Long, val id: Long, val title: String, val count: Int,
     val accessKey: String?, val originalOwner: Long?, val originalId: Long?, val nativeType: Int?,
-    val kind: PlaylistKind=when(nativeType){0->PlaylistKind.PLAYLIST;1->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN},val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null,val typeConflict: Boolean=false) {
-    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo,typeConflict)
-    fun withCount(value: Int)=if(value==count)this else NativePlaylist(owner,id,title,value,accessKey,originalOwner,originalId,nativeType,kind,following,deleted,photo,typeConflict)
+    val kind: PlaylistKind=when(nativeType){0->PlaylistKind.PLAYLIST;1->PlaylistKind.ALBUM;else->PlaylistKind.UNKNOWN},val following: Boolean?=null,val deleted: Boolean=false,val photo: String?=null,val typeConflict: Boolean=false,
+    val performer: String? = null, val year: Int? = null) {
+    fun classified(value: PlaylistKind)=if(value==kind)this else NativePlaylist(owner,id,title,count,accessKey,originalOwner,originalId,nativeType,value,following,deleted,photo,typeConflict,performer,year)
+    fun withCount(value: Int)=if(value==count)this else NativePlaylist(owner,id,title,value,accessKey,originalOwner,originalId,nativeType,kind,following,deleted,photo,typeConflict,performer,year)
     fun reconciled(other: NativePlaylist): NativePlaylist {
         val conflict=typeConflict||other.typeConflict||(kind!=PlaylistKind.UNKNOWN&&other.kind!=PlaylistKind.UNKNOWN&&kind!=other.kind)
         val resolved=if(conflict)PlaylistKind.UNKNOWN else if(kind==PlaylistKind.UNKNOWN)other.kind else kind
         return NativePlaylist(owner,id,title,maxOf(count,other.count),accessKey?:other.accessKey,originalOwner?:other.originalOwner,originalId?:other.originalId,
-            nativeType,resolved,following?:other.following,deleted||other.deleted,photo?:other.photo,conflict)
+            nativeType,resolved,following?:other.following,deleted||other.deleted,photo?:other.photo,conflict,performer?:other.performer,year?:other.year)
     }
     val key get() = "playlist:$owner:$id"
     override fun toString() = "NativePlaylist([metadata omitted])"
@@ -239,7 +240,11 @@ internal object NativeProtocol {
             NativePlaylist(owner,id,text(p,"title"),count(p),accessKey,
                 originalOwner.takeIf{originalId!=null}, originalId.takeIf{originalOwner!=null},
                 (p["type"] as? JsonPrimitive)?.intOrNull,kind,
-                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"]))
+                flag(p,"is_following"),flag(p,"is_deleted")==true,MusicArtists.photo(p["photo"]?:p["thumb"]?:p["thumbs"], large = true),
+                performer = (p["main_artists"] as? JsonArray)?.mapNotNull { row ->
+                    ((row as? JsonObject)?.get("name") as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() && it.length <= 500 }
+                }?.joinToString(", ")?.ifBlank { null },
+                year = (p["year"] as? JsonPrimitive)?.intOrNull?.takeIf { it in 1800..2100 })
         }
         val cursorValue=o["next_from"]
         if(cursorValue!=null&&cursorValue !is JsonNull&&(cursorValue !is JsonPrimitive||!cursorValue.isString))throw NativeDataFailure("next_from")

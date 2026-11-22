@@ -62,6 +62,7 @@ internal enum class LibraryCategory(val label: String,val icon: ImageVector) {
 internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,onDestination: (MusicDestination)->Unit,
     queue: ExportSnapshot,onDownloads: ()->Unit,onAbout: ()->Unit,onBack: ()->Unit,showBack: Boolean=false,
     menuItems: @Composable ColumnScope.(()->Unit)->Unit={},playback: PlaybackState=PlaybackState(),onPlayerOpen:()->Unit={},tag: String="native_music_screen",prominentTitle: Boolean=false,listIdentity: String?=null,listState: LazyListState?=null,
+    collectionDownload: (() -> Unit)? = null, collectionDownloadEnabled: Boolean = false, collectionDownloadLabel: String = "",
     showHeader: Boolean=true,showHeaderActions: Boolean=true,itemSpacing: Dp=if(destination==MusicDestination.FRIENDS)8.dp else 12.dp,content: LazyListScope.()->Unit) {
     if(!LocalInspectionMode.current) BackHandler(onBack=onBack)
     Scaffold(Modifier.fillMaxSize().testTag(tag),containerColor=MaterialTheme.colorScheme.background,
@@ -78,7 +79,9 @@ internal fun MusicLibraryScaffold(title: String,destination: MusicDestination,on
             navigationIcon={if(showBack)IconButton(onClick=onBack){Icon(Icons.AutoMirrored.Filled.ArrowBack,"Назад")}},
             actions={
                 if(showHeaderActions) {
-                    if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
+                    if (collectionDownload != null) IconButton(onClick = collectionDownload, enabled = collectionDownloadEnabled, modifier = Modifier.testTag("collection_download")) {
+                        Icon(DownloadIcon, collectionDownloadLabel)
+                    } else if(destination!=MusicDestination.DOWNLOADS)IconButton(onClick=onDownloads,modifier=Modifier.testTag("open_music_downloads")) {
                         BadgedBox(badge={if(queue.pending>0)Badge{Text(if(queue.pending>99)"99+" else queue.pending.toString())}}){Icon(DownloadIcon,"Скачивания")}
                     }
                     LatestReportMenu(onAbout=onAbout,extraItems=menuItems)
@@ -208,14 +211,42 @@ internal fun MusicThumbnail(
 }
 
 @Composable
+internal fun CollectionHeader(list: NativePlaylist, byline: String?, year: Int?, count: Int,
+    cover: String?, localCover: String?, canPlay: Boolean, onPlay: () -> Unit) {
+    val noun = when {
+        count % 100 in 11..14 -> "треков"
+        count % 10 == 1 -> "трек"
+        count % 10 in 2..4 -> "трека"
+        else -> "треков"
+    }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        MusicThumbnail(url = cover, uri = localCover, identity = list.key, maxPixels = 640,
+            modifier = Modifier.fillMaxWidth(.64f).wrapContentWidth().widthIn(max = 244.dp).fillMaxWidth().aspectRatio(1f),
+            shape = RoundedCornerShape(16.dp))
+        Text(list.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(listOfNotNull(byline, year?.toString(), "$count $noun").joinToString(" · "),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Button(onClick = onPlay, enabled = canPlay, shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).heightIn(min = 48.dp).testTag("library_play")) {
+            Icon(PlayerPlayIcon, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Слушать")
+        }
+    }
+}
+
+@Composable
 internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=null,saved: PublishedAudio?=null,downloading: Boolean=false,
     enabled: Boolean=true,onDownload:(()->Unit)?=null,onRemove:(()->Unit)?=null,onOpen:(()->Unit)?=null,onPlay:(()->Unit)?=null,tag: String="music_track_${position}_${track.id}",
-    onShare: (() -> Unit)? = null) {
+    onShare: (() -> Unit)? = null, compact: Boolean = false) {
     var menu by remember{mutableStateOf(false)}
     val play=onPlay?:onOpen
     Surface(shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().testTag(tag).then(if(play!=null)Modifier.clickable(onClickLabel="Воспроизвести ${track.displayTitle}",role=androidx.compose.ui.semantics.Role.Button,onClick=play)else Modifier)) {
-        Row(Modifier.padding(start=12.dp,end=4.dp,top=10.dp,bottom=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id)
+        Row(Modifier.padding(start=12.dp,end=4.dp,top=if(compact) 2.dp else 10.dp,bottom=if(compact) 2.dp else 10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+            MusicThumbnail(url=preview,uri=saved?.uri,identity=saved?.let{it.uri+it.sha256}?:track.id, size=if(compact) 40.dp else 52.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                 Text(track.title,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis)
                 track.subtitle?.takeIf{it.isNotBlank()}?.let{subtitle->
@@ -230,7 +261,7 @@ internal fun MusicTrackRow(track: NativeTrack,position: Int,preview: String?=nul
             when {
                 downloading->CircularProgressIndicator(Modifier.size(28.dp).padding(3.dp),strokeWidth=3.dp)
                 saved!=null->IconButton(enabled=onOpen!=null,onClick={onOpen?.invoke()},modifier=Modifier.testTag("saved_copy_${position}_${track.id}")){
-                    Icon(Icons.Default.CheckCircle,"Есть копия на устройстве",tint=MaterialTheme.colorScheme.tertiary)}
+                    Icon(if(compact) Icons.Default.Check else Icons.Default.CheckCircle,"Есть копия на устройстве",tint=MaterialTheme.colorScheme.tertiary)}
                 onDownload!=null->IconButton(enabled=enabled,onClick=onDownload){Icon(DownloadIcon,"Скачать ${track.displayTitle}, ${track.artist}")}
             }
             if(onRemove!=null||onOpen!=null||onShare!=null)Box {

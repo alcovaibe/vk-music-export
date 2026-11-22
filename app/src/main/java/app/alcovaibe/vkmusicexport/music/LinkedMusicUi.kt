@@ -68,7 +68,6 @@ internal fun LazyListScope.linkedMusicItems(
     onOpenVk: (String) -> Unit,
     onPlay: (LinkedMusic, Int) -> Unit,
     onDownload: (LinkedMusic, Int) -> Unit,
-    onDownloadCollection: (LinkedMusic) -> Unit,
     onShare: (String) -> Unit,
     onPaste: () -> Unit,
     preview: (NativeTrack) -> String?
@@ -116,27 +115,10 @@ internal fun LazyListScope.linkedMusicItems(
     }
     val music = state.music ?: return
     val collection = music.list
-    if (collection != null) item("vk_link_collection_actions") {
-        val available = music.page.tracks.count { it.duration > 0 && !it.restricted && it.metadataError == null }
-        val shareUrl = VkMusicLinks.collectionUrl(collection)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if (music.page.count == 0) "Подборка пуста." else "Доступно для воспроизведения $available из ${music.page.count}")
-            Button(enabled = available > 0, onClick = { onPlay(music, -1) }, modifier = Modifier.fillMaxWidth()) { Text("Слушать") }
-            OutlinedButton(enabled = available > 0 && canDownload, onClick = { onDownloadCollection(music) },
-                modifier = Modifier.fillMaxWidth().testTag("vk_link_download_collection")) {
-                Text(when (collection.kind) {
-                    PlaylistKind.ALBUM -> "Скачать альбом"
-                    PlaylistKind.PLAYLIST -> "Скачать плейлист"
-                    PlaylistKind.UNKNOWN -> "Скачать подборку"
-                })
-            }
-            if (shareUrl != null) TextButton(onClick = { onShare(shareUrl) }) { Text("Поделиться ссылкой") }
-        }
-    }
     itemsIndexed(music.page.tracks, key = { index, track -> "vk_link_${index}_${track.id}" }) { index, track ->
         val playable = track.duration > 0 && !track.restricted && track.metadataError == null
         val trackUrl = VkMusicLinks.track(track.id, track.accessKey)?.url
-        MusicTrackRow(track, index + 1, preview = preview(track), enabled = canDownload,
+        MusicTrackRow(track, index + 1, preview = preview(track) ?: collection?.photo, compact = collection != null, enabled = canDownload,
             onPlay = if (playable) ({ onPlay(music, index) }) else null,
             onDownload = if (playable) ({ onDownload(music, index) }) else null,
             onShare = trackUrl?.let { url -> { onShare(url) } },

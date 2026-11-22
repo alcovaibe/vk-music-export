@@ -132,6 +132,7 @@ class FriendsMusicDeviceTest {
         ui.onNodeWithTag("friend_tab_PLAYLISTS").performClick();ui.onNodeWithTag("friend_collection_-55_7").performClick()
         ui.waitUntil(15000){model.friends.state.value.playlistComplete&&!model.friends.state.value.busy}
         ui.onNodeWithTag("friend_playlist_header").assertExists();shot("friend-playlist")
+        ui.onNodeWithTag("home_menu").performClick()
         ui.onNodeWithTag("open_music_downloads").performClick();ui.onNodeWithTag("downloads_status").assertExists()
         androidx.test.espresso.Espresso.pressBack();ui.onNodeWithTag("friend_playlist_header").assertExists()
     }
