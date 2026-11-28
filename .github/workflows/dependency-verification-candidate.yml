@@ -19,7 +19,7 @@ jobs:
           cmdline-tools-version: '15859902'
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
       - name: Generate a review candidate only; never run tests or publish with it
         run: |
           ./gradlew --write-verification-metadata sha256 help --no-daemon
