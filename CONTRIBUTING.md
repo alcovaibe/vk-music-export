@@ -25,11 +25,11 @@
 
 - Минимальная версия Android: API 29 (Android 10); target SDK: 36; compile SDK: 37.
 - Gradle запускается на JDK 21; исходный и целевой Java bytecode — 17.
-- Android SDK: `platforms;android-37.0`, build-tools `36.0.0`, platform-tools.
+- Android SDK: `platforms;android-37.1`, build-tools `36.0.0`, platform-tools.
 - Нужны доступ к Maven/Google и принятые лицензии Android SDK.
 
 ```sh
-sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' platform-tools
+sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0' platform-tools
 python3 -m unittest discover -s tools -p 'test_*.py'
 ./gradlew --dependency-verification strict testDebugUnitTest lintDebug lintRelease assembleDebug assembleRelease assembleDebugAndroidTest
 ```
@@ -178,7 +178,7 @@ UIDT-поиск хранит до 20 000 контрольных результа
 
 Обычные push в `main` и pull request выполняют проверки. Публикация требует явного запуска RC или отдельного ограниченного запроса владельца, описанного ниже. В workflow **Android checks and APK** ручной запуск с `channel=checks` тоже только проверяет код. `channel=rc` на выбранной ветке этого же репозитория создаёт подписанный prerelease с суффиксом `-rc`, не меняет Latest и встроенный канал обновлений.
 
-Для сборки нужны JDK 21, Android SDK `platforms;android-37.0`, build-tools 36.0.0, постоянный ключ из `ANDROID_SIGNING`. Исходный/целевой Java bytecode остаётся 17. `versionName` меняется в `version.properties`, CI выдаёт монотонный `versionCode=1000+run_number`; номера не переиспользуются. Локальный номер — только запасное значение для разработки.
+Для сборки нужны JDK 21, Android SDK `platforms;android-37.1`, build-tools 36.0.0, постоянный ключ из `ANDROID_SIGNING`. Исходный/целевой Java bytecode остаётся 17. `versionName` меняется в `version.properties`, CI выдаёт монотонный `versionCode=1000+run_number`; номера не переиспользуются. Локальный номер — только запасное значение для разработки.
 
 ### Проверки перед RC
 

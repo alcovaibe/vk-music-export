@@ -23,7 +23,7 @@ def inventory(root, sdk, run=subprocess.check_output):
     url=re.search(r'^distributionUrl=(.+)$',props,re.M)
     if not digest or not url:raise ValueError('Unverified Gradle distribution')
     packages={}
-    for key,path in [('build-tools','build-tools/36.0.0'),('platform','platforms/android-37.0'),
+    for key,path in [('build-tools','build-tools/36.0.0'),('platform','platforms/android-37.1'),
                      ('command-line-tools','cmdline-tools/latest'),('platform-tools','platform-tools')]:
         source=sdk/path/'source.properties'
         if not source.is_file():raise ValueError('Missing observed SDK package: '+key)

@@ -214,15 +214,21 @@ internal fun PlaybackScreen(state: PlaybackState,onDismiss:()->Unit,onDownload: 
                 }
                 Column(Modifier.fillMaxWidth()) {
                     val duration=state.durationMs.coerceAtLeast(1)
-                    Slider(value=seeking?:state.positionMs.coerceIn(0,duration).toFloat(),valueRange=0f..duration.toFloat(),
-                        onValueChange={seeking=it},onValueChangeFinished={seeking?.let{PlaybackRuntime.seek(it.toLong())};seeking=null},
+                    val position=(seeking?:state.positionMs.toFloat()).coerceIn(0f,duration.toFloat())
+                    val sliderState=key(state.index,duration) {
+                        rememberSliderState(value=position,trackRange=0f..duration.toFloat())
+                    }
+                    SideEffect { sliderState.value=position }
+                    Slider(state=sliderState,
+                        onValueChange={sliderState.value=it;seeking=it},
+                        onValueChangeFinished={seeking?.let{PlaybackRuntime.seek(it.toLong())};seeking=null},
                         enabled=state.seekable,modifier=Modifier.fillMaxWidth().testTag("player_seek").semantics {
                             contentDescription="Позиция воспроизведения"
                             stateDescription="${playbackSpokenTime(seeking?.toLong()?:state.positionMs)} из ${playbackSpokenTime(state.durationMs)}"
                         },
                         thumb={Box(Modifier.size(14.dp).background(if(state.seekable)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,CircleShape))},
                         track={
-                            val fraction=((seeking?:state.positionMs.toFloat())/duration.toFloat()).coerceIn(0f,1f)
+                            val fraction=(it.value/duration.toFloat()).coerceIn(0f,1f)
                             Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant)) {
                                 Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
                             }

@@ -16,7 +16,11 @@ val releaseKeystore = providers.environmentVariable("RELEASE_KEYSTORE_PATH").orN
 
 android {
     namespace = "app.alcovaibe.vkmusicexport"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
     testBuildType = if (r8PlaybackCheck) "release" else "debug"
     if (r8PlaybackCheck) sourceSets.getByName("androidTest").apply {
         // AGP 9 built-in Kotlin has a separate Kotlin source directory set.
