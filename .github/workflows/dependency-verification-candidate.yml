@@ -1,6 +1,5 @@
 name: Dependency verification candidate
 on:
-  workflow_dispatch:
   push:
     branches: [fix/dependabot-agp-9.5.3-20261128]
     paths: [.github/workflows/dependency-verification-candidate.yml]
@@ -9,28 +8,26 @@ permissions:
 jobs:
   candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
-        with: {distribution: temurin, java-version: '21'}
-      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
-        with:
-          cmdline-tools-version: '15859902'
-          packages: platform-tools
-          log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
-      - name: Generate a review candidate only; never run tests or publish with it
+      - name: Fetch exact AAPT2 artifacts from Google Maven and record SHA-256
+        shell: bash
         run: |
-          ./gradlew --write-verification-metadata sha256 --write-locks help :app:dependencies --no-daemon
-          git diff -- gradle/verification-metadata.xml app/gradle.lockfile
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: Dependency-verification-review-candidate
-          path: |
-            gradle/verification-metadata.xml
-            app/gradle.lockfile
-          if-no-files-found: error
-          retention-days: 30
+          set -euo pipefail
+          v=9.5.3-16666295
+          mkdir -p "$RUNNER_TEMP/aapt2"
+          cd "$RUNNER_TEMP/aapt2"
+          for suffix in linux.jar windows.jar osx.jar pom; do
+            if [[ "$suffix" == pom ]]; then file="aapt2-$v.pom"; else file="aapt2-$v-$suffix"; fi
+            url="https://dl.google.com/dl/android/maven2/com/android/tools/build/aapt2/$v/$file"
+            curl --fail --show-error --silent --location --retry 3 "$url" -o "$file"
+            test -s "$file"
+            sha256sum "$file"
+            if curl --fail --show-error --silent --location "$url.sha256" -o "$file.sha256"; then
+              expected=$(awk 'NR==1 {print $1}' "$file.sha256")
+              [[ "$expected" =~ ^[0-9a-fA-F]{64}$ ]]
+              echo "$expected  $file" | sha256sum --check
+            else
+              echo "No publisher SHA-256 sidecar for $file"
+            fi
+          done
