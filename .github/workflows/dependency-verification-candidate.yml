@@ -1,9 +1,8 @@
 name: Dependency verification candidate
 on:
-  workflow_dispatch:
   push:
-    branches: [fix/audit-stage0-release-delivery-20261104]
-    paths: [build.gradle.kts]
+    branches: [fix/compose-r8-lock-candidate-20261128]
+    paths: [.github/workflows/dependency-verification-candidate.yml]
 permissions:
   contents: read
 jobs:
@@ -12,6 +11,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880
         with: {distribution: temurin, java-version: '21'}
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
@@ -20,13 +21,16 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
-      - name: Generate a review candidate only; never run tests or publish with it
+      - name: Resolve R8 playback configurations and generate review candidate only
         run: |
-          ./gradlew --write-verification-metadata sha256 help --no-daemon
-          git diff -- gradle/verification-metadata.xml
+          set -euo pipefail
+          ./gradlew -Pr8PlaybackCheck=true --write-locks --write-verification-metadata sha256 :app:dependencies --no-daemon
+          git diff -- app/gradle.lockfile gradle/verification-metadata.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: Dependency-verification-review-candidate
-          path: gradle/verification-metadata.xml
+          name: R8-dependency-review-candidate
+          path: |
+            app/gradle.lockfile
+            gradle/verification-metadata.xml
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
